@@ -1,0 +1,100 @@
+export type SkyboxCompositionMode = "alpha-over";
+export type SkyboxCompositionOrder = "bottom-to-top";
+export type SkyboxEffectType = "field-gradient" | "gradient";
+export type SkyboxLayerBlendMode = "normal" | "darken" | "multiply" | "color-burn" | "lighten" | "screen" | "color-dodge" | "overlay" | "soft-light" | "hard-light" | "difference" | "exclusion";
+export type SkyboxGradientMode = "linear";
+export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
+export type SkyboxBakeOptions = {
+    cache?: boolean;
+    dpr?: number;
+    height?: number;
+    targetGroupId?: string;
+    width?: number;
+};
+export type SkyboxGradientStop = {
+    color: string;
+    location: number;
+    opacity: number;
+};
+export type SkyboxGradientParams = {
+    mode: SkyboxGradientMode;
+    rotation: number;
+    stops: SkyboxGradientStop[];
+};
+export type SkyboxFieldGradientAnchor = {
+    color: string;
+    x: number;
+    y: number;
+};
+export type SkyboxFieldGradientParams = {
+    amplitude: number;
+    anchors: SkyboxFieldGradientAnchor[];
+    frequency: number;
+    mode: SkyboxFieldGradientMode;
+    power: number;
+};
+export type SkyboxGradientLayer = {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxGradientParams;
+    type: "gradient";
+};
+export type SkyboxFieldGradientLayer = {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxFieldGradientParams;
+    type: "field-gradient";
+};
+export type SkyboxManifestLayer = SkyboxGradientLayer | SkyboxFieldGradientLayer;
+export type SkyboxManifestGroup = {
+    blendMode: SkyboxLayerBlendMode;
+    children: SkyboxManifestNode[];
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    type: "group";
+};
+export type SkyboxManifestNode = SkyboxManifestLayer | SkyboxManifestGroup;
+export type SkyboxManifestV1Layer = {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxGradientParams;
+    type: "gradient";
+} | {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxFieldGradientParams;
+    type: "field-gradient";
+};
+export type SkyboxManifestV1 = {
+    composition: {
+        mode: SkyboxCompositionMode;
+        order: SkyboxCompositionOrder;
+    };
+    layers: SkyboxManifestV1Layer[];
+    version: 1;
+};
+export type SkyboxManifestV2 = {
+    composition: {
+        mode: SkyboxCompositionMode;
+        order: SkyboxCompositionOrder;
+    };
+    nodes: SkyboxManifestNode[];
+    version: 2;
+};
+export type SkyboxManifest = SkyboxManifestV1 | SkyboxManifestV2;
+export type SkyboxRenderMode = "auto" | "live-webgpu" | "live-webgl" | "baked-texture";
+export declare function migrateManifestToV2(manifest: SkyboxManifest): SkyboxManifestV2;

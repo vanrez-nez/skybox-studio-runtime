@@ -17,6 +17,14 @@ export type SkyboxLayerBlendMode =
 export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
 
+export type SkyboxBakeOptions = {
+  cache?: boolean;
+  dpr?: number;
+  height?: number;
+  targetGroupId?: string;
+  width?: number;
+};
+
 export type SkyboxGradientStop = {
   color: string;
   location: number;
@@ -43,7 +51,41 @@ export type SkyboxFieldGradientParams = {
   power: number;
 };
 
-export type SkyboxManifestLayer =
+export type SkyboxGradientLayer = {
+  blendMode: SkyboxLayerBlendMode;
+  enabled: boolean;
+  id: string;
+  name: string;
+  opacity: number;
+  params: SkyboxGradientParams;
+  type: "gradient";
+};
+
+export type SkyboxFieldGradientLayer = {
+  blendMode: SkyboxLayerBlendMode;
+  enabled: boolean;
+  id: string;
+  name: string;
+  opacity: number;
+  params: SkyboxFieldGradientParams;
+  type: "field-gradient";
+};
+
+export type SkyboxManifestLayer = SkyboxGradientLayer | SkyboxFieldGradientLayer;
+
+export type SkyboxManifestGroup = {
+  blendMode: SkyboxLayerBlendMode;
+  children: SkyboxManifestNode[];
+  enabled: boolean;
+  id: string;
+  name: string;
+  opacity: number;
+  type: "group";
+};
+
+export type SkyboxManifestNode = SkyboxManifestLayer | SkyboxManifestGroup;
+
+export type SkyboxManifestV1Layer =
   | {
       blendMode: SkyboxLayerBlendMode;
       enabled: boolean;
@@ -68,6 +110,31 @@ export type SkyboxManifestV1 = {
     mode: SkyboxCompositionMode;
     order: SkyboxCompositionOrder;
   };
-  layers: SkyboxManifestLayer[];
+  layers: SkyboxManifestV1Layer[];
   version: 1;
 };
+
+export type SkyboxManifestV2 = {
+  composition: {
+    mode: SkyboxCompositionMode;
+    order: SkyboxCompositionOrder;
+  };
+  nodes: SkyboxManifestNode[];
+  version: 2;
+};
+
+export type SkyboxManifest = SkyboxManifestV1 | SkyboxManifestV2;
+
+export type SkyboxRenderMode = "auto" | "live-webgpu" | "live-webgl" | "baked-texture";
+
+export function migrateManifestToV2(manifest: SkyboxManifest): SkyboxManifestV2 {
+  if (manifest.version === 2) {
+    return manifest;
+  }
+
+  return {
+    composition: manifest.composition,
+    nodes: manifest.layers.map((layer) => ({ ...layer })),
+    version: 2,
+  };
+}

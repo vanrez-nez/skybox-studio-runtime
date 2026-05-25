@@ -1,10 +1,5 @@
-import {
-  BackSide,
-  BoxGeometry,
-  Mesh,
-  NodeMaterial,
-  type Material,
-} from "three/webgpu";
+import * as THREE from "three";
+import { NodeMaterial } from "three/webgpu";
 import {
   cameraPosition,
   Fn,
@@ -14,75 +9,82 @@ import {
   wgslFn,
 } from "three/tsl";
 
+import { bakeSkyboxImageData, invalidateBakeCache as invalidateGlobalBakeCache } from "./bake";
+import {
+  clamp,
+  parseHexColor,
+  type Rgb,
+} from "./math";
 import type {
+  SkyboxBakeOptions,
   SkyboxFieldGradientParams,
   SkyboxGradientParams,
+  SkyboxManifest,
   SkyboxManifestLayer,
-  SkyboxManifestV1,
+  SkyboxManifestNode,
+  SkyboxManifestV2,
+  SkyboxRenderMode,
 } from "./manifest";
+import { migrateManifestToV2 } from "./manifest";
 
-const DEFAULT_MANIFEST: SkyboxManifestV1 = {
+type SupportedRenderer = THREE.WebGLRenderer | { isWebGPURenderer?: boolean };
+type RuntimeMaterial = THREE.ShaderMaterial | THREE.MeshBasicMaterial | NodeMaterial;
+type ShaderLanguage = "glsl" | "wgsl";
+
+const DEFAULT_MANIFEST: SkyboxManifestV2 = {
   composition: { mode: "alpha-over", order: "bottom-to-top" },
-  layers: [],
-  version: 1,
+  nodes: [],
+  version: 2,
 };
-
-function clamp(value: number, min = 0, max = 1) {
-  return Math.min(max, Math.max(min, value));
-}
 
 function numberLiteral(value: number) {
   return Number.isFinite(value) ? value.toFixed(8) : "0.0";
 }
 
-function srgbChannelToLinear(channel: number) {
-  return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-}
-
-function parseHexColor(color: string): [number, number, number] {
-  const hexColor = color.trim().replace(/^#/, "");
-  const normalizedColor =
-    hexColor.length === 3
-      ? hexColor
-          .split("")
-          .map((character) => `${character}${character}`)
-          .join("")
-      : hexColor;
-
-  if (!/^[0-9a-fA-F]{6}$/.test(normalizedColor)) {
-    return [1, 1, 1];
-  }
-
-  return [0, 2, 4].map((offset) =>
-    srgbChannelToLinear(Number.parseInt(normalizedColor.slice(offset, offset + 2), 16) / 255)
-  ) as [number, number, number];
-}
-
-function colorLiteral(color: string) {
+function colorLiteral(color: string, language: ShaderLanguage) {
   const [red, green, blue] = parseHexColor(color);
+  const type = language === "wgsl" ? "vec3<f32>" : "vec3";
 
-  return `vec3<f32>(${numberLiteral(red)}, ${numberLiteral(green)}, ${numberLiteral(blue)})`;
+  return `${type}(${numberLiteral(red)}, ${numberLiteral(green)}, ${numberLiteral(blue)})`;
 }
 
-function directionLiteralFromPoint(x: number, y: number) {
+function vec4Literal(color: string, alpha: number, language: ShaderLanguage) {
+  const type = language === "wgsl" ? "vec4<f32>" : "vec4";
+
+  return `${type}(${colorLiteral(color, language)}, ${numberLiteral(clamp(alpha))})`;
+}
+
+function directionLiteralFromPoint(x: number, y: number, language: ShaderLanguage) {
   const lambda = (clamp(x) - 0.5) * Math.PI * 2;
   const phi = (0.5 - clamp(y)) * Math.PI;
   const cosPhi = Math.cos(phi);
+  const type = language === "wgsl" ? "vec3<f32>" : "vec3";
 
-  return `vec3<f32>(${numberLiteral(cosPhi * Math.cos(lambda))}, ${numberLiteral(
+  return `${type}(${numberLiteral(cosPhi * Math.cos(lambda))}, ${numberLiteral(
     Math.sin(phi)
   )}, ${numberLiteral(cosPhi * Math.sin(lambda))})`;
 }
 
-function vec4Literal(color: string, alpha: number) {
-  return `vec4<f32>(${colorLiteral(color)}, ${numberLiteral(clamp(alpha))})`;
+function vectorLiteral(value: number, language: ShaderLanguage) {
+  return language === "wgsl" ? `vec3<f32>(${numberLiteral(value)})` : `vec3(${numberLiteral(value)})`;
 }
 
-function getRenderableLayers(manifest: SkyboxManifestV1) {
-  return manifest.layers.filter((layer) => layer.enabled).reverse();
+function mutableDeclaration(
+  name: string,
+  type: string,
+  initialValue: string,
+  language: ShaderLanguage
+) {
+  return language === "wgsl"
+    ? `var ${name}: ${type} = ${initialValue};`
+    : `${type} ${name} = ${initialValue};`;
 }
 
-function gradientSampleExpression(params: SkyboxGradientParams) {
+function getRenderableNodes(nodes: SkyboxManifestNode[]) {
+  return nodes.filter((node) => node.enabled).reverse();
+}
+
+function gradientSampleExpression(params: SkyboxGradientParams, language: ShaderLanguage) {
   const stops = [...params.stops]
     .map((stop) => ({
       color: stop.color,
@@ -90,13 +92,15 @@ function gradientSampleExpression(params: SkyboxGradientParams) {
       t: clamp(stop.location / 100),
     }))
     .sort((firstStop, secondStop) => firstStop.t - secondStop.t);
+  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
+  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
 
   if (stops.length === 0) {
-    return "effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);";
+    return `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
   }
 
   const rotationRadians = (params.rotation * Math.PI) / 180;
-  const axis = `vec3<f32>(${numberLiteral(Math.sin(rotationRadians))}, ${numberLiteral(
+  const axis = `${vec3Type}(${numberLiteral(Math.sin(rotationRadians))}, ${numberLiteral(
     Math.cos(rotationRadians)
   )}, 0.0)`;
   const branches = stops.slice(0, -1).map((currentStop, index) => {
@@ -110,25 +114,30 @@ function gradientSampleExpression(params: SkyboxGradientParams) {
     return `${keyword} (gradientT <= ${numberLiteral(nextStop.t)}) {
       effectColor = mix(${vec4Literal(
       currentStop.color,
-      currentStop.opacity
-    )}, ${vec4Literal(nextStop.color, nextStop.opacity)}, ${localT});
+      currentStop.opacity,
+      language
+    )}, ${vec4Literal(nextStop.color, nextStop.opacity, language)}, ${localT});
     }`;
   });
   const lastStop = stops[stops.length - 1];
 
   return `{
-    let gradientAxis = normalize(${axis});
-    let gradientT = dot(direction, gradientAxis) * 0.5 + 0.5;
+    ${language === "wgsl" ? "let" : "vec3"} gradientAxis = normalize(${axis});
+    ${language === "wgsl" ? "let" : "float"} gradientT = dot(direction, gradientAxis) * 0.5 + 0.5;
     ${branches.join("\n")}
     ${branches.length > 0 ? "else" : ""} {
-      effectColor = ${vec4Literal(lastStop.color, lastStop.opacity)};
+      effectColor = ${vec4Literal(lastStop.color, lastStop.opacity, language)};
     }
   }`;
 }
 
-function fieldGradientSampleExpression(params: SkyboxFieldGradientParams) {
+function fieldGradientSampleExpression(params: SkyboxFieldGradientParams, language: ShaderLanguage) {
+  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
+  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
+  const declare = language === "wgsl" ? "let" : "float";
+
   if (params.anchors.length === 0) {
-    return "effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);";
+    return `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
   }
 
   const warpAmplitude = clamp(params.amplitude, 0, 0.6);
@@ -138,148 +147,226 @@ function fieldGradientSampleExpression(params: SkyboxFieldGradientParams) {
   const anchorLines = params.anchors
     .map(
       (anchor) => `{
-        let anchorDirection = normalize(${directionLiteralFromPoint(anchor.x, anchor.y)});
-        let anchorDistance = 1.0 - clamp(dot(fieldDirection, anchorDirection), -1.0, 1.0);
-        let weight = ${
+        ${declare} anchorDirection = normalize(${directionLiteralFromPoint(anchor.x, anchor.y, language)});
+        ${declare} anchorDistance = 1.0 - clamp(dot(fieldDirection, anchorDirection), -1.0, 1.0);
+        ${declare} weight = ${
           params.mode === "gaussian"
             ? `exp(-(anchorDistance * anchorDistance) / ${numberLiteral(2 * sigma * sigma)})`
             : `1.0 / pow(anchorDistance + 0.0005, ${numberLiteral(power)})`
         };
-        weightedColor += ${colorLiteral(anchor.color)} * weight;
+        weightedColor += ${colorLiteral(anchor.color, language)} * weight;
         weightSum += weight;
       }`
     )
     .join("\n");
 
   return `{
-    let warpAmplitude = ${numberLiteral(warpAmplitude)};
-    let warpFrequency = ${numberLiteral(frequency)};
-    var fieldDirection = direction;
-    let warpScale = warpAmplitude;
+    ${declare} warpAmplitude = ${numberLiteral(warpAmplitude)};
+    ${declare} warpFrequency = ${numberLiteral(frequency)};
+    ${mutableDeclaration("fieldDirection", vec3Type, "direction", language)}
+    ${declare} warpScale = warpAmplitude;
     if (warpScale > 0.0) {
-      let warpX = sin((direction.y * warpFrequency + 0.23) * ${numberLiteral(
+      ${declare} warpX = sin((direction.y * warpFrequency + 0.23) * ${numberLiteral(
         Math.PI * 2
-      )}) * cos((direction.z * warpFrequency + 0.41) * ${numberLiteral(
+      )}) * cos((direction.z * warpFrequency + 0.41) * ${numberLiteral(Math.PI * 2)});
+      ${declare} warpY = cos((direction.z * warpFrequency + 0.17) * ${numberLiteral(
         Math.PI * 2
-      )});
-      let warpY = cos((direction.z * warpFrequency + 0.17) * ${numberLiteral(
+      )}) * sin((direction.x * warpFrequency + 0.37) * ${numberLiteral(Math.PI * 2)});
+      ${declare} warpZ = sin((direction.x * warpFrequency - 0.31) * ${numberLiteral(
         Math.PI * 2
-      )}) * sin((direction.x * warpFrequency + 0.37) * ${numberLiteral(
-        Math.PI * 2
-      )});
-      let warpZ = sin((direction.x * warpFrequency - 0.31) * ${numberLiteral(
-        Math.PI * 2
-      )}) * cos((direction.y * warpFrequency + 0.29) * ${numberLiteral(
-        Math.PI * 2
-      )});
-      fieldDirection = normalize(direction + vec3<f32>(warpX, warpY, warpZ) * warpScale);
+      )}) * cos((direction.y * warpFrequency + 0.29) * ${numberLiteral(Math.PI * 2)});
+      fieldDirection = normalize(direction + ${vec3Type}(warpX, warpY, warpZ) * warpScale);
     }
-    var weightedColor = vec3<f32>(0.0);
-    var weightSum = 0.0;
+    ${mutableDeclaration("weightedColor", vec3Type, `${vec3Type}(0.0)`, language)}
+    ${mutableDeclaration("weightSum", language === "wgsl" ? "f32" : "float", "0.0", language)}
     ${anchorLines}
     if (weightSum > 0.0) {
-      effectColor = vec4<f32>(weightedColor / weightSum, 1.0);
+      effectColor = ${vec4Type}(weightedColor / weightSum, 1.0);
     } else {
-      effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+      effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);
     }
   }`;
 }
 
-function effectExpression(layer: SkyboxManifestLayer) {
+function effectExpression(layer: SkyboxManifestLayer, language: ShaderLanguage) {
   return layer.type === "gradient"
-    ? gradientSampleExpression(layer.params)
-    : fieldGradientSampleExpression(layer.params);
+    ? gradientSampleExpression(layer.params, language)
+    : fieldGradientSampleExpression(layer.params, language);
 }
 
-function blendExpression(layer: SkyboxManifestLayer) {
-  switch (layer.blendMode) {
+function selectExpression(condition: string, whenTrue: string, whenFalse: string, language: ShaderLanguage) {
+  return language === "wgsl"
+    ? `select(${whenFalse}, ${whenTrue}, ${condition})`
+    : `((${condition}) ? ${whenTrue} : ${whenFalse})`;
+}
+
+function blendExpression(node: SkyboxManifestNode, language: ShaderLanguage) {
+  if (language === "glsl") {
+    switch (node.blendMode) {
+      case "darken":
+        return "min(composedColor, effectColor.rgb)";
+      case "multiply":
+        return "composedColor * effectColor.rgb";
+      case "color-burn":
+        return "blendColorBurn(composedColor, effectColor.rgb)";
+      case "lighten":
+        return "max(composedColor, effectColor.rgb)";
+      case "screen":
+        return "composedColor + effectColor.rgb - composedColor * effectColor.rgb";
+      case "color-dodge":
+        return "blendColorDodge(composedColor, effectColor.rgb)";
+      case "overlay":
+        return "blendOverlay(composedColor, effectColor.rgb)";
+      case "soft-light":
+        return "blendSoftLight(composedColor, effectColor.rgb)";
+      case "hard-light":
+        return "blendHardLight(composedColor, effectColor.rgb)";
+      case "difference":
+        return "abs(composedColor - effectColor.rgb)";
+      case "exclusion":
+        return "composedColor + effectColor.rgb - 2.0 * composedColor * effectColor.rgb";
+      case "normal":
+      default:
+        return "effectColor.rgb";
+    }
+  }
+
+  const one = vectorLiteral(1, language);
+  const half = vectorLiteral(0.5, language);
+  const zero = vectorLiteral(0, language);
+  const source = "effectColor.rgb";
+  const backdrop = "composedColor";
+
+  switch (node.blendMode) {
     case "darken":
-      return "min(composedColor, effectColor.rgb)";
+      return `min(${backdrop}, ${source})`;
     case "multiply":
-      return "composedColor * effectColor.rgb";
+      return `${backdrop} * ${source}`;
     case "color-burn":
-      return `select(
-        select(
-          vec3<f32>(1.0) - min(vec3<f32>(1.0), (vec3<f32>(1.0) - composedColor) / effectColor.rgb),
-          vec3<f32>(0.0),
-          effectColor.rgb == vec3<f32>(0.0)
+      return selectExpression(
+        `${backdrop} == ${one}`,
+        one,
+        selectExpression(
+          `${source} == ${zero}`,
+          zero,
+          `${one} - min(${one}, (${one} - ${backdrop}) / ${source})`,
+          language
         ),
-        vec3<f32>(1.0),
-        composedColor == vec3<f32>(1.0)
-      )`;
+        language
+      );
     case "lighten":
-      return "max(composedColor, effectColor.rgb)";
+      return `max(${backdrop}, ${source})`;
     case "screen":
-      return "composedColor + effectColor.rgb - composedColor * effectColor.rgb";
+      return `${backdrop} + ${source} - ${backdrop} * ${source}`;
     case "color-dodge":
-      return `select(
-        select(
-          min(vec3<f32>(1.0), composedColor / (vec3<f32>(1.0) - effectColor.rgb)),
-          vec3<f32>(1.0),
-          effectColor.rgb == vec3<f32>(1.0)
+      return selectExpression(
+        `${backdrop} == ${zero}`,
+        zero,
+        selectExpression(
+          `${source} == ${one}`,
+          one,
+          `min(${one}, ${backdrop} / (${one} - ${source}))`,
+          language
         ),
-        vec3<f32>(0.0),
-        composedColor == vec3<f32>(0.0)
-      )`;
+        language
+      );
     case "overlay":
-      return `select(
-        vec3<f32>(1.0) - 2.0 * (vec3<f32>(1.0) - composedColor) * (vec3<f32>(1.0) - effectColor.rgb),
-        2.0 * composedColor * effectColor.rgb,
-        composedColor <= vec3<f32>(0.5)
-      )`;
+      return selectExpression(
+        `${backdrop} <= ${half}`,
+        `2.0 * ${backdrop} * ${source}`,
+        `${one} - 2.0 * (${one} - ${backdrop}) * (${one} - ${source})`,
+        language
+      );
     case "soft-light":
-      return `select(
-        composedColor + (2.0 * effectColor.rgb - vec3<f32>(1.0)) * (softLightD - composedColor),
-        composedColor - (vec3<f32>(1.0) - 2.0 * effectColor.rgb) * composedColor * (vec3<f32>(1.0) - composedColor),
-        effectColor.rgb <= vec3<f32>(0.5)
-      )`;
+      return selectExpression(
+        `${source} <= ${half}`,
+        `${backdrop} - (${one} - 2.0 * ${source}) * ${backdrop} * (${one} - ${backdrop})`,
+        `${backdrop} + (2.0 * ${source} - ${one}) * (softLightD - ${backdrop})`,
+        language
+      );
     case "hard-light":
-      return `select(
-        composedColor + (2.0 * effectColor.rgb - vec3<f32>(1.0)) - composedColor * (2.0 * effectColor.rgb - vec3<f32>(1.0)),
-        2.0 * composedColor * effectColor.rgb,
-        effectColor.rgb <= vec3<f32>(0.5)
-      )`;
+      return selectExpression(
+        `${source} <= ${half}`,
+        `2.0 * ${backdrop} * ${source}`,
+        `${backdrop} + (2.0 * ${source} - ${one}) - ${backdrop} * (2.0 * ${source} - ${one})`,
+        language
+      );
     case "difference":
-      return "abs(composedColor - effectColor.rgb)";
+      return `abs(${backdrop} - ${source})`;
     case "exclusion":
-      return "composedColor + effectColor.rgb - 2.0 * composedColor * effectColor.rgb";
+      return `${backdrop} + ${source} - 2.0 * ${backdrop} * ${source}`;
     case "normal":
     default:
-      return "effectColor.rgb";
+      return source;
   }
 }
 
-function blendSetupExpression(layer: SkyboxManifestLayer) {
-  if (layer.blendMode !== "soft-light") {
+function blendSetupExpression(node: SkyboxManifestNode, language: ShaderLanguage) {
+  if (language === "glsl" || node.blendMode !== "soft-light") {
     return "";
   }
 
-  return `let softLightD = select(
-    sqrt(composedColor),
-    ((16.0 * composedColor - vec3<f32>(12.0)) * composedColor + vec3<f32>(4.0)) * composedColor,
-    composedColor <= vec3<f32>(0.25)
-  );`;
+  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
+  const declaration = language === "wgsl" ? "let" : "vec3";
+
+  return `${declaration} softLightD = ${selectExpression(
+    `composedColor <= ${vec3Type}(0.25)`,
+    `((16.0 * composedColor - ${vec3Type}(12.0)) * composedColor + ${vec3Type}(4.0)) * composedColor`,
+    "sqrt(composedColor)",
+    language
+  )};`;
 }
 
-function createSkyboxFunction(manifest: SkyboxManifestV1) {
-  const layerBlocks = getRenderableLayers(manifest)
-    .map(
-      (layer) => `{
-        var effectColor = vec4<f32>(0.0);
-        ${effectExpression(layer)}
-        let sourceAlpha = clamp(effectColor.a * ${numberLiteral(layer.opacity / 100)}, 0.0, 1.0);
-        ${blendSetupExpression(layer)}
-        let blendedColor = clamp(${blendExpression(
-          layer
-        )}, vec3<f32>(0.0), vec3<f32>(1.0));
+function composeNodesExpression(nodes: SkyboxManifestNode[], language: ShaderLanguage, depth = 0): string {
+  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
+  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
+
+  return getRenderableNodes(nodes)
+    .map((node, index) => {
+      const sourceExpression =
+        node.type === "group"
+          ? `effectColor = ${vec4Type}(${(() => {
+              const variableName = `groupColor${depth}_${index}`;
+              return variableName;
+            })()}, 1.0);`
+          : effectExpression(node, language);
+      const groupColorName = `groupColor${depth}_${index}`;
+      const groupBlock =
+        node.type === "group"
+          ? `${mutableDeclaration(groupColorName, vec3Type, `${vec3Type}(0.0)`, language)}
+        {
+          ${mutableDeclaration("previousComposedColor", vec3Type, "composedColor", language)}
+          composedColor = ${vec3Type}(0.0);
+          ${composeNodesExpression(node.children, language, depth + 1)}
+          ${groupColorName} = composedColor;
+          composedColor = previousComposedColor;
+        }`
+          : "";
+
+      return `{
+        ${groupBlock}
+        ${mutableDeclaration("effectColor", vec4Type, `${vec4Type}(0.0)`, language)}
+        ${sourceExpression}
+        ${language === "wgsl" ? "let" : "float"} sourceAlpha = clamp(effectColor.a * ${numberLiteral(
+        node.opacity / 100
+      )}, 0.0, 1.0);
+        ${blendSetupExpression(node, language)}
+        ${language === "wgsl" ? "let" : "vec3"} blendedColor = clamp(${blendExpression(
+        node,
+        language
+      )}, ${vec3Type}(0.0), ${vec3Type}(1.0));
         composedColor = clamp(
           blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha),
-          vec3<f32>(0.0),
-          vec3<f32>(1.0)
+          ${vec3Type}(0.0),
+          ${vec3Type}(1.0)
         );
-      }`
-    )
+      }`;
+    })
     .join("\n");
+}
+
+function createSkyboxFunction(manifest: SkyboxManifestV2) {
+  const layerBlocks = composeNodesExpression(manifest.nodes, "wgsl");
 
   return wgslFn(`
     fn skyboxStudioSample(direction: vec3<f32>) -> vec4<f32> {
@@ -290,7 +377,7 @@ function createSkyboxFunction(manifest: SkyboxManifestV1) {
   `);
 }
 
-function createSkyboxMaterial(manifest: SkyboxManifestV1) {
+function createWebGpuMaterial(manifest: SkyboxManifestV2) {
   const material = new NodeMaterial();
   const skyboxSample = createSkyboxFunction(manifest);
   const vertexNode = Fn(() => {
@@ -301,7 +388,7 @@ function createSkyboxMaterial(manifest: SkyboxManifestV1) {
     return position;
   })();
 
-  material.side = BackSide;
+  material.side = THREE.BackSide;
   material.depthTest = false;
   material.depthWrite = false;
   material.vertexNode = vertexNode as any;
@@ -312,17 +399,205 @@ function createSkyboxMaterial(manifest: SkyboxManifestV1) {
   return material;
 }
 
-export class Skybox extends Mesh<BoxGeometry, NodeMaterial> {
-  #manifest: SkyboxManifestV1 = DEFAULT_MANIFEST;
+function createWebGlMaterial(manifest: SkyboxManifestV2) {
+  const layerBlocks = composeNodesExpression(manifest.nodes, "glsl");
+
+  return new THREE.ShaderMaterial({
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.BackSide,
+    vertexShader: `
+      varying vec3 vDirection;
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vDirection = worldPosition.xyz - cameraPosition;
+        vec4 clipPosition = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        gl_Position = clipPosition.xyww;
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      varying vec3 vDirection;
+
+      float softLightDChannel(float backdrop) {
+        return backdrop <= 0.25
+          ? ((16.0 * backdrop - 12.0) * backdrop + 4.0) * backdrop
+          : sqrt(backdrop);
+      }
+
+      float blendColorBurnChannel(float backdrop, float source) {
+        if (backdrop == 1.0) {
+          return 1.0;
+        }
+
+        if (source == 0.0) {
+          return 0.0;
+        }
+
+        return 1.0 - min(1.0, (1.0 - backdrop) / source);
+      }
+
+      float blendColorDodgeChannel(float backdrop, float source) {
+        if (backdrop == 0.0) {
+          return 0.0;
+        }
+
+        if (source == 1.0) {
+          return 1.0;
+        }
+
+        return min(1.0, backdrop / (1.0 - source));
+      }
+
+      float blendOverlayChannel(float backdrop, float source) {
+        return backdrop <= 0.5
+          ? 2.0 * backdrop * source
+          : 1.0 - 2.0 * (1.0 - backdrop) * (1.0 - source);
+      }
+
+      float blendSoftLightChannel(float backdrop, float source) {
+        return source <= 0.5
+          ? backdrop - (1.0 - 2.0 * source) * backdrop * (1.0 - backdrop)
+          : backdrop + (2.0 * source - 1.0) * (softLightDChannel(backdrop) - backdrop);
+      }
+
+      float blendHardLightChannel(float backdrop, float source) {
+        return source <= 0.5
+          ? 2.0 * backdrop * source
+          : backdrop + (2.0 * source - 1.0) - backdrop * (2.0 * source - 1.0);
+      }
+
+      vec3 blendColorBurn(vec3 backdrop, vec3 source) {
+        return vec3(
+          blendColorBurnChannel(backdrop.r, source.r),
+          blendColorBurnChannel(backdrop.g, source.g),
+          blendColorBurnChannel(backdrop.b, source.b)
+        );
+      }
+
+      vec3 blendColorDodge(vec3 backdrop, vec3 source) {
+        return vec3(
+          blendColorDodgeChannel(backdrop.r, source.r),
+          blendColorDodgeChannel(backdrop.g, source.g),
+          blendColorDodgeChannel(backdrop.b, source.b)
+        );
+      }
+
+      vec3 blendOverlay(vec3 backdrop, vec3 source) {
+        return vec3(
+          blendOverlayChannel(backdrop.r, source.r),
+          blendOverlayChannel(backdrop.g, source.g),
+          blendOverlayChannel(backdrop.b, source.b)
+        );
+      }
+
+      vec3 blendSoftLight(vec3 backdrop, vec3 source) {
+        return vec3(
+          blendSoftLightChannel(backdrop.r, source.r),
+          blendSoftLightChannel(backdrop.g, source.g),
+          blendSoftLightChannel(backdrop.b, source.b)
+        );
+      }
+
+      vec3 blendHardLight(vec3 backdrop, vec3 source) {
+        return vec3(
+          blendHardLightChannel(backdrop.r, source.r),
+          blendHardLightChannel(backdrop.g, source.g),
+          blendHardLightChannel(backdrop.b, source.b)
+        );
+      }
+
+      void main() {
+        vec3 direction = normalize(vDirection);
+        vec3 composedColor = vec3(0.0);
+        ${layerBlocks}
+        gl_FragColor = vec4(composedColor, 1.0);
+      }
+    `,
+  });
+}
+
+function createCanvas(width: number, height: number): HTMLCanvasElement | OffscreenCanvas {
+  if (typeof document !== "undefined") {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  }
+
+  return new OffscreenCanvas(width, height);
+}
+
+export function createBakedSkyboxTexture(manifest: SkyboxManifest, options: SkyboxBakeOptions = {}) {
+  const bakedImage = bakeSkyboxImageData(manifest, options);
+  const canvas = createCanvas(bakedImage.width, bakedImage.height);
+  const context = canvas.getContext("2d");
+
+  if (!context || !("putImageData" in context)) {
+    throw new Error("Skybox runtime: unable to create a 2D canvas context for baking.");
+  }
+
+  context.putImageData(new ImageData(bakedImage.data, bakedImage.width, bakedImage.height), 0, 0);
+
+  const texture = new THREE.CanvasTexture(canvas as HTMLCanvasElement);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.flipY = false;
+  texture.needsUpdate = true;
+
+  return texture;
+}
+
+function createBakedMaterial(manifest: SkyboxManifest, options: SkyboxBakeOptions) {
+  return new THREE.MeshBasicMaterial({
+    map: createBakedSkyboxTexture(manifest, options),
+    side: THREE.BackSide,
+  });
+}
+
+function isWebGpuRenderer(renderer?: SupportedRenderer | null) {
+  return Boolean(renderer && "isWebGPURenderer" in renderer && renderer.isWebGPURenderer);
+}
+
+function resolveRenderMode(mode: SkyboxRenderMode, renderer?: SupportedRenderer | null): Exclude<SkyboxRenderMode, "auto"> {
+  if (mode !== "auto") {
+    return mode;
+  }
+
+  return isWebGpuRenderer(renderer) ? "live-webgpu" : "live-webgl";
+}
+
+export class Skybox extends THREE.Mesh<THREE.BoxGeometry, RuntimeMaterial> {
+  #bakeOptions: SkyboxBakeOptions = {};
+  #manifest: SkyboxManifestV2 = DEFAULT_MANIFEST;
+  #renderMode: SkyboxRenderMode = "auto";
+  #renderer: SupportedRenderer | null = null;
 
   constructor() {
-    super(new BoxGeometry(1, 1, 1), createSkyboxMaterial(DEFAULT_MANIFEST));
+    super(new THREE.BoxGeometry(1, 1, 1), createWebGpuMaterial(DEFAULT_MANIFEST));
     this.frustumCulled = false;
     this.renderOrder = -1;
   }
 
-  fromManifest(manifest: SkyboxManifestV1) {
-    this.#manifest = manifest;
+  fromManifest(manifest: SkyboxManifest) {
+    this.#manifest = migrateManifestToV2(manifest);
+    return this;
+  }
+
+  setBakeOptions(options: SkyboxBakeOptions) {
+    this.#bakeOptions = { ...this.#bakeOptions, ...options };
+    return this;
+  }
+
+  setRenderer(renderer: SupportedRenderer | null) {
+    this.#renderer = renderer;
+    return this;
+  }
+
+  setRenderMode(mode: SkyboxRenderMode) {
+    this.#renderMode = mode;
     return this;
   }
 
@@ -330,21 +605,47 @@ export class Skybox extends Mesh<BoxGeometry, NodeMaterial> {
     return this;
   }
 
-  load() {
+  load(renderer?: SupportedRenderer) {
+    if (renderer) {
+      this.#renderer = renderer;
+    }
+
     this.setManifest(this.#manifest);
     return this;
   }
 
-  setManifest(manifest: SkyboxManifestV1) {
-    this.#manifest = manifest;
+  setManifest(manifest: SkyboxManifest) {
+    this.#manifest = migrateManifestToV2(manifest);
     const previousMaterial = this.material;
-    this.material = createSkyboxMaterial(manifest);
+    const renderMode = resolveRenderMode(this.#renderMode, this.#renderer);
+
+    if (renderMode === "live-webgpu") {
+      this.material = createWebGpuMaterial(this.#manifest);
+    } else if (renderMode === "live-webgl") {
+      this.material = createWebGlMaterial(this.#manifest);
+    } else {
+      this.material = createBakedMaterial(this.#manifest, this.#bakeOptions);
+    }
+
     previousMaterial.dispose();
+    const previousMap = "map" in previousMaterial ? previousMaterial.map : null;
+
+    if (previousMap) {
+      previousMap.dispose();
+    }
+
+    return this;
+  }
+
+  invalidateBakeCache() {
+    invalidateGlobalBakeCache();
     return this;
   }
 
   dispose() {
+    const map = "map" in this.material ? this.material.map : null;
     this.geometry.dispose();
-    (this.material as Material).dispose();
+    this.material.dispose();
+    map?.dispose();
   }
 }

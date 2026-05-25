@@ -1,0 +1,12 @@
+import type { SkyboxLayerBlendMode } from "./manifest";
+export type Rgb = [number, number, number];
+export type Rgba = [number, number, number, number];
+export declare function clamp(value: number, min?: number, max?: number): number;
+export declare function srgbChannelToLinear(channel: number): number;
+export declare function linearChannelToSrgb(channel: number): number;
+export declare function parseHexColor(color: string): Rgb;
+export declare function linearRgbToSrgbBytes(color: Rgb): [number, number, number];
+export declare function blendChannel(mode: SkyboxLayerBlendMode, backdropValue: number, sourceValue: number): number;
+export declare function compositeBlendChannel(mode: SkyboxLayerBlendMode, backdrop: number, source: number, alpha: number): number;
+export declare function compositeOver(backdrop: Rgb, source: Rgb, alpha: number, blendMode: SkyboxLayerBlendMode): Rgb;
+export declare function hashString(value: string): string;
