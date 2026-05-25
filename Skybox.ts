@@ -60,6 +60,16 @@ function colorLiteral(color: string) {
   return `vec3<f32>(${numberLiteral(red)}, ${numberLiteral(green)}, ${numberLiteral(blue)})`;
 }
 
+function directionLiteralFromPoint(x: number, y: number) {
+  const lambda = (clamp(x) - 0.5) * Math.PI * 2;
+  const phi = (clamp(y) - 0.5) * Math.PI;
+  const cosPhi = Math.cos(phi);
+
+  return `vec3<f32>(${numberLiteral(cosPhi * Math.cos(lambda))}, ${numberLiteral(
+    Math.sin(phi)
+  )}, ${numberLiteral(cosPhi * Math.sin(lambda))})`;
+}
+
 function vec4Literal(color: string, alpha: number) {
   return `vec4<f32>(${colorLiteral(color)}, ${numberLiteral(clamp(alpha))})`;
 }
@@ -124,10 +134,8 @@ function fieldGradientSampleExpression(params: SkyboxFieldGradientParams) {
   const anchorLines = params.anchors
     .map(
       (anchor) => `{
-        let anchorPoint = vec2<f32>(${numberLiteral(clamp(anchor.x))}, ${numberLiteral(
-          clamp(anchor.y)
-        )});
-        let anchorDistance = length(fieldPoint - anchorPoint);
+        let anchorDirection = normalize(${directionLiteralFromPoint(anchor.x, anchor.y)});
+        let anchorDistance = 1.0 - clamp(dot(fieldDirection, anchorDirection), -1.0, 1.0);
         let weight = ${
           params.mode === "gaussian"
             ? `exp(-(anchorDistance * anchorDistance) / ${numberLiteral(2 * sigma * sigma)})`
@@ -157,8 +165,17 @@ function fieldGradientSampleExpression(params: SkyboxFieldGradientParams) {
       )}) * sin((fieldPoint.y * ${numberLiteral(frequency)} + 0.37) * ${numberLiteral(
         Math.PI * 2
       )});
-      fieldPoint = clamp(fieldPoint + vec2<f32>(warpX, warpY) * warpScale, vec2<f32>(0.0), vec2<f32>(1.0));
+      let warpedPoint = fieldPoint + vec2<f32>(warpX, warpY) * warpScale;
+      fieldPoint = vec2<f32>(fract(warpedPoint.x), clamp(warpedPoint.y, 0.0, 1.0));
     }
+    let fieldLambda = (fieldPoint.x - 0.5) * ${numberLiteral(Math.PI * 2)};
+    let fieldPhi = (fieldPoint.y - 0.5) * ${numberLiteral(Math.PI)};
+    let fieldCosPhi = cos(fieldPhi);
+    let fieldDirection = normalize(vec3<f32>(
+      fieldCosPhi * cos(fieldLambda),
+      sin(fieldPhi),
+      fieldCosPhi * sin(fieldLambda)
+    ));
     var weightedColor = vec3<f32>(0.0);
     var weightSum = 0.0;
     ${anchorLines}
