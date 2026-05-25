@@ -9,7 +9,7 @@ export type {
   SkyboxGradientMode,
   SkyboxGradientParams,
   SkyboxGradientStop,
+  SkyboxLayerBlendMode,
   SkyboxManifestLayer,
   SkyboxManifestV1,
 } from "./manifest";
-

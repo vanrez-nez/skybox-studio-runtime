@@ -1,6 +1,7 @@
 export type SkyboxCompositionMode = "alpha-over";
 export type SkyboxCompositionOrder = "bottom-to-top";
 export type SkyboxEffectType = "field-gradient" | "gradient";
+export type SkyboxLayerBlendMode = "normal" | "additive" | "subtractive" | "multiply";
 export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
 
@@ -32,6 +33,7 @@ export type SkyboxFieldGradientParams = {
 
 export type SkyboxManifestLayer =
   | {
+      blendMode: SkyboxLayerBlendMode;
       enabled: boolean;
       id: string;
       name: string;
@@ -40,6 +42,7 @@ export type SkyboxManifestLayer =
       type: "gradient";
     }
   | {
+      blendMode: SkyboxLayerBlendMode;
       enabled: boolean;
       id: string;
       name: string;
@@ -56,4 +59,3 @@ export type SkyboxManifestV1 = {
   layers: SkyboxManifestLayer[];
   version: 1;
 };
-

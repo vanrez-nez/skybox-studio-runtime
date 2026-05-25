@@ -187,6 +187,22 @@ function effectExpression(layer: SkyboxManifestLayer) {
     : fieldGradientSampleExpression(layer.params);
 }
 
+function blendExpression(layer: SkyboxManifestLayer) {
+  if (layer.blendMode === "additive") {
+    return "composedColor + effectColor.rgb";
+  }
+
+  if (layer.blendMode === "subtractive") {
+    return "composedColor - effectColor.rgb";
+  }
+
+  if (layer.blendMode === "multiply") {
+    return "composedColor * effectColor.rgb";
+  }
+
+  return "effectColor.rgb";
+}
+
 function createSkyboxFunction(manifest: SkyboxManifestV1) {
   const layerBlocks = getRenderableLayers(manifest)
     .map(
@@ -194,7 +210,8 @@ function createSkyboxFunction(manifest: SkyboxManifestV1) {
         var effectColor = vec4<f32>(0.0);
         ${effectExpression(layer)}
         let sourceAlpha = clamp(effectColor.a * ${numberLiteral(layer.opacity / 100)}, 0.0, 1.0);
-        composedColor = effectColor.rgb * sourceAlpha + composedColor * (1.0 - sourceAlpha);
+        let blendedColor = ${blendExpression(layer)};
+        composedColor = blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha);
       }`
     )
     .join("\n");
