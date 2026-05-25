@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import { NodeMaterial } from "three/webgpu";
-import type { SkyboxGeometryOptions, SkyboxBakeOptions, SkyboxManifest, SkyboxRenderMode } from "./manifest";
+import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxManifest, SkyboxRenderMode } from "./manifest";
 type SupportedRenderer = THREE.WebGLRenderer | {
     isWebGPURenderer?: boolean;
 };
 type RuntimeMaterial = THREE.ShaderMaterial | NodeMaterial;
+type ImageTextureMap = Record<string, THREE.Texture | null | undefined>;
 export declare function createSkyboxGeometry(options?: SkyboxGeometryOptions): THREE.SphereGeometry | THREE.BoxGeometry;
 export declare function createSkyboxWireGeometry(options?: SkyboxGeometryOptions): THREE.WireframeGeometry<THREE.SphereGeometry> | THREE.EdgesGeometry<THREE.BoxGeometry>;
 export declare function createBakedSkyboxTexture(manifest: SkyboxManifest, options?: SkyboxBakeOptions): THREE.CanvasTexture<HTMLCanvasElement>;
@@ -16,11 +17,15 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     setBakeOptions(options: SkyboxBakeOptions): this;
     setRenderer(renderer: SupportedRenderer | null): this;
     setRenderMode(mode: SkyboxRenderMode): this;
+    setImageTexture(layerId: string, texture: THREE.Texture | null): this;
+    setImageTextures(textures: ImageTextureMap): this;
     otherOverridingSetup(): this;
     load(renderer?: SupportedRenderer): this;
     private applyGeometry;
     private disposeOwnedTexture;
     private replaceMaterial;
+    setHoveredImageLayerId(layerId: string | null): this;
+    setImageLayerPlacement(layerId: string, placement: SkyboxImagePlacement | null): this;
     setManifest(manifest: SkyboxManifest): this;
     setBakedTexture(texture: THREE.Texture): this;
     invalidateBakeCache(): this;

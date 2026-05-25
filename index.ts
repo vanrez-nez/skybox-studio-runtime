@@ -36,6 +36,8 @@ export type {
   SkyboxGradientStop,
   SkyboxGeometryOptions,
   SkyboxGeometryType,
+  SkyboxImageParams,
+  SkyboxImagePlacement,
   SkyboxLayerBlendMode,
   SkyboxManifest,
   SkyboxManifestGroup,
@@ -44,5 +46,6 @@ export type {
   SkyboxManifestV1,
   SkyboxManifestV2,
   SkyboxRenderMode,
+  SkyboxSelectionDot,
 } from "./manifest";
 export { migrateManifestToV2 } from "./manifest";

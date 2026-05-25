@@ -1,6 +1,6 @@
 export type SkyboxCompositionMode = "alpha-over";
 export type SkyboxCompositionOrder = "bottom-to-top";
-export type SkyboxEffectType = "field-gradient" | "gradient";
+export type SkyboxEffectType = "field-gradient" | "gradient" | "image";
 export type SkyboxLayerBlendMode = "normal" | "darken" | "multiply" | "color-burn" | "lighten" | "screen" | "color-dodge" | "overlay" | "soft-light" | "hard-light" | "difference" | "exclusion";
 export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
@@ -37,6 +37,27 @@ export type SkyboxFieldGradientParams = {
     mode: SkyboxFieldGradientMode;
     power: number;
 };
+export type SkyboxImagePlacement = {
+    angularHeight: number;
+    angularWidth: number;
+    centerDirection: [number, number, number];
+    projection: "angular-decal";
+    tangentX: [number, number, number];
+    tangentY: [number, number, number];
+};
+export type SkyboxImageParams = {
+    height: number;
+    pixels: number[] | null;
+    placement: SkyboxImagePlacement | null;
+    src: string | null;
+    width: number;
+};
+export type SkyboxSelectionDot = {
+    color: string;
+    direction: [number, number, number];
+    opacity: number;
+    radius: number;
+};
 export type SkyboxGradientLayer = {
     blendMode: SkyboxLayerBlendMode;
     enabled: boolean;
@@ -55,7 +76,16 @@ export type SkyboxFieldGradientLayer = {
     params: SkyboxFieldGradientParams;
     type: "field-gradient";
 };
-export type SkyboxManifestLayer = SkyboxGradientLayer | SkyboxFieldGradientLayer;
+export type SkyboxImageLayer = {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxImageParams;
+    type: "image";
+};
+export type SkyboxManifestLayer = SkyboxGradientLayer | SkyboxFieldGradientLayer | SkyboxImageLayer;
 export type SkyboxManifestGroup = {
     blendMode: SkyboxLayerBlendMode;
     children: SkyboxManifestNode[];
@@ -82,6 +112,14 @@ export type SkyboxManifestV1Layer = {
     opacity: number;
     params: SkyboxFieldGradientParams;
     type: "field-gradient";
+} | {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxImageParams;
+    type: "image";
 };
 export type SkyboxManifestV1 = {
     composition: {
@@ -98,6 +136,7 @@ export type SkyboxManifestV2 = {
     };
     geometry?: SkyboxGeometryOptions;
     nodes: SkyboxManifestNode[];
+    selectionDot?: SkyboxSelectionDot | null;
     version: 2;
 };
 export type SkyboxManifest = SkyboxManifestV1 | SkyboxManifestV2;

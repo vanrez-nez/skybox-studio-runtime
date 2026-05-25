@@ -7,6 +7,8 @@ import {
   normalize,
   positionWorld,
   texture as textureNode,
+  uniform,
+  vec2,
   wgslFn,
 } from "three/tsl";
 
@@ -18,6 +20,7 @@ import {
 } from "./math";
 import type {
   SkyboxGeometryOptions,
+  SkyboxImagePlacement,
   SkyboxBakeOptions,
   SkyboxFieldGradientParams,
   SkyboxGradientParams,
@@ -32,6 +35,25 @@ import { DEFAULT_SKYBOX_GEOMETRY, migrateManifestToV2 } from "./manifest";
 type SupportedRenderer = THREE.WebGLRenderer | { isWebGPURenderer?: boolean };
 type RuntimeMaterial = THREE.ShaderMaterial | NodeMaterial;
 type ShaderLanguage = "glsl" | "wgsl";
+type ImageLayerShaderBinding = {
+  index: number;
+  layer: Extract<SkyboxManifestLayer, { type: "image" }>;
+  parameterName: string;
+};
+type ImageHoverUniformNode = {
+  layerId: string;
+  node: ReturnType<typeof uniform>;
+};
+type ImagePlacementUniformNodes = {
+  centerDirection: ReturnType<typeof uniform>;
+  halfSize: ReturnType<typeof uniform>;
+  layerId: string;
+  tangentX: ReturnType<typeof uniform>;
+  tangentY: ReturnType<typeof uniform>;
+};
+
+type ImageTextureMap = Record<string, THREE.Texture | null | undefined>;
+type HoveredImageLayerId = string | null;
 
 const DEFAULT_MANIFEST: SkyboxManifestV2 = {
   composition: { mode: "alpha-over", order: "bottom-to-top" },
@@ -39,6 +61,176 @@ const DEFAULT_MANIFEST: SkyboxManifestV2 = {
   nodes: [],
   version: 2,
 };
+
+const IMAGE_HOVER_TINT_AMOUNT = 0.8;
+const EMPTY_IMAGE_TEXTURE = new THREE.DataTexture(
+  new Uint8Array([0, 0, 0, 0]),
+  1,
+  1,
+  THREE.RGBAFormat
+);
+
+EMPTY_IMAGE_TEXTURE.colorSpace = THREE.SRGBColorSpace;
+EMPTY_IMAGE_TEXTURE.needsUpdate = true;
+
+function imageHoverValue(layerId: string, hoveredImageLayerId: HoveredImageLayerId) {
+  return hoveredImageLayerId === layerId ? 1 : 0;
+}
+
+function createImageHoverUniformNodes(
+  bindings: ImageLayerShaderBinding[],
+  hoveredImageLayerId: HoveredImageLayerId
+): ImageHoverUniformNode[] {
+  return bindings.map((binding) => ({
+    layerId: binding.layer.id,
+    node: uniform(imageHoverValue(binding.layer.id, hoveredImageLayerId)),
+  }));
+}
+
+function applyHoveredImageLayerIdToUniformNodes(
+  uniforms: ImageHoverUniformNode[],
+  hoveredImageLayerId: HoveredImageLayerId
+) {
+  uniforms.forEach((hoverUniform) => {
+    (hoverUniform.node as any).value = imageHoverValue(hoverUniform.layerId, hoveredImageLayerId);
+  });
+}
+
+function imageHoverShaderUniforms(
+  bindings: ImageLayerShaderBinding[],
+  hoveredImageLayerId: HoveredImageLayerId
+) {
+  return Object.fromEntries(
+    bindings.map((binding) => [
+      `imageHover${binding.index}`,
+      { value: imageHoverValue(binding.layer.id, hoveredImageLayerId) },
+    ])
+  );
+}
+
+function applyHoveredImageLayerIdToShaderUniforms(
+  material: THREE.ShaderMaterial,
+  bindings: ImageLayerShaderBinding[],
+  hoveredImageLayerId: HoveredImageLayerId
+) {
+  bindings.forEach((binding) => {
+    const uniformName = `imageHover${binding.index}`;
+
+    if (material.uniforms[uniformName]) {
+      material.uniforms[uniformName].value = imageHoverValue(
+        binding.layer.id,
+        hoveredImageLayerId
+      );
+    }
+  });
+}
+
+function attachHoveredImageUpdater(
+  material: RuntimeMaterial,
+  updater: (hoveredImageLayerId: HoveredImageLayerId) => void
+) {
+  material.userData.applyHoveredImageLayerId = updater;
+}
+
+function imagePlacementShaderValues(
+  placement: Extract<SkyboxManifestLayer, { type: "image" }>["params"]["placement"]
+) {
+  if (!placement) {
+    return {
+      centerDirection: new THREE.Vector3(0, 0, -1),
+      halfSize: new THREE.Vector2(0, 0),
+      tangentX: new THREE.Vector3(1, 0, 0),
+      tangentY: new THREE.Vector3(0, 1, 0),
+    };
+  }
+
+  const resolvedPlacement = resolveImagePlacement(placement);
+
+  return {
+    centerDirection: new THREE.Vector3(...resolvedPlacement.centerDirection),
+    halfSize: new THREE.Vector2(
+      Math.max(0, Math.tan(resolvedPlacement.angularWidth / 2)),
+      Math.max(0, Math.tan(resolvedPlacement.angularHeight / 2))
+    ),
+    tangentX: new THREE.Vector3(...resolvedPlacement.tangentX),
+    tangentY: new THREE.Vector3(...resolvedPlacement.tangentY),
+  };
+}
+
+function createImagePlacementUniformNodes(bindings: ImageLayerShaderBinding[]) {
+  return bindings.map((binding): ImagePlacementUniformNodes => {
+    const placement = imagePlacementShaderValues(binding.layer.params.placement);
+
+    return {
+      centerDirection: uniform(placement.centerDirection),
+      halfSize: uniform(placement.halfSize),
+      layerId: binding.layer.id,
+      tangentX: uniform(placement.tangentX),
+      tangentY: uniform(placement.tangentY),
+    };
+  });
+}
+
+function applyImageLayerPlacementToUniformNodes(
+  uniforms: ImagePlacementUniformNodes[],
+  layerId: string,
+  placement: SkyboxImagePlacement | null
+) {
+  const placementUniforms = uniforms.find((nextUniforms) => nextUniforms.layerId === layerId);
+
+  if (!placementUniforms) {
+    return;
+  }
+
+  const placementValues = imagePlacementShaderValues(placement);
+
+  (placementUniforms.centerDirection as any).value.copy(placementValues.centerDirection);
+  (placementUniforms.tangentX as any).value.copy(placementValues.tangentX);
+  (placementUniforms.tangentY as any).value.copy(placementValues.tangentY);
+  (placementUniforms.halfSize as any).value.copy(placementValues.halfSize);
+}
+
+function imagePlacementShaderUniforms(bindings: ImageLayerShaderBinding[]) {
+  return Object.fromEntries(
+    bindings.flatMap((binding) => {
+      const placement = imagePlacementShaderValues(binding.layer.params.placement);
+
+      return [
+        [`imageCenterDirection${binding.index}`, { value: placement.centerDirection }],
+        [`imageTangentX${binding.index}`, { value: placement.tangentX }],
+        [`imageTangentY${binding.index}`, { value: placement.tangentY }],
+        [`imageHalfSize${binding.index}`, { value: placement.halfSize }],
+      ];
+    })
+  );
+}
+
+function applyImageLayerPlacementToShaderUniforms(
+  material: THREE.ShaderMaterial,
+  bindings: ImageLayerShaderBinding[],
+  layerId: string,
+  placement: SkyboxImagePlacement | null
+) {
+  const binding = bindings.find((nextBinding) => nextBinding.layer.id === layerId);
+
+  if (!binding) {
+    return;
+  }
+
+  const placementValues = imagePlacementShaderValues(placement);
+
+  material.uniforms[`imageCenterDirection${binding.index}`]?.value.copy(placementValues.centerDirection);
+  material.uniforms[`imageTangentX${binding.index}`]?.value.copy(placementValues.tangentX);
+  material.uniforms[`imageTangentY${binding.index}`]?.value.copy(placementValues.tangentY);
+  material.uniforms[`imageHalfSize${binding.index}`]?.value.copy(placementValues.halfSize);
+}
+
+function attachImagePlacementUpdater(
+  material: RuntimeMaterial,
+  updater: (layerId: string, placement: SkyboxImagePlacement | null) => void
+) {
+  material.userData.applyImageLayerPlacement = updater;
+}
 
 function resolveGeometryOptions(options?: SkyboxGeometryOptions): SkyboxGeometryOptions {
   return options ?? DEFAULT_SKYBOX_GEOMETRY;
@@ -112,6 +304,265 @@ function mutableDeclaration(
 
 function getRenderableNodes(nodes: SkyboxManifestNode[]) {
   return nodes.filter((node) => node.enabled).reverse();
+}
+
+function collectImageLayerBindings(nodes: SkyboxManifestNode[]) {
+  const bindings: ImageLayerShaderBinding[] = [];
+
+  function collect(nextNodes: SkyboxManifestNode[]) {
+    nextNodes.forEach((node) => {
+      if (!node.enabled) {
+        return;
+      }
+
+      if (node.type === "group") {
+        collect(node.children);
+        return;
+      }
+
+      if (node.type === "image") {
+        const index = bindings.length;
+
+        bindings.push({
+          index,
+          layer: node,
+          parameterName: `imageLayer${index}`,
+        });
+      }
+    });
+  }
+
+  collect(nodes);
+
+  return bindings;
+}
+
+function createImageBindingMap(bindings: ImageLayerShaderBinding[]) {
+  return new Map(bindings.map((binding) => [binding.layer.id, binding]));
+}
+
+function imageVec3Literal(value: [number, number, number], language: ShaderLanguage) {
+  const type = language === "wgsl" ? "vec3<f32>" : "vec3";
+
+  return `${type}(${numberLiteral(value[0])}, ${numberLiteral(value[1])}, ${numberLiteral(value[2])})`;
+}
+
+function normalizeTuple(
+  value: unknown,
+  fallback: [number, number, number]
+): [number, number, number] {
+  if (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((component) => typeof component === "number" && Number.isFinite(component))
+  ) {
+    const length = Math.hypot(value[0], value[1], value[2]);
+
+    if (length > 0) {
+      return [value[0] / length, value[1] / length, value[2] / length];
+    }
+  }
+
+  return fallback;
+}
+
+function resolveImagePlacement(
+  placement: NonNullable<Extract<SkyboxManifestLayer, { type: "image" }>["params"]["placement"]>
+) {
+  const rawPlacement = placement as unknown as {
+    angularHeight?: number;
+    angularWidth?: number;
+    center?: [number, number, number];
+    centerDirection?: [number, number, number];
+    height?: number;
+    normal?: [number, number, number];
+    projection?: string;
+    tangentX?: [number, number, number];
+    tangentY?: [number, number, number];
+    width?: number;
+  };
+  const centerDirection = normalizeTuple(
+    rawPlacement.centerDirection ?? rawPlacement.normal ?? rawPlacement.center,
+    [0, 0, -1]
+  );
+  const tangentX = normalizeTuple(rawPlacement.tangentX, [1, 0, 0]);
+  const tangentY = normalizeTuple(rawPlacement.tangentY, [0, 1, 0]);
+  const legacyDistance = Array.isArray(rawPlacement.center)
+    ? Math.max(0.0001, Math.hypot(rawPlacement.center[0], rawPlacement.center[1], rawPlacement.center[2]))
+    : 1;
+  const angularWidth =
+    typeof rawPlacement.angularWidth === "number"
+      ? rawPlacement.angularWidth
+      : 2 * Math.atan(Math.max(0.0001, rawPlacement.width ?? 0.4) / (2 * legacyDistance));
+  const angularHeight =
+    typeof rawPlacement.angularHeight === "number"
+      ? rawPlacement.angularHeight
+      : 2 * Math.atan(Math.max(0.0001, rawPlacement.height ?? 0.3) / (2 * legacyDistance));
+
+  return {
+    angularHeight,
+    angularWidth,
+    centerDirection,
+    tangentX,
+    tangentY,
+  };
+}
+
+function imageSampleInfoExpression(
+  binding: ImageLayerShaderBinding,
+  language: ShaderLanguage,
+  refs: {
+    centerDirection: string;
+    halfSize: string;
+    tangentX: string;
+    tangentY: string;
+  }
+) {
+  const { placement, src, width, height } = binding.layer.params;
+  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
+  const floatType = language === "wgsl" ? "f32" : "float";
+  const declare = language === "wgsl" ? "let" : "float";
+  const vecDeclare = language === "wgsl" ? "let" : "vec3";
+
+  if (!src || !placement || width <= 0 || height <= 0) {
+    return `return ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
+  }
+
+  return `
+      ${vecDeclare} imageDirection = normalize(direction);
+      ${declare} imageDenom = dot(imageDirection, ${refs.centerDirection});
+      ${declare} safeImageDenom = max(imageDenom, 0.000001);
+      ${declare} projectedX = dot(imageDirection, ${refs.tangentX}) / safeImageDenom;
+      ${declare} projectedY = dot(imageDirection, ${refs.tangentY}) / safeImageDenom;
+      ${declare} imageU = projectedX / max(${refs.halfSize}.x * 2.0, 0.000001) + 0.5;
+      ${declare} imageV = 0.5 - projectedY / max(${refs.halfSize}.y * 2.0, 0.000001);
+      ${mutableDeclaration("imageValid", floatType, "0.0", language)}
+      if (imageDenom > 0.0 &&
+        ${refs.halfSize}.x > 0.0 &&
+        ${refs.halfSize}.y > 0.0 &&
+        projectedX >= -${refs.halfSize}.x &&
+        projectedX <= ${refs.halfSize}.x &&
+        projectedY >= -${refs.halfSize}.y &&
+        projectedY <= ${refs.halfSize}.y &&
+        imageU >= 0.0 &&
+        imageU <= 1.0 &&
+        imageV >= 0.0 &&
+        imageV <= 1.0) {
+        imageValid = 1.0;
+      }
+      return ${vec4Type}(imageU, imageV, imageValid, 0.0);
+    `;
+}
+
+function imageSampleExpression(
+  layer: Extract<SkyboxManifestLayer, { type: "image" }>,
+  imageBindings: Map<string, ImageLayerShaderBinding>,
+  language: ShaderLanguage
+) {
+  const binding = imageBindings.get(layer.id);
+  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
+
+  if (!binding) {
+    return `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
+  }
+
+  if (language === "wgsl") {
+    return `effectColor = ${binding.parameterName};`;
+  }
+
+  return `{
+    vec4 imageSampleInfo = skyboxStudioImageSampleInfo${binding.index}(direction);
+    vec4 imageSampleColor = texture2D(imageTexture${binding.index}, imageSampleInfo.xy);
+    imageSampleColor = vec4(
+      mix(imageSampleColor.rgb, vec3(1.0, 0.0, 0.0), imageHover${binding.index} * ${numberLiteral(IMAGE_HOVER_TINT_AMOUNT)}),
+      imageSampleColor.a
+    );
+    effectColor = vec4(imageSampleColor.rgb, imageSampleColor.a * imageSampleInfo.z);
+  }`;
+}
+
+function webGpuImageSampleInfoFunction(binding: ImageLayerShaderBinding) {
+  return wgslFn(`
+    fn skyboxStudioImageSampleInfo${binding.index}(
+      direction: vec3<f32>,
+      imageCenterDirection: vec3<f32>,
+      imageTangentX: vec3<f32>,
+      imageTangentY: vec3<f32>,
+      imageHalfSize: vec2<f32>
+    ) -> vec4<f32> {
+      ${imageSampleInfoExpression(binding, "wgsl", {
+        centerDirection: "imageCenterDirection",
+        halfSize: "imageHalfSize",
+        tangentX: "imageTangentX",
+        tangentY: "imageTangentY",
+      })}
+    }
+  `);
+}
+
+const webGpuImageMaskFunction = wgslFn(`
+  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> vec4<f32> {
+    return vec4<f32>(color.rgb, color.a * valid);
+  }
+`);
+
+const webGpuImageHoverFunction = wgslFn(`
+  fn skyboxStudioApplyImageHover(color: vec4<f32>, hover: f32) -> vec4<f32> {
+    return vec4<f32>(
+      mix(color.rgb, vec3<f32>(1.0, 0.0, 0.0), clamp(hover, 0.0, 1.0) * ${numberLiteral(IMAGE_HOVER_TINT_AMOUNT)}),
+      color.a
+    );
+  }
+`);
+
+function glslImageSampleInfoFunctions(bindings: ImageLayerShaderBinding[]) {
+  return bindings
+    .map(
+      (binding) => `
+        vec4 skyboxStudioImageSampleInfo${binding.index}(vec3 direction) {
+          ${imageSampleInfoExpression(binding, "glsl", {
+            centerDirection: `imageCenterDirection${binding.index}`,
+            halfSize: `imageHalfSize${binding.index}`,
+            tangentX: `imageTangentX${binding.index}`,
+            tangentY: `imageTangentY${binding.index}`,
+          })}
+        }
+      `
+    )
+    .join("\n");
+}
+
+function getImageTexture(
+  imageTextures: Map<string, THREE.Texture>,
+  layer: Extract<SkyboxManifestLayer, { type: "image" }>
+) {
+  return layer.params.src ? imageTextures.get(layer.id) ?? EMPTY_IMAGE_TEXTURE : EMPTY_IMAGE_TEXTURE;
+}
+
+function imageTextureUniforms(
+  bindings: ImageLayerShaderBinding[],
+  imageTextures: Map<string, THREE.Texture>
+) {
+  return Object.fromEntries(
+    bindings.map((binding) => [
+      `imageTexture${binding.index}`,
+      { value: getImageTexture(imageTextures, binding.layer) },
+    ])
+  );
+}
+
+function updateImageTextureUniforms(
+  material: THREE.ShaderMaterial,
+  bindings: ImageLayerShaderBinding[],
+  imageTextures: Map<string, THREE.Texture>
+) {
+  bindings.forEach((binding) => {
+    const uniformName = `imageTexture${binding.index}`;
+
+    if (material.uniforms[uniformName]) {
+      material.uniforms[uniformName].value = getImageTexture(imageTextures, binding.layer);
+    }
+  });
 }
 
 function gradientSampleExpression(params: SkyboxGradientParams, language: ShaderLanguage) {
@@ -218,10 +669,20 @@ function fieldGradientSampleExpression(params: SkyboxFieldGradientParams, langua
   }`;
 }
 
-function effectExpression(layer: SkyboxManifestLayer, language: ShaderLanguage) {
-  return layer.type === "gradient"
-    ? gradientSampleExpression(layer.params, language)
-    : fieldGradientSampleExpression(layer.params, language);
+function effectExpression(
+  layer: SkyboxManifestLayer,
+  language: ShaderLanguage,
+  imageBindings: Map<string, ImageLayerShaderBinding>
+) {
+  if (layer.type === "gradient") {
+    return gradientSampleExpression(layer.params, language);
+  }
+
+  if (layer.type === "field-gradient") {
+    return fieldGradientSampleExpression(layer.params, language);
+  }
+
+  return imageSampleExpression(layer, imageBindings, language);
 }
 
 function selectExpression(condition: string, whenTrue: string, whenFalse: string, language: ShaderLanguage) {
@@ -347,7 +808,12 @@ function blendSetupExpression(node: SkyboxManifestNode, language: ShaderLanguage
   )};`;
 }
 
-function composeNodesExpression(nodes: SkyboxManifestNode[], language: ShaderLanguage, depth = 0): string {
+function composeNodesExpression(
+  nodes: SkyboxManifestNode[],
+  language: ShaderLanguage,
+  imageBindings: Map<string, ImageLayerShaderBinding>,
+  depth = 0
+): string {
   const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
   const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
 
@@ -359,7 +825,7 @@ function composeNodesExpression(nodes: SkyboxManifestNode[], language: ShaderLan
               const variableName = `groupColor${depth}_${index}`;
               return variableName;
             })()}, 1.0);`
-          : effectExpression(node, language);
+          : effectExpression(node, language, imageBindings);
       const groupColorName = `groupColor${depth}_${index}`;
       const groupBlock =
         node.type === "group"
@@ -367,7 +833,7 @@ function composeNodesExpression(nodes: SkyboxManifestNode[], language: ShaderLan
         {
           ${mutableDeclaration("previousComposedColor", vec3Type, "composedColor", language)}
           composedColor = ${vec3Type}(0.0);
-          ${composeNodesExpression(node.children, language, depth + 1)}
+          ${composeNodesExpression(node.children, language, imageBindings, depth + 1)}
           ${groupColorName} = composedColor;
           composedColor = previousComposedColor;
         }`
@@ -395,11 +861,21 @@ function composeNodesExpression(nodes: SkyboxManifestNode[], language: ShaderLan
     .join("\n");
 }
 
-function createSkyboxFunction(manifest: SkyboxManifestV2) {
-  const layerBlocks = composeNodesExpression(manifest.nodes, "wgsl");
+function createSkyboxFunction(
+  manifest: SkyboxManifestV2,
+  imageBindings: ImageLayerShaderBinding[]
+) {
+  const imageBindingMap = createImageBindingMap(imageBindings);
+  const layerBlocks = composeNodesExpression(manifest.nodes, "wgsl", imageBindingMap);
+  const imageParameters = imageBindings
+    .map((binding) => `,
+      ${binding.parameterName}: vec4<f32>`)
+    .join("");
 
   return wgslFn(`
-    fn skyboxStudioSample(direction: vec3<f32>) -> vec4<f32> {
+    fn skyboxStudioSample(
+      direction: vec3<f32>${imageParameters}
+    ) -> vec4<f32> {
       var composedColor = vec3<f32>(0.0);
       ${layerBlocks}
       return vec4<f32>(composedColor, 1.0);
@@ -407,9 +883,52 @@ function createSkyboxFunction(manifest: SkyboxManifestV2) {
   `);
 }
 
-function createWebGpuMaterial(manifest: SkyboxManifestV2) {
+function createWebGpuImageSampleNodes(
+  bindings: ImageLayerShaderBinding[],
+  direction: unknown,
+  imageTextures: Map<string, THREE.Texture>,
+  hoverUniforms: ImageHoverUniformNode[],
+  placementUniforms: ImagePlacementUniformNodes[]
+) {
+  return Object.fromEntries(
+    bindings.map((binding) => {
+      const placement = placementUniforms[binding.index];
+      const sampleInfo = webGpuImageSampleInfoFunction(binding)({
+        direction,
+        imageCenterDirection: placement.centerDirection,
+        imageHalfSize: placement.halfSize,
+        imageTangentX: placement.tangentX,
+        imageTangentY: placement.tangentY,
+      } as any) as any;
+      const sampleUv = vec2(sampleInfo.x, sampleInfo.y);
+      const sampleColor = textureNode(
+        getImageTexture(imageTextures, binding.layer),
+        sampleUv
+      );
+      const hoverColor = webGpuImageHoverFunction({
+        color: sampleColor,
+        hover: hoverUniforms[binding.index].node,
+      });
+      const maskedColor = webGpuImageMaskFunction({
+        color: hoverColor,
+        valid: sampleInfo.z,
+      });
+
+      return [binding.parameterName, maskedColor];
+    })
+  );
+}
+
+function createWebGpuMaterial(
+  manifest: SkyboxManifestV2,
+  hoveredImageLayerId: HoveredImageLayerId,
+  imageTextures: Map<string, THREE.Texture>
+) {
   const material = new NodeMaterial();
-  const skyboxSample = createSkyboxFunction(manifest);
+  const imageBindings = collectImageLayerBindings(manifest.nodes);
+  const skyboxSample = createSkyboxFunction(manifest, imageBindings);
+  const imageHoverUniforms = createImageHoverUniformNodes(imageBindings, hoveredImageLayerId);
+  const imagePlacementUniforms = createImagePlacementUniformNodes(imageBindings);
   const vertexNode = Fn(() => {
     const position = modelViewProjection as any;
 
@@ -422,9 +941,23 @@ function createWebGpuMaterial(manifest: SkyboxManifestV2) {
   material.depthTest = false;
   material.depthWrite = false;
   material.vertexNode = vertexNode as any;
+  const direction = normalize(positionWorld.sub(cameraPosition));
   material.colorNode = skyboxSample({
-    direction: normalize(positionWorld.sub(cameraPosition)),
+    direction,
+    ...createWebGpuImageSampleNodes(
+      imageBindings,
+      direction,
+      imageTextures,
+      imageHoverUniforms,
+      imagePlacementUniforms
+    ),
   }) as any;
+  attachHoveredImageUpdater(material, (nextHoveredImageLayerId) =>
+    applyHoveredImageLayerIdToUniformNodes(imageHoverUniforms, nextHoveredImageLayerId)
+  );
+  attachImagePlacementUpdater(material, (layerId, placement) =>
+    applyImageLayerPlacementToUniformNodes(imagePlacementUniforms, layerId, placement)
+  );
 
   return material;
 }
@@ -454,18 +987,26 @@ function createWebGpuBakedMaterial(texture: THREE.Texture) {
   material.depthTest = false;
   material.depthWrite = false;
   material.vertexNode = vertexNode as any;
-  material.colorNode = textureNode(
-    texture,
-    directionToEquirectUv({ direction }) as any
-  ) as any;
+  material.colorNode = textureNode(texture, directionToEquirectUv({ direction }) as any) as any;
 
   return material;
 }
 
-function createWebGlMaterial(manifest: SkyboxManifestV2) {
-  const layerBlocks = composeNodesExpression(manifest.nodes, "glsl");
+function createWebGlMaterial(
+  manifest: SkyboxManifestV2,
+  hoveredImageLayerId: HoveredImageLayerId,
+  imageTextures: Map<string, THREE.Texture>
+) {
+  const imageBindings = collectImageLayerBindings(manifest.nodes);
+  const imageBindingMap = createImageBindingMap(imageBindings);
+  const layerBlocks = composeNodesExpression(manifest.nodes, "glsl", imageBindingMap);
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      ...imageHoverShaderUniforms(imageBindings, hoveredImageLayerId),
+      ...imagePlacementShaderUniforms(imageBindings),
+      ...imageTextureUniforms(imageBindings, imageTextures),
+    },
 
-  return new THREE.ShaderMaterial({
     depthTest: false,
     depthWrite: false,
     side: THREE.BackSide,
@@ -480,7 +1021,18 @@ function createWebGlMaterial(manifest: SkyboxManifestV2) {
     `,
     fragmentShader: `
       precision highp float;
+      ${imageBindings
+        .map(
+          (binding) => `uniform sampler2D imageTexture${binding.index};
+      uniform vec3 imageCenterDirection${binding.index};
+      uniform vec3 imageTangentX${binding.index};
+      uniform vec3 imageTangentY${binding.index};
+      uniform vec2 imageHalfSize${binding.index};
+      uniform float imageHover${binding.index};`
+        )
+        .join("\n")}
       varying vec3 vDirection;
+      ${glslImageSampleInfoFunctions(imageBindings)}
 
       float softLightDChannel(float backdrop) {
         return backdrop <= 0.25
@@ -578,6 +1130,17 @@ function createWebGlMaterial(manifest: SkyboxManifestV2) {
       }
     `,
   });
+
+  attachHoveredImageUpdater(material, (nextHoveredImageLayerId) =>
+    applyHoveredImageLayerIdToShaderUniforms(material, imageBindings, nextHoveredImageLayerId)
+  );
+  attachImagePlacementUpdater(material, (layerId, placement) =>
+    applyImageLayerPlacementToShaderUniforms(material, imageBindings, layerId, placement)
+  );
+  material.userData.applyImageTextures = (textures: Map<string, THREE.Texture>) =>
+    updateImageTextureUniforms(material, imageBindings, textures);
+
+  return material;
 }
 
 function createCanvas(width: number, height: number): HTMLCanvasElement | OffscreenCanvas {
@@ -614,7 +1177,7 @@ export function createBakedSkyboxTexture(manifest: SkyboxManifest, options: Skyb
 }
 
 function createWebGlBakedMaterial(texture: THREE.Texture) {
-  return new THREE.ShaderMaterial({
+  const material = new THREE.ShaderMaterial({
     depthTest: false,
     depthWrite: false,
     side: THREE.BackSide,
@@ -646,13 +1209,20 @@ function createWebGlBakedMaterial(texture: THREE.Texture) {
       }
 
       void main() {
-        gl_FragColor = texture2D(skyboxTexture, directionToEquirectUv(vDirection));
+        vec3 direction = normalize(vDirection);
+        vec4 sampledColor = texture2D(skyboxTexture, directionToEquirectUv(direction));
+        gl_FragColor = vec4(sampledColor.rgb, sampledColor.a);
       }
     `,
   });
+
+  return material;
 }
 
-function createBakedMaterialFromTexture(texture: THREE.Texture, renderer?: SupportedRenderer | null) {
+function createBakedMaterialFromTexture(
+  texture: THREE.Texture,
+  renderer?: SupportedRenderer | null
+) {
   return isWebGpuRenderer(renderer)
     ? createWebGpuBakedMaterial(texture)
     : createWebGlBakedMaterial(texture);
@@ -673,13 +1243,19 @@ function resolveRenderMode(mode: SkyboxRenderMode, renderer?: SupportedRenderer 
 export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #bakeOptions: SkyboxBakeOptions = {};
   #geometryOptions: SkyboxGeometryOptions = DEFAULT_SKYBOX_GEOMETRY;
+  #hoveredImageLayerId: HoveredImageLayerId = null;
+  #imagePlacementOverrides = new Map<string, SkyboxImagePlacement | null>();
+  #imageTextures = new Map<string, THREE.Texture>();
   #manifest: SkyboxManifestV2 = DEFAULT_MANIFEST;
   #ownedTexture: THREE.Texture | null = null;
   #renderMode: SkyboxRenderMode = "auto";
   #renderer: SupportedRenderer | null = null;
 
   constructor() {
-    super(createSkyboxGeometry(DEFAULT_SKYBOX_GEOMETRY), createWebGpuMaterial(DEFAULT_MANIFEST));
+    super(
+      createSkyboxGeometry(DEFAULT_SKYBOX_GEOMETRY),
+      createWebGpuMaterial(DEFAULT_MANIFEST, null, new Map())
+    );
     this.frustumCulled = false;
     this.renderOrder = -1;
   }
@@ -708,6 +1284,32 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
 
   setRenderMode(mode: SkyboxRenderMode) {
     this.#renderMode = mode;
+    return this;
+  }
+
+  setImageTexture(layerId: string, texture: THREE.Texture | null) {
+    if (texture) {
+      this.#imageTextures.set(layerId, texture);
+    } else {
+      this.#imageTextures.delete(layerId);
+    }
+
+    this.setManifest(this.#manifest);
+
+    return this;
+  }
+
+  setImageTextures(textures: ImageTextureMap) {
+    this.#imageTextures.clear();
+
+    Object.entries(textures).forEach(([layerId, texture]) => {
+      if (texture) {
+        this.#imageTextures.set(layerId, texture);
+      }
+    });
+
+    this.setManifest(this.#manifest);
+
     return this;
   }
 
@@ -746,9 +1348,31 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     const previousMaterial = this.material;
 
     this.material = nextMaterial;
+    nextMaterial.userData.applyHoveredImageLayerId?.(this.#hoveredImageLayerId);
+    this.#imagePlacementOverrides.forEach((placement, layerId) => {
+      nextMaterial.userData.applyImageLayerPlacement?.(layerId, placement);
+    });
     previousMaterial.dispose();
     this.disposeOwnedTexture();
     this.#ownedTexture = ownedTexture;
+  }
+
+  setHoveredImageLayerId(layerId: string | null) {
+    if (this.#hoveredImageLayerId === layerId) {
+      return this;
+    }
+
+    this.#hoveredImageLayerId = layerId;
+    this.material.userData.applyHoveredImageLayerId?.(this.#hoveredImageLayerId);
+
+    return this;
+  }
+
+  setImageLayerPlacement(layerId: string, placement: SkyboxImagePlacement | null) {
+    this.#imagePlacementOverrides.set(layerId, placement);
+    this.material.userData.applyImageLayerPlacement?.(layerId, placement);
+
+    return this;
   }
 
   setManifest(manifest: SkyboxManifest) {
@@ -757,9 +1381,9 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     const renderMode = resolveRenderMode(this.#renderMode, this.#renderer);
 
     if (renderMode === "live-webgpu") {
-      this.replaceMaterial(createWebGpuMaterial(this.#manifest));
+      this.replaceMaterial(createWebGpuMaterial(this.#manifest, this.#hoveredImageLayerId, this.#imageTextures));
     } else if (renderMode === "live-webgl") {
-      this.replaceMaterial(createWebGlMaterial(this.#manifest));
+      this.replaceMaterial(createWebGlMaterial(this.#manifest, this.#hoveredImageLayerId, this.#imageTextures));
     } else {
       const texture = createBakedSkyboxTexture(this.#manifest, this.#bakeOptions);
       this.replaceMaterial(createBakedMaterialFromTexture(texture, this.#renderer), texture);

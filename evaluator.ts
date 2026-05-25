@@ -2,6 +2,7 @@ import {
   clamp,
   compositeOver,
   parseHexColor,
+  srgbChannelToLinear,
   type Rgb,
   type Rgba,
 } from "./math";
@@ -9,9 +10,11 @@ import type {
   SkyboxFieldGradientParams,
   SkyboxGradientParams,
   SkyboxGradientStop,
+  SkyboxImageParams,
   SkyboxManifest,
   SkyboxManifestLayer,
   SkyboxManifestNode,
+  SkyboxSelectionDot,
 } from "./manifest";
 import { migrateManifestToV2 } from "./manifest";
 
@@ -185,10 +188,135 @@ function sampleFieldGradientLayer(direction: Rgb, params: SkyboxFieldGradientPar
   return [red / weightSum, green / weightSum, blue / weightSum, 1];
 }
 
+function dot(first: Rgb, second: Rgb) {
+  return first[0] * second[0] + first[1] * second[1] + first[2] * second[2];
+}
+
+function mixRgba(first: Rgba, second: Rgba, amount: number): Rgba {
+  return [
+    mix(first[0], second[0], amount),
+    mix(first[1], second[1], amount),
+    mix(first[2], second[2], amount),
+    mix(first[3], second[3], amount),
+  ];
+}
+
+function sampleImagePixel(params: SkyboxImageParams, x: number, y: number): Rgba {
+  const pixelX = Math.min(params.width - 1, Math.max(0, x));
+  const pixelY = Math.min(params.height - 1, Math.max(0, y));
+  const index = (pixelY * params.width + pixelX) * 4;
+  const red = params.pixels?.[index] ?? 0;
+  const green = params.pixels?.[index + 1] ?? 0;
+  const blue = params.pixels?.[index + 2] ?? 0;
+  const alpha = params.pixels?.[index + 3] ?? 255;
+
+  return [
+    srgbChannelToLinear(red / 255),
+    srgbChannelToLinear(green / 255),
+    srgbChannelToLinear(blue / 255),
+    alpha / 255,
+  ];
+}
+
+function resolveImagePlacement(placement: NonNullable<SkyboxImageParams["placement"]>) {
+  const rawPlacement = placement as unknown as {
+    angularHeight?: number;
+    angularWidth?: number;
+    center?: Rgb;
+    centerDirection?: Rgb;
+    height?: number;
+    normal?: Rgb;
+    tangentX?: Rgb;
+    tangentY?: Rgb;
+    width?: number;
+  };
+  const centerDirection = normalizeDirection(
+    rawPlacement.centerDirection ?? rawPlacement.normal ?? rawPlacement.center ?? [0, 0, -1]
+  );
+  const tangentX = normalizeDirection(rawPlacement.tangentX ?? [1, 0, 0]);
+  const tangentY = normalizeDirection(rawPlacement.tangentY ?? [0, 1, 0]);
+  const legacyDistance = rawPlacement.center
+    ? Math.max(0.0001, Math.hypot(rawPlacement.center[0], rawPlacement.center[1], rawPlacement.center[2]))
+    : 1;
+  const angularWidth =
+    typeof rawPlacement.angularWidth === "number"
+      ? rawPlacement.angularWidth
+      : 2 * Math.atan(Math.max(0.0001, rawPlacement.width ?? 0.4) / (2 * legacyDistance));
+  const angularHeight =
+    typeof rawPlacement.angularHeight === "number"
+      ? rawPlacement.angularHeight
+      : 2 * Math.atan(Math.max(0.0001, rawPlacement.height ?? 0.3) / (2 * legacyDistance));
+
+  return { angularHeight, angularWidth, centerDirection, tangentX, tangentY };
+}
+
+function sampleImageLayer(direction: Rgb, params: SkyboxImageParams): Rgba {
+  const placement = params.placement;
+
+  if (
+    !placement ||
+    !params.pixels ||
+    params.width <= 0 ||
+    params.height <= 0
+  ) {
+    return [0, 0, 0, 0];
+  }
+
+  const resolvedPlacement = resolveImagePlacement(placement);
+  const normalizedDirection = normalizeDirection(direction);
+  const denom = dot(normalizedDirection, resolvedPlacement.centerDirection);
+
+  if (denom <= 0) {
+    return [0, 0, 0, 0];
+  }
+
+  const projectedX = dot(normalizedDirection, resolvedPlacement.tangentX) / denom;
+  const projectedY = dot(normalizedDirection, resolvedPlacement.tangentY) / denom;
+  const halfWidth = Math.tan(resolvedPlacement.angularWidth / 2);
+  const halfHeight = Math.tan(resolvedPlacement.angularHeight / 2);
+
+  if (
+    halfWidth <= 0 ||
+    halfHeight <= 0 ||
+    projectedX < -halfWidth ||
+    projectedX > halfWidth ||
+    projectedY < -halfHeight ||
+    projectedY > halfHeight
+  ) {
+    return [0, 0, 0, 0];
+  }
+
+  const u = projectedX / (2 * halfWidth) + 0.5;
+  const v = 0.5 - projectedY / (2 * halfHeight);
+
+  if (u < 0 || u > 1 || v < 0 || v > 1) {
+    return [0, 0, 0, 0];
+  }
+
+  const imageX = u * (params.width - 1);
+  const imageY = v * (params.height - 1);
+  const x0 = Math.floor(imageX);
+  const y0 = Math.floor(imageY);
+  const x1 = x0 + 1;
+  const y1 = y0 + 1;
+  const tx = imageX - x0;
+  const ty = imageY - y0;
+  const top = mixRgba(sampleImagePixel(params, x0, y0), sampleImagePixel(params, x1, y0), tx);
+  const bottom = mixRgba(sampleImagePixel(params, x0, y1), sampleImagePixel(params, x1, y1), tx);
+
+  return mixRgba(top, bottom, ty);
+}
+
 function sampleLayer(direction: Rgb, layer: SkyboxManifestLayer): Rgba {
-  return layer.type === "gradient"
-    ? sampleGradientLayer(direction, layer.params)
-    : sampleFieldGradientLayer(direction, layer.params);
+  if (layer.type === "gradient") {
+    return sampleGradientLayer(direction, layer.params);
+  }
+
+  if (layer.type === "field-gradient") {
+    return sampleFieldGradientLayer(direction, layer.params);
+  }
+
+  return sampleImageLayer(direction, layer.params);
 }
 
 export function composeNodes(direction: Rgb, nodes: SkyboxManifestNode[]): Rgb {
@@ -204,6 +332,27 @@ export function composeNodes(direction: Rgb, nodes: SkyboxManifestNode[]): Rgb {
 
       return compositeOver(backdrop, [source[0], source[1], source[2]], alpha, node.blendMode);
     }, [0, 0, 0]);
+}
+
+function applySelectionDot(color: Rgb, direction: Rgb, selectionDot?: SkyboxSelectionDot | null): Rgb {
+  if (!selectionDot || selectionDot.opacity <= 0 || selectionDot.radius <= 0) {
+    return color;
+  }
+
+  const dotDistance = 1 - clamp(dot(direction, selectionDot.direction), -1, 1);
+
+  if (dotDistance > selectionDot.radius) {
+    return color;
+  }
+
+  const source = parseHexColor(selectionDot.color);
+  const alpha = clamp(selectionDot.opacity);
+
+  return [
+    source[0] * alpha + color[0] * (1 - alpha),
+    source[1] * alpha + color[1] * (1 - alpha),
+    source[2] * alpha + color[2] * (1 - alpha),
+  ];
 }
 
 function findGroup(nodes: SkyboxManifestNode[], id: string): SkyboxManifestNode | null {
@@ -239,5 +388,5 @@ export function evaluateSkyboxDirection(
       : []
     : migratedManifest.nodes;
 
-  return composeNodes(direction, nodes);
+  return applySelectionDot(composeNodes(direction, nodes), direction, migratedManifest.selectionDot);
 }
