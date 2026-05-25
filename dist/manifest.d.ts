@@ -4,6 +4,10 @@ export type SkyboxEffectType = "field-gradient" | "gradient";
 export type SkyboxLayerBlendMode = "normal" | "darken" | "multiply" | "color-burn" | "lighten" | "screen" | "color-dodge" | "overlay" | "soft-light" | "hard-light" | "difference" | "exclusion";
 export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
+export type SkyboxGeometryType = "box" | "sphere";
+export type SkyboxGeometryOptions = {
+    type: SkyboxGeometryType;
+};
 export type SkyboxBakeOptions = {
     cache?: boolean;
     dpr?: number;
@@ -92,9 +96,11 @@ export type SkyboxManifestV2 = {
         mode: SkyboxCompositionMode;
         order: SkyboxCompositionOrder;
     };
+    geometry?: SkyboxGeometryOptions;
     nodes: SkyboxManifestNode[];
     version: 2;
 };
 export type SkyboxManifest = SkyboxManifestV1 | SkyboxManifestV2;
 export type SkyboxRenderMode = "auto" | "live-webgpu" | "live-webgl" | "baked-texture";
+export declare const DEFAULT_SKYBOX_GEOMETRY: SkyboxGeometryOptions;
 export declare function migrateManifestToV2(manifest: SkyboxManifest): SkyboxManifestV2;

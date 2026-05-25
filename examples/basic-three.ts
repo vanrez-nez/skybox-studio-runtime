@@ -10,6 +10,7 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 
 const manifest: SkyboxManifestV2 = {
   composition: { mode: "alpha-over", order: "bottom-to-top" },
+  geometry: { type: "sphere" },
   nodes: [
     {
       blendMode: "normal",

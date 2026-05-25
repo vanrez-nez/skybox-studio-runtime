@@ -16,6 +16,11 @@ export type SkyboxLayerBlendMode =
   | "exclusion";
 export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
+export type SkyboxGeometryType = "box" | "sphere";
+
+export type SkyboxGeometryOptions = {
+  type: SkyboxGeometryType;
+};
 
 export type SkyboxBakeOptions = {
   cache?: boolean;
@@ -119,6 +124,7 @@ export type SkyboxManifestV2 = {
     mode: SkyboxCompositionMode;
     order: SkyboxCompositionOrder;
   };
+  geometry?: SkyboxGeometryOptions;
   nodes: SkyboxManifestNode[];
   version: 2;
 };
@@ -127,13 +133,19 @@ export type SkyboxManifest = SkyboxManifestV1 | SkyboxManifestV2;
 
 export type SkyboxRenderMode = "auto" | "live-webgpu" | "live-webgl" | "baked-texture";
 
+export const DEFAULT_SKYBOX_GEOMETRY: SkyboxGeometryOptions = { type: "box" };
+
 export function migrateManifestToV2(manifest: SkyboxManifest): SkyboxManifestV2 {
   if (manifest.version === 2) {
-    return manifest;
+    return {
+      ...manifest,
+      geometry: manifest.geometry ?? DEFAULT_SKYBOX_GEOMETRY,
+    };
   }
 
   return {
     composition: manifest.composition,
+    geometry: DEFAULT_SKYBOX_GEOMETRY,
     nodes: manifest.layers.map((layer) => ({ ...layer })),
     version: 2,
   };

@@ -1,4 +1,9 @@
-export { createBakedSkyboxTexture, Skybox } from "./Skybox";
+export {
+  createBakedSkyboxTexture,
+  createSkyboxGeometry,
+  createSkyboxWireGeometry,
+  Skybox,
+} from "./Skybox";
 export {
   bakeSkyboxImageData,
   createBakeCacheKey,
@@ -29,6 +34,8 @@ export type {
   SkyboxGradientMode,
   SkyboxGradientParams,
   SkyboxGradientStop,
+  SkyboxGeometryOptions,
+  SkyboxGeometryType,
   SkyboxLayerBlendMode,
   SkyboxManifest,
   SkyboxManifestGroup,

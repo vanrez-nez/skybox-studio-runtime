@@ -31,12 +31,27 @@ describe("runtime evaluator", () => {
       version: 1,
     };
 
-    expect(migrateManifestToV2(manifest).nodes).toHaveLength(1);
+    const migratedManifest = migrateManifestToV2(manifest);
+
+    expect(migratedManifest.geometry).toEqual({ type: "box" });
+    expect(migratedManifest.nodes).toHaveLength(1);
+  });
+
+  it("preserves v2 spherical geometry", () => {
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "sphere" },
+      nodes: [],
+      version: 2,
+    };
+
+    expect(migrateManifestToV2(manifest).geometry).toEqual({ type: "sphere" });
   });
 
   it("evaluates nested group opacity and partial group baking", () => {
     const manifest: SkyboxManifestV2 = {
       composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
       nodes: [
         {
           blendMode: "normal",

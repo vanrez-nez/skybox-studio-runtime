@@ -26,6 +26,7 @@ const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 10
 const manifest: SkyboxManifestV2 = {
   version: 2,
   composition: { mode: "alpha-over", order: "bottom-to-top" },
+  geometry: { type: "sphere" },
   nodes: [
     {
       id: "base",
@@ -49,6 +50,7 @@ const manifest: SkyboxManifestV2 = {
 const skybox = new Skybox()
   .setRenderer(renderer)
   .setRenderMode("auto")
+  .setGeometry({ type: "sphere" })
   .setBakeOptions({ width: 1024, dpr: devicePixelRatio, cache: true })
   .fromManifest(manifest)
   .load();
@@ -63,6 +65,10 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));
 - `live-webgpu`: uses Three TSL and `NodeMaterial`.
 - `live-webgl`: uses `ShaderMaterial`.
 - `baked-texture`: evaluates the manifest on the CPU into an equirectangular texture.
+
+## Geometry
+
+Use `geometry: { type: "box" }` or `geometry: { type: "sphere" }` in Manifest V2, or override it fluently with `setGeometry(...)`. Both primitives sample effects by world-space direction, so Gradient and Field Gradient layers render consistently across box and spherical sky geometry.
 
 ## Baking
 

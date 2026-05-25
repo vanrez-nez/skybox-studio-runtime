@@ -6,6 +6,7 @@ import {
   modelViewProjection,
   normalize,
   positionWorld,
+  texture as textureNode,
   wgslFn,
 } from "three/tsl";
 
@@ -16,6 +17,7 @@ import {
   type Rgb,
 } from "./math";
 import type {
+  SkyboxGeometryOptions,
   SkyboxBakeOptions,
   SkyboxFieldGradientParams,
   SkyboxGradientParams,
@@ -25,18 +27,46 @@ import type {
   SkyboxManifestV2,
   SkyboxRenderMode,
 } from "./manifest";
-import { migrateManifestToV2 } from "./manifest";
+import { DEFAULT_SKYBOX_GEOMETRY, migrateManifestToV2 } from "./manifest";
 
 type SupportedRenderer = THREE.WebGLRenderer | { isWebGPURenderer?: boolean };
-type RuntimeMaterial = THREE.ShaderMaterial | THREE.MeshBasicMaterial | NodeMaterial;
+type RuntimeMaterial = THREE.ShaderMaterial | NodeMaterial;
 type ShaderLanguage = "glsl" | "wgsl";
 
 const DEFAULT_MANIFEST: SkyboxManifestV2 = {
   composition: { mode: "alpha-over", order: "bottom-to-top" },
+  geometry: DEFAULT_SKYBOX_GEOMETRY,
   nodes: [],
   version: 2,
 };
 
+function resolveGeometryOptions(options?: SkyboxGeometryOptions): SkyboxGeometryOptions {
+  return options ?? DEFAULT_SKYBOX_GEOMETRY;
+}
+
+export function createSkyboxGeometry(options: SkyboxGeometryOptions = DEFAULT_SKYBOX_GEOMETRY) {
+  return resolveGeometryOptions(options).type === "sphere"
+    ? new THREE.SphereGeometry(1, 64, 32)
+    : new THREE.BoxGeometry(1, 1, 1);
+}
+
+export function createSkyboxWireGeometry(options: SkyboxGeometryOptions = DEFAULT_SKYBOX_GEOMETRY) {
+  if (resolveGeometryOptions(options).type === "sphere") {
+    const sphereGeometry = new THREE.SphereGeometry(1, 32, 16);
+    const wireGeometry = new THREE.WireframeGeometry(sphereGeometry);
+
+    sphereGeometry.dispose();
+
+    return wireGeometry;
+  }
+
+  const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const wireGeometry = new THREE.EdgesGeometry(boxGeometry);
+
+  boxGeometry.dispose();
+
+  return wireGeometry;
+}
 function numberLiteral(value: number) {
   return Number.isFinite(value) ? value.toFixed(8) : "0.0";
 }
@@ -399,6 +429,39 @@ function createWebGpuMaterial(manifest: SkyboxManifestV2) {
   return material;
 }
 
+const directionToEquirectUv = wgslFn(`
+  fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {
+    let normalizedDirection = normalize(direction);
+    let longitude = atan2(normalizedDirection.z, normalizedDirection.x);
+    let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));
+
+    return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);
+  }
+`);
+
+function createWebGpuBakedMaterial(texture: THREE.Texture) {
+  const material = new NodeMaterial();
+  const vertexNode = Fn(() => {
+    const position = modelViewProjection as any;
+
+    position.z.assign(position.w);
+
+    return position;
+  })();
+  const direction = normalize(positionWorld.sub(cameraPosition));
+
+  material.side = THREE.BackSide;
+  material.depthTest = false;
+  material.depthWrite = false;
+  material.vertexNode = vertexNode as any;
+  material.colorNode = textureNode(
+    texture,
+    directionToEquirectUv({ direction }) as any
+  ) as any;
+
+  return material;
+}
+
 function createWebGlMaterial(manifest: SkyboxManifestV2) {
   const layerBlocks = composeNodesExpression(manifest.nodes, "glsl");
 
@@ -550,11 +613,49 @@ export function createBakedSkyboxTexture(manifest: SkyboxManifest, options: Skyb
   return texture;
 }
 
-function createBakedMaterial(manifest: SkyboxManifest, options: SkyboxBakeOptions) {
-  return new THREE.MeshBasicMaterial({
-    map: createBakedSkyboxTexture(manifest, options),
+function createWebGlBakedMaterial(texture: THREE.Texture) {
+  return new THREE.ShaderMaterial({
+    depthTest: false,
+    depthWrite: false,
     side: THREE.BackSide,
+    uniforms: {
+      skyboxTexture: { value: texture },
+    },
+    vertexShader: `
+      varying vec3 vDirection;
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vDirection = worldPosition.xyz - cameraPosition;
+        vec4 clipPosition = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        gl_Position = clipPosition.xyww;
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform sampler2D skyboxTexture;
+      varying vec3 vDirection;
+
+      const float PI = 3.141592653589793;
+
+      vec2 directionToEquirectUv(vec3 direction) {
+        vec3 normalizedDirection = normalize(direction);
+        float longitude = atan(normalizedDirection.z, normalizedDirection.x);
+        float latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));
+
+        return vec2(longitude / (2.0 * PI) + 0.5, latitude / PI + 0.5);
+      }
+
+      void main() {
+        gl_FragColor = texture2D(skyboxTexture, directionToEquirectUv(vDirection));
+      }
+    `,
   });
+}
+
+function createBakedMaterialFromTexture(texture: THREE.Texture, renderer?: SupportedRenderer | null) {
+  return isWebGpuRenderer(renderer)
+    ? createWebGpuBakedMaterial(texture)
+    : createWebGlBakedMaterial(texture);
 }
 
 function isWebGpuRenderer(renderer?: SupportedRenderer | null) {
@@ -569,20 +670,29 @@ function resolveRenderMode(mode: SkyboxRenderMode, renderer?: SupportedRenderer 
   return isWebGpuRenderer(renderer) ? "live-webgpu" : "live-webgl";
 }
 
-export class Skybox extends THREE.Mesh<THREE.BoxGeometry, RuntimeMaterial> {
+export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #bakeOptions: SkyboxBakeOptions = {};
+  #geometryOptions: SkyboxGeometryOptions = DEFAULT_SKYBOX_GEOMETRY;
   #manifest: SkyboxManifestV2 = DEFAULT_MANIFEST;
+  #ownedTexture: THREE.Texture | null = null;
   #renderMode: SkyboxRenderMode = "auto";
   #renderer: SupportedRenderer | null = null;
 
   constructor() {
-    super(new THREE.BoxGeometry(1, 1, 1), createWebGpuMaterial(DEFAULT_MANIFEST));
+    super(createSkyboxGeometry(DEFAULT_SKYBOX_GEOMETRY), createWebGpuMaterial(DEFAULT_MANIFEST));
     this.frustumCulled = false;
     this.renderOrder = -1;
   }
 
   fromManifest(manifest: SkyboxManifest) {
     this.#manifest = migrateManifestToV2(manifest);
+    this.applyGeometry(this.#manifest.geometry ?? DEFAULT_SKYBOX_GEOMETRY);
+    return this;
+  }
+
+  setGeometry(options: SkyboxGeometryOptions) {
+    this.applyGeometry(options);
+
     return this;
   }
 
@@ -614,25 +724,52 @@ export class Skybox extends THREE.Mesh<THREE.BoxGeometry, RuntimeMaterial> {
     return this;
   }
 
+  private applyGeometry(options: SkyboxGeometryOptions) {
+    const nextOptions = resolveGeometryOptions(options);
+
+    if (this.#geometryOptions.type === nextOptions.type && this.geometry) {
+      return;
+    }
+
+    const previousGeometry = this.geometry;
+    this.#geometryOptions = nextOptions;
+    this.geometry = createSkyboxGeometry(nextOptions);
+    previousGeometry.dispose();
+  }
+
+  private disposeOwnedTexture() {
+    this.#ownedTexture?.dispose();
+    this.#ownedTexture = null;
+  }
+
+  private replaceMaterial(nextMaterial: RuntimeMaterial, ownedTexture: THREE.Texture | null = null) {
+    const previousMaterial = this.material;
+
+    this.material = nextMaterial;
+    previousMaterial.dispose();
+    this.disposeOwnedTexture();
+    this.#ownedTexture = ownedTexture;
+  }
+
   setManifest(manifest: SkyboxManifest) {
     this.#manifest = migrateManifestToV2(manifest);
-    const previousMaterial = this.material;
+    this.applyGeometry(this.#manifest.geometry ?? this.#geometryOptions);
     const renderMode = resolveRenderMode(this.#renderMode, this.#renderer);
 
     if (renderMode === "live-webgpu") {
-      this.material = createWebGpuMaterial(this.#manifest);
+      this.replaceMaterial(createWebGpuMaterial(this.#manifest));
     } else if (renderMode === "live-webgl") {
-      this.material = createWebGlMaterial(this.#manifest);
+      this.replaceMaterial(createWebGlMaterial(this.#manifest));
     } else {
-      this.material = createBakedMaterial(this.#manifest, this.#bakeOptions);
+      const texture = createBakedSkyboxTexture(this.#manifest, this.#bakeOptions);
+      this.replaceMaterial(createBakedMaterialFromTexture(texture, this.#renderer), texture);
     }
 
-    previousMaterial.dispose();
-    const previousMap = "map" in previousMaterial ? previousMaterial.map : null;
+    return this;
+  }
 
-    if (previousMap) {
-      previousMap.dispose();
-    }
+  setBakedTexture(texture: THREE.Texture) {
+    this.replaceMaterial(createBakedMaterialFromTexture(texture, this.#renderer));
 
     return this;
   }
@@ -643,9 +780,8 @@ export class Skybox extends THREE.Mesh<THREE.BoxGeometry, RuntimeMaterial> {
   }
 
   dispose() {
-    const map = "map" in this.material ? this.material.map : null;
     this.geometry.dispose();
     this.material.dispose();
-    map?.dispose();
+    this.disposeOwnedTexture();
   }
 }
