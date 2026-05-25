@@ -62,7 +62,7 @@ function colorLiteral(color: string) {
 
 function directionLiteralFromPoint(x: number, y: number) {
   const lambda = (clamp(x) - 0.5) * Math.PI * 2;
-  const phi = (clamp(y) - 0.5) * Math.PI;
+  const phi = (0.5 - clamp(y)) * Math.PI;
   const cosPhi = Math.cos(phi);
 
   return `vec3<f32>(${numberLiteral(cosPhi * Math.cos(lambda))}, ${numberLiteral(
@@ -148,34 +148,28 @@ function fieldGradientSampleExpression(params: SkyboxFieldGradientParams) {
     .join("\n");
 
   return `{
-    let lambda = atan2(direction.z, direction.x);
-    let phi = asin(clamp(direction.y, -1.0, 1.0));
-    var fieldPoint = vec2<f32>(lambda / ${numberLiteral(Math.PI * 2)} + 0.5, phi / ${numberLiteral(
-      Math.PI
-    )} + 0.5);
-    let warpScale = ${numberLiteral(warpAmplitude * 0.16)};
+    let warpAmplitude = ${numberLiteral(warpAmplitude)};
+    let warpFrequency = ${numberLiteral(frequency)};
+    var fieldDirection = direction;
+    let warpScale = warpAmplitude;
     if (warpScale > 0.0) {
-      let warpX = sin((fieldPoint.y * ${numberLiteral(frequency)} + 0.23) * ${numberLiteral(
+      let warpX = sin((direction.y * warpFrequency + 0.23) * ${numberLiteral(
         Math.PI * 2
-      )}) * cos((fieldPoint.x * ${numberLiteral(frequency)} + 0.41) * ${numberLiteral(
-        Math.PI * 2
-      )});
-      let warpY = cos((fieldPoint.x * ${numberLiteral(frequency)} + 0.17) * ${numberLiteral(
-        Math.PI * 2
-      )}) * sin((fieldPoint.y * ${numberLiteral(frequency)} + 0.37) * ${numberLiteral(
+      )}) * cos((direction.z * warpFrequency + 0.41) * ${numberLiteral(
         Math.PI * 2
       )});
-      let warpedPoint = fieldPoint + vec2<f32>(warpX, warpY) * warpScale;
-      fieldPoint = vec2<f32>(fract(warpedPoint.x), clamp(warpedPoint.y, 0.0, 1.0));
+      let warpY = cos((direction.z * warpFrequency + 0.17) * ${numberLiteral(
+        Math.PI * 2
+      )}) * sin((direction.x * warpFrequency + 0.37) * ${numberLiteral(
+        Math.PI * 2
+      )});
+      let warpZ = sin((direction.x * warpFrequency - 0.31) * ${numberLiteral(
+        Math.PI * 2
+      )}) * cos((direction.y * warpFrequency + 0.29) * ${numberLiteral(
+        Math.PI * 2
+      )});
+      fieldDirection = normalize(direction + vec3<f32>(warpX, warpY, warpZ) * warpScale);
     }
-    let fieldLambda = (fieldPoint.x - 0.5) * ${numberLiteral(Math.PI * 2)};
-    let fieldPhi = (fieldPoint.y - 0.5) * ${numberLiteral(Math.PI)};
-    let fieldCosPhi = cos(fieldPhi);
-    let fieldDirection = normalize(vec3<f32>(
-      fieldCosPhi * cos(fieldLambda),
-      sin(fieldPhi),
-      fieldCosPhi * sin(fieldLambda)
-    ));
     var weightedColor = vec3<f32>(0.0);
     var weightSum = 0.0;
     ${anchorLines}
