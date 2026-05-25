@@ -1,10 +1,18 @@
 import {
   BackSide,
+  BoxGeometry,
   Mesh,
-  ShaderMaterial,
-  SphereGeometry,
+  NodeMaterial,
   type Material,
 } from "three/webgpu";
+import {
+  cameraPosition,
+  Fn,
+  modelViewProjection,
+  normalize,
+  positionWorld,
+  wgslFn,
+} from "three/tsl";
 
 import type {
   SkyboxFieldGradientParams,
@@ -18,8 +26,6 @@ const DEFAULT_MANIFEST: SkyboxManifestV1 = {
   layers: [],
   version: 1,
 };
-
-const SKYBOX_RADIUS = 1000;
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
@@ -51,11 +57,11 @@ function parseHexColor(color: string): [number, number, number] {
 function colorLiteral(color: string) {
   const [red, green, blue] = parseHexColor(color);
 
-  return `vec3(${numberLiteral(red)}, ${numberLiteral(green)}, ${numberLiteral(blue)})`;
+  return `vec3<f32>(${numberLiteral(red)}, ${numberLiteral(green)}, ${numberLiteral(blue)})`;
 }
 
 function vec4Literal(color: string, alpha: number) {
-  return `vec4(${colorLiteral(color)}, ${numberLiteral(clamp(alpha))})`;
+  return `vec4<f32>(${colorLiteral(color)}, ${numberLiteral(clamp(alpha))})`;
 }
 
 function getRenderableLayers(manifest: SkyboxManifestV1) {
@@ -72,39 +78,43 @@ function gradientSampleExpression(params: SkyboxGradientParams) {
     .sort((firstStop, secondStop) => firstStop.t - secondStop.t);
 
   if (stops.length === 0) {
-    return "vec4(0.0, 0.0, 0.0, 0.0)";
+    return "effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);";
   }
 
   const rotationRadians = (params.rotation * Math.PI) / 180;
-  const axis = `vec3(${numberLiteral(Math.sin(rotationRadians))}, ${numberLiteral(
+  const axis = `vec3<f32>(${numberLiteral(Math.sin(rotationRadians))}, ${numberLiteral(
     Math.cos(rotationRadians)
   )}, 0.0)`;
-  let expression = vec4Literal(stops[stops.length - 1].color, stops[stops.length - 1].opacity);
-
-  for (let index = stops.length - 2; index >= 0; index -= 1) {
-    const currentStop = stops[index];
+  const branches = stops.slice(0, -1).map((currentStop, index) => {
     const nextStop = stops[index + 1];
     const span = Math.max(0.00001, nextStop.t - currentStop.t);
     const localT = `clamp((gradientT - ${numberLiteral(currentStop.t)}) / ${numberLiteral(
       span
     )}, 0.0, 1.0)`;
+    const keyword = index === 0 ? "if" : "else if";
 
-    expression = `gradientT <= ${numberLiteral(nextStop.t)} ? mix(${vec4Literal(
+    return `${keyword} (gradientT <= ${numberLiteral(nextStop.t)}) {
+      effectColor = mix(${vec4Literal(
       currentStop.color,
       currentStop.opacity
-    )}, ${vec4Literal(nextStop.color, nextStop.opacity)}, ${localT}) : (${expression})`;
-  }
+    )}, ${vec4Literal(nextStop.color, nextStop.opacity)}, ${localT});
+    }`;
+  });
+  const lastStop = stops[stops.length - 1];
 
   return `{
-    vec3 gradientAxis = normalize(${axis});
-    float gradientT = dot(direction, gradientAxis) * 0.5 + 0.5;
-    effectColor = ${expression};
+    let gradientAxis = normalize(${axis});
+    let gradientT = dot(direction, gradientAxis) * 0.5 + 0.5;
+    ${branches.join("\n")}
+    ${branches.length > 0 ? "else" : ""} {
+      effectColor = ${vec4Literal(lastStop.color, lastStop.opacity)};
+    }
   }`;
 }
 
 function fieldGradientSampleExpression(params: SkyboxFieldGradientParams) {
   if (params.anchors.length === 0) {
-    return "effectColor = vec4(0.0, 0.0, 0.0, 0.0);";
+    return "effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);";
   }
 
   const warpAmplitude = clamp(params.amplitude, 0, 0.6);
@@ -114,11 +124,11 @@ function fieldGradientSampleExpression(params: SkyboxFieldGradientParams) {
   const anchorLines = params.anchors
     .map(
       (anchor) => `{
-        vec2 anchorPoint = vec2(${numberLiteral(clamp(anchor.x))}, ${numberLiteral(
+        let anchorPoint = vec2<f32>(${numberLiteral(clamp(anchor.x))}, ${numberLiteral(
           clamp(anchor.y)
         )});
-        float anchorDistance = length(fieldPoint - anchorPoint);
-        float weight = ${
+        let anchorDistance = length(fieldPoint - anchorPoint);
+        let weight = ${
           params.mode === "gaussian"
             ? `exp(-(anchorDistance * anchorDistance) / ${numberLiteral(2 * sigma * sigma)})`
             : `1.0 / pow(anchorDistance + 0.0005, ${numberLiteral(power)})`
@@ -130,29 +140,33 @@ function fieldGradientSampleExpression(params: SkyboxFieldGradientParams) {
     .join("\n");
 
   return `{
-    float lambda = atan(direction.z, direction.x);
-    float phi = asin(clamp(direction.y, -1.0, 1.0));
-    vec2 fieldPoint = vec2(lambda / ${numberLiteral(Math.PI * 2)} + 0.5, phi / ${numberLiteral(
+    let lambda = atan2(direction.z, direction.x);
+    let phi = asin(clamp(direction.y, -1.0, 1.0));
+    var fieldPoint = vec2<f32>(lambda / ${numberLiteral(Math.PI * 2)} + 0.5, phi / ${numberLiteral(
       Math.PI
     )} + 0.5);
-    float warpScale = ${numberLiteral(warpAmplitude * 0.16)};
+    let warpScale = ${numberLiteral(warpAmplitude * 0.16)};
     if (warpScale > 0.0) {
-      float warpX = sin((fieldPoint.y * ${numberLiteral(frequency)} + 0.23) * ${numberLiteral(
+      let warpX = sin((fieldPoint.y * ${numberLiteral(frequency)} + 0.23) * ${numberLiteral(
         Math.PI * 2
       )}) * cos((fieldPoint.x * ${numberLiteral(frequency)} + 0.41) * ${numberLiteral(
         Math.PI * 2
       )});
-      float warpY = cos((fieldPoint.x * ${numberLiteral(frequency)} + 0.17) * ${numberLiteral(
+      let warpY = cos((fieldPoint.x * ${numberLiteral(frequency)} + 0.17) * ${numberLiteral(
         Math.PI * 2
       )}) * sin((fieldPoint.y * ${numberLiteral(frequency)} + 0.37) * ${numberLiteral(
         Math.PI * 2
       )});
-      fieldPoint = clamp(fieldPoint + vec2(warpX, warpY) * warpScale, 0.0, 1.0);
+      fieldPoint = clamp(fieldPoint + vec2<f32>(warpX, warpY) * warpScale, vec2<f32>(0.0), vec2<f32>(1.0));
     }
-    vec3 weightedColor = vec3(0.0);
-    float weightSum = 0.0;
+    var weightedColor = vec3<f32>(0.0);
+    var weightSum = 0.0;
     ${anchorLines}
-    effectColor = vec4(weightSum > 0.0 ? weightedColor / weightSum : vec3(0.0), 1.0);
+    if (weightSum > 0.0) {
+      effectColor = vec4<f32>(weightedColor / weightSum, 1.0);
+    } else {
+      effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
   }`;
 }
 
@@ -162,57 +176,54 @@ function effectExpression(layer: SkyboxManifestLayer) {
     : fieldGradientSampleExpression(layer.params);
 }
 
-function createFragmentShader(manifest: SkyboxManifestV1) {
+function createSkyboxFunction(manifest: SkyboxManifestV1) {
   const layerBlocks = getRenderableLayers(manifest)
     .map(
       (layer) => `{
-        vec4 effectColor = vec4(0.0);
+        var effectColor = vec4<f32>(0.0);
         ${effectExpression(layer)}
-        float sourceAlpha = clamp(effectColor.a * ${numberLiteral(layer.opacity / 100)}, 0.0, 1.0);
+        let sourceAlpha = clamp(effectColor.a * ${numberLiteral(layer.opacity / 100)}, 0.0, 1.0);
         composedColor = effectColor.rgb * sourceAlpha + composedColor * (1.0 - sourceAlpha);
       }`
     )
     .join("\n");
 
-  return `
-    varying vec3 vWorldDirection;
-
-    void main() {
-      vec3 direction = normalize(vWorldDirection);
-      vec3 composedColor = vec3(0.0);
+  return wgslFn(`
+    fn skyboxStudioSample(direction: vec3<f32>) -> vec4<f32> {
+      var composedColor = vec3<f32>(0.0);
       ${layerBlocks}
-      gl_FragColor = vec4(composedColor, 1.0);
+      return vec4<f32>(composedColor, 1.0);
     }
-  `;
-}
-
-function createVertexShader() {
-  return `
-    varying vec3 vWorldDirection;
-
-    void main() {
-      vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-      vWorldDirection = normalize(worldPosition.xyz);
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `;
+  `);
 }
 
 function createSkyboxMaterial(manifest: SkyboxManifestV1) {
-  return new ShaderMaterial({
-    depthTest: false,
-    depthWrite: false,
-    fragmentShader: createFragmentShader(manifest),
-    side: BackSide,
-    vertexShader: createVertexShader(),
-  });
+  const material = new NodeMaterial();
+  const skyboxSample = createSkyboxFunction(manifest);
+  const vertexNode = Fn(() => {
+    const position = modelViewProjection as any;
+
+    position.z.assign(position.w);
+
+    return position;
+  })();
+
+  material.side = BackSide;
+  material.depthTest = false;
+  material.depthWrite = false;
+  material.vertexNode = vertexNode as any;
+  material.colorNode = skyboxSample({
+    direction: normalize(positionWorld.sub(cameraPosition)),
+  }) as any;
+
+  return material;
 }
 
-export class Skybox extends Mesh<SphereGeometry, ShaderMaterial> {
+export class Skybox extends Mesh<BoxGeometry, NodeMaterial> {
   #manifest: SkyboxManifestV1 = DEFAULT_MANIFEST;
 
   constructor() {
-    super(new SphereGeometry(SKYBOX_RADIUS, 64, 32), createSkyboxMaterial(DEFAULT_MANIFEST));
+    super(new BoxGeometry(1, 1, 1), createSkyboxMaterial(DEFAULT_MANIFEST));
     this.frustumCulled = false;
     this.renderOrder = -1;
   }
@@ -244,4 +255,3 @@ export class Skybox extends Mesh<SphereGeometry, ShaderMaterial> {
     (this.material as Material).dispose();
   }
 }
-
