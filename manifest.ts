@@ -1,7 +1,19 @@
 export type SkyboxCompositionMode = "alpha-over";
 export type SkyboxCompositionOrder = "bottom-to-top";
 export type SkyboxEffectType = "field-gradient" | "gradient";
-export type SkyboxLayerBlendMode = "normal" | "additive" | "subtractive" | "multiply";
+export type SkyboxLayerBlendMode =
+  | "normal"
+  | "darken"
+  | "multiply"
+  | "color-burn"
+  | "lighten"
+  | "screen"
+  | "color-dodge"
+  | "overlay"
+  | "soft-light"
+  | "hard-light"
+  | "difference"
+  | "exclusion";
 export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
 

@@ -35,6 +35,10 @@ function numberLiteral(value: number) {
   return Number.isFinite(value) ? value.toFixed(8) : "0.0";
 }
 
+function srgbChannelToLinear(channel: number) {
+  return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+}
+
 function parseHexColor(color: string): [number, number, number] {
   const hexColor = color.trim().replace(/^#/, "");
   const normalizedColor =
@@ -50,7 +54,7 @@ function parseHexColor(color: string): [number, number, number] {
   }
 
   return [0, 2, 4].map((offset) =>
-    Number.parseInt(normalizedColor.slice(offset, offset + 2), 16) / 255
+    srgbChannelToLinear(Number.parseInt(normalizedColor.slice(offset, offset + 2), 16) / 255)
   ) as [number, number, number];
 }
 
@@ -188,19 +192,73 @@ function effectExpression(layer: SkyboxManifestLayer) {
 }
 
 function blendExpression(layer: SkyboxManifestLayer) {
-  if (layer.blendMode === "additive") {
-    return "composedColor + effectColor.rgb";
+  switch (layer.blendMode) {
+    case "darken":
+      return "min(composedColor, effectColor.rgb)";
+    case "multiply":
+      return "composedColor * effectColor.rgb";
+    case "color-burn":
+      return `select(
+        select(
+          vec3<f32>(1.0) - min(vec3<f32>(1.0), (vec3<f32>(1.0) - composedColor) / effectColor.rgb),
+          vec3<f32>(0.0),
+          effectColor.rgb == vec3<f32>(0.0)
+        ),
+        vec3<f32>(1.0),
+        composedColor == vec3<f32>(1.0)
+      )`;
+    case "lighten":
+      return "max(composedColor, effectColor.rgb)";
+    case "screen":
+      return "composedColor + effectColor.rgb - composedColor * effectColor.rgb";
+    case "color-dodge":
+      return `select(
+        select(
+          min(vec3<f32>(1.0), composedColor / (vec3<f32>(1.0) - effectColor.rgb)),
+          vec3<f32>(1.0),
+          effectColor.rgb == vec3<f32>(1.0)
+        ),
+        vec3<f32>(0.0),
+        composedColor == vec3<f32>(0.0)
+      )`;
+    case "overlay":
+      return `select(
+        vec3<f32>(1.0) - 2.0 * (vec3<f32>(1.0) - composedColor) * (vec3<f32>(1.0) - effectColor.rgb),
+        2.0 * composedColor * effectColor.rgb,
+        composedColor <= vec3<f32>(0.5)
+      )`;
+    case "soft-light":
+      return `select(
+        composedColor + (2.0 * effectColor.rgb - vec3<f32>(1.0)) * (softLightD - composedColor),
+        composedColor - (vec3<f32>(1.0) - 2.0 * effectColor.rgb) * composedColor * (vec3<f32>(1.0) - composedColor),
+        effectColor.rgb <= vec3<f32>(0.5)
+      )`;
+    case "hard-light":
+      return `select(
+        composedColor + (2.0 * effectColor.rgb - vec3<f32>(1.0)) - composedColor * (2.0 * effectColor.rgb - vec3<f32>(1.0)),
+        2.0 * composedColor * effectColor.rgb,
+        effectColor.rgb <= vec3<f32>(0.5)
+      )`;
+    case "difference":
+      return "abs(composedColor - effectColor.rgb)";
+    case "exclusion":
+      return "composedColor + effectColor.rgb - 2.0 * composedColor * effectColor.rgb";
+    case "normal":
+    default:
+      return "effectColor.rgb";
+  }
+}
+
+function blendSetupExpression(layer: SkyboxManifestLayer) {
+  if (layer.blendMode !== "soft-light") {
+    return "";
   }
 
-  if (layer.blendMode === "subtractive") {
-    return "composedColor - effectColor.rgb";
-  }
-
-  if (layer.blendMode === "multiply") {
-    return "composedColor * effectColor.rgb";
-  }
-
-  return "effectColor.rgb";
+  return `let softLightD = select(
+    sqrt(composedColor),
+    ((16.0 * composedColor - vec3<f32>(12.0)) * composedColor + vec3<f32>(4.0)) * composedColor,
+    composedColor <= vec3<f32>(0.25)
+  );`;
 }
 
 function createSkyboxFunction(manifest: SkyboxManifestV1) {
@@ -210,8 +268,15 @@ function createSkyboxFunction(manifest: SkyboxManifestV1) {
         var effectColor = vec4<f32>(0.0);
         ${effectExpression(layer)}
         let sourceAlpha = clamp(effectColor.a * ${numberLiteral(layer.opacity / 100)}, 0.0, 1.0);
-        let blendedColor = ${blendExpression(layer)};
-        composedColor = blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha);
+        ${blendSetupExpression(layer)}
+        let blendedColor = clamp(${blendExpression(
+          layer
+        )}, vec3<f32>(0.0), vec3<f32>(1.0));
+        composedColor = clamp(
+          blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha),
+          vec3<f32>(0.0),
+          vec3<f32>(1.0)
+        );
       }`
     )
     .join("\n");
