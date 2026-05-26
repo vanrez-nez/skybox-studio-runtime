@@ -14,9 +14,11 @@ import type {
   SkyboxManifest,
   SkyboxManifestLayer,
   SkyboxManifestNode,
+  SkyboxSpotParams,
 } from "./manifest";
 import { migrateManifestToV2 } from "./manifest";
 import { projectDirectionToImageUv } from "./image-placement-transform";
+import { normalizeSpotParams } from "./spot-transform";
 
 const TWO_PI = Math.PI * 2;
 
@@ -103,6 +105,55 @@ function sampleGradientLayer(direction: Rgb, params: SkyboxGradientParams): Rgba
   return sampleGradient(prepareStops(params.stops), dot * 0.5 + 0.5);
 }
 
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const t = clamp((value - edge0) / Math.max(edge1 - edge0, 0.00001));
+
+  return t * t * (3 - 2 * t);
+}
+
+function sq(value: number) {
+  return value * value;
+}
+
+function spectrum(t: number): Rgb {
+  const clampedT = clamp(t);
+  let color: Rgb = [1, 0.12, 0.05];
+
+  color = mixRgb(color, [1, 0.55, 0.1], smoothstep(0, 0.28, clampedT));
+  color = mixRgb(color, [1, 0.93, 0.6], smoothstep(0.22, 0.45, clampedT));
+  color = mixRgb(color, [1, 1, 1], smoothstep(0.42, 0.6, clampedT));
+  color = mixRgb(color, [0.55, 0.8, 1], smoothstep(0.62, 0.85, clampedT));
+  color = mixRgb(color, [0.35, 0.5, 1], smoothstep(0.85, 1, clampedT));
+
+  return color;
+}
+
+function mixRgb(first: Rgb, second: Rgb, amount: number): Rgb {
+  return [
+    mix(first[0], second[0], amount),
+    mix(first[1], second[1], amount),
+    mix(first[2], second[2], amount),
+  ];
+}
+
+function multiplyRgb(first: Rgb, second: Rgb): Rgb {
+  return [first[0] * second[0], first[1] * second[1], first[2] * second[2]];
+}
+
+function scaleRgb(color: Rgb, amount: number): Rgb {
+  return [color[0] * amount, color[1] * amount, color[2] * amount];
+}
+
+function addRgb(first: Rgb, second: Rgb): Rgb {
+  return [first[0] + second[0], first[1] + second[1], first[2] + second[2]];
+}
+
+function colorizeLight(layerColor: Rgb, lightColor: Rgb): Rgb {
+  const tinted = multiplyRgb(layerColor, mixRgb([1, 1, 1], lightColor, 0.82));
+
+  return mixRgb(lightColor, tinted, 0.82);
+}
+
 export function equirectPointToDirection(x: number, y: number): Rgb {
   const lambda = (x - 0.5) * TWO_PI;
   const phi = (0.5 - y) * Math.PI;
@@ -127,6 +178,38 @@ function normalizeDirection(direction: Rgb): Rgb {
   }
 
   return [direction[0] / length, direction[1] / length, direction[2] / length];
+}
+
+function dotDirection(firstDirection: Rgb, secondDirection: Rgb) {
+  return (
+    firstDirection[0] * secondDirection[0] +
+    firstDirection[1] * secondDirection[1] +
+    firstDirection[2] * secondDirection[2]
+  );
+}
+
+function crossDirection(firstDirection: Rgb, secondDirection: Rgb): Rgb {
+  return [
+    firstDirection[1] * secondDirection[2] - firstDirection[2] * secondDirection[1],
+    firstDirection[2] * secondDirection[0] - firstDirection[0] * secondDirection[2],
+    firstDirection[0] * secondDirection[1] - firstDirection[1] * secondDirection[0],
+  ];
+}
+
+function projectDirectionToSpotLocal(direction: Rgb, centerDirection: Rgb, radius: number) {
+  const sampleDirection = normalizeDirection(direction);
+  const center = normalizeDirection(centerDirection);
+  const tangentX = normalizeDirection(crossDirection([0, 1, 0], center));
+  const tangentY = normalizeDirection(crossDirection(center, tangentX));
+  const denom = Math.max(dotDirection(sampleDirection, center), 0.000001);
+  const localX = dotDirection(sampleDirection, tangentX) / denom / Math.max(radius, 0.0001);
+  const localY = dotDirection(sampleDirection, tangentY) / denom / Math.max(radius, 0.0001);
+
+  return {
+    x: localX,
+    y: localY,
+    d: Math.hypot(localX, localY),
+  };
 }
 
 function warpDirection(direction: Rgb, amplitude: number, frequency: number): Rgb {
@@ -263,6 +346,73 @@ function sampleImageLayer(direction: Rgb, params: SkyboxImageParams): Rgba {
   return mixRgba(top, bottom, ty);
 }
 
+function sampleSpotLayer(direction: Rgb, params: SkyboxSpotParams): Rgba {
+  const spot = normalizeSpotParams(params);
+  const sampleDirection = normalizeDirection(direction);
+  const centerDirection = normalizeDirection(spot.centerDirection);
+  const dot = dotDirection(sampleDirection, centerDirection);
+  const angularDistance = Math.acos(clamp(dot, -1, 1));
+  const radius = Math.max(spot.angularRadius, 0.0001);
+  const t = angularDistance / radius;
+
+  if (spot.colorMode === "gradient") {
+    if (t > 1) {
+      return [0, 0, 0, 0];
+    }
+
+    return sampleGradient(prepareStops(spot.stops), t);
+  }
+
+  const spotLocal = projectDirectionToSpotLocal(direction, centerDirection, radius);
+  const spotD = spotLocal.d;
+  const lightColor = parseHexColor(spot.lightColor);
+  const globalIntensity = spot.brightness;
+  const core = Math.pow(clamp(1 - spotD / spot.coreRadius), spot.coreSoftness);
+  const glow = Math.pow(clamp(1 - spotD / spot.glowSize), 2) * spot.glowStrength;
+  const glare = Math.pow(clamp(1 - spotD / spot.glareSize), 1.15) * spot.glareStrength;
+  const monoLight = (core + glow + glare) * globalIntensity;
+  let color = scaleRgb(lightColor, monoLight);
+  color = addRgb(color, [Math.max(monoLight - 1, 0), Math.max(monoLight - 1, 0), Math.max(monoLight - 1, 0)]);
+
+  const haloInner = Math.max(spot.haloInnerWidth, 0.0001);
+  const haloOuter = Math.max(spot.haloOuterWidth, 0.0001);
+  const haloDelta = spotD - spot.haloRadius;
+  const haloEnvelope = Math.exp(-sq(haloDelta / (haloDelta < 0 ? haloInner : haloOuter)));
+  const haloT = clamp((spotD - (spot.haloRadius - haloInner)) / (haloInner + haloOuter));
+  const haloColor = colorizeLight(mixRgb([1, 1, 1], spectrum(haloT), spot.dispersion), lightColor);
+  const haloLight = haloEnvelope * spot.haloStrength * globalIntensity;
+  color = addRgb(color, scaleRgb(haloColor, haloLight));
+  color = addRgb(color, scaleRgb([1, 1, 1], Math.max(haloLight - 1.2, 0) * 0.22));
+
+  const axisDistance = Math.abs(spotLocal.y);
+  const dogX = Math.abs(spotLocal.x);
+  const dogBody =
+    Math.exp(-sq((dogX - spot.haloRadius) / Math.max(spot.dogSpread, 0.0001))) *
+    Math.exp(-sq(axisDistance / Math.max(spot.dogSpread * 0.72, 0.0001)));
+  const dogTail =
+    smoothstep(spot.haloRadius, spot.haloRadius + Math.max(spot.dogStretch, 0.0001), dogX) *
+    (1 -
+      smoothstep(
+        spot.haloRadius + Math.max(spot.dogStretch, 0.0001),
+        spot.haloRadius + Math.max(spot.dogStretch * 2.2, 0.0001),
+        dogX
+      )) *
+    Math.exp(-sq(axisDistance / Math.max(spot.dogSpread * 0.9, 0.0001)));
+  const dogT = clamp((dogX - (spot.haloRadius - spot.dogSpread * 1.4)) / Math.max(spot.dogSpread * 3.5, 0.0001));
+  const dogColor = colorizeLight(mixRgb([1, 1, 1], spectrum(dogT), spot.dispersion), lightColor);
+  const dogLight = (dogBody + dogTail * 0.28) * spot.dogStrength * globalIntensity;
+  color = addRgb(color, scaleRgb(dogColor, dogLight));
+  color = addRgb(color, scaleRgb([1, 1, 1], Math.max(dogLight - 1.1, 0) * 0.18));
+
+  const alpha = clamp(Math.max(color[0], color[1], color[2]));
+
+  if (alpha <= 0.00001) {
+    return [0, 0, 0, 0];
+  }
+
+  return [color[0] / alpha, color[1] / alpha, color[2] / alpha, alpha];
+}
+
 function sampleLayer(direction: Rgb, layer: SkyboxManifestLayer): Rgba {
   if (layer.type === "gradient") {
     return sampleGradientLayer(direction, layer.params);
@@ -270,6 +420,10 @@ function sampleLayer(direction: Rgb, layer: SkyboxManifestLayer): Rgba {
 
   if (layer.type === "field-gradient") {
     return sampleFieldGradientLayer(direction, layer.params);
+  }
+
+  if (layer.type === "spot") {
+    return sampleSpotLayer(direction, layer.params);
   }
 
   return sampleImageLayer(direction, layer.params);

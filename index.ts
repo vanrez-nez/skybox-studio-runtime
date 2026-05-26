@@ -41,6 +41,16 @@ export {
   type Point2,
   type VectorTuple,
 } from "./image-placement-transform";
+export {
+  createDefaultSpotParams,
+  DEFAULT_SPOT_BASE_ANGULAR_RADIUS,
+  normalizeSpotParams,
+  positionFromSpot,
+  radiusScaleFromSpot,
+  spotContainsDirection,
+  spotFromPosition,
+  spotFromRadiusScale,
+} from "./spot-transform";
 export { evaluateSkyboxDirection, equirectPointToDirection, equirectUvToDirection } from "./evaluator";
 export type {
   SkyboxBakeOptions,
@@ -65,5 +75,8 @@ export type {
   SkyboxManifestV1,
   SkyboxManifestV2,
   SkyboxRenderMode,
+  SkyboxSpotColorMode,
+  SkyboxSpotLayer,
+  SkyboxSpotParams,
 } from "./manifest";
 export { migrateManifestToV2 } from "./manifest";

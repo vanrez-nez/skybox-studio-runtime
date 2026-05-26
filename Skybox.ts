@@ -29,9 +29,11 @@ import type {
   SkyboxManifestNode,
   SkyboxManifestV2,
   SkyboxRenderMode,
+  SkyboxSpotParams,
 } from "./manifest";
 import { DEFAULT_SKYBOX_GEOMETRY, migrateManifestToV2 } from "./manifest";
 import { normalizeImagePlacement } from "./image-placement-transform";
+import { normalizeSpotParams } from "./spot-transform";
 
 type SupportedRenderer = THREE.WebGLRenderer | { isWebGPURenderer?: boolean };
 type RuntimeMaterial = THREE.ShaderMaterial | NodeMaterial;
@@ -52,6 +54,12 @@ type FieldGradientLayerShaderBinding = {
   index: number;
   layer: Extract<SkyboxManifestLayer, { type: "field-gradient" }>;
   parameterPrefix: string;
+};
+type SpotLayerShaderBinding = {
+  index: number;
+  layer: Extract<SkyboxManifestLayer, { type: "spot" }>;
+  parameterPrefix: string;
+  stopCount: number;
 };
 type GradientUniformNodes = {
   axis: ReturnType<typeof uniform>;
@@ -79,6 +87,33 @@ type ImagePlacementUniformNodes = {
   layerId: string;
   tangentX: ReturnType<typeof uniform>;
   tangentY: ReturnType<typeof uniform>;
+};
+type SpotUniformNodes = {
+  brightness: ReturnType<typeof uniform>;
+  centerDirection: ReturnType<typeof uniform>;
+  coreRadius: ReturnType<typeof uniform>;
+  coreSoftness: ReturnType<typeof uniform>;
+  dispersion: ReturnType<typeof uniform>;
+  dogSpread: ReturnType<typeof uniform>;
+  dogStrength: ReturnType<typeof uniform>;
+  dogStretch: ReturnType<typeof uniform>;
+  glareSize: ReturnType<typeof uniform>;
+  glareStrength: ReturnType<typeof uniform>;
+  glowSize: ReturnType<typeof uniform>;
+  glowStrength: ReturnType<typeof uniform>;
+  haloInnerWidth: ReturnType<typeof uniform>;
+  haloOuterWidth: ReturnType<typeof uniform>;
+  haloRadius: ReturnType<typeof uniform>;
+  haloStrength: ReturnType<typeof uniform>;
+  layerId: string;
+  lightColor: ReturnType<typeof uniform>;
+  mode: ReturnType<typeof uniform>;
+  radius: ReturnType<typeof uniform>;
+  stops: Array<{
+    color: ReturnType<typeof uniform>;
+    midpoint: ReturnType<typeof uniform>;
+    t: ReturnType<typeof uniform>;
+  }>;
 };
 type ImageEditorUniformNodes = {
   active: ReturnType<typeof uniform>;
@@ -295,7 +330,7 @@ function gradientAxisFromRotation(rotation: number) {
   return new THREE.Vector3(Math.sin(radians), Math.cos(radians), 0).normalize();
 }
 
-function sortedGradientStops(params: SkyboxGradientParams) {
+function sortedGradientStops(params: { stops: SkyboxGradientParams["stops"] }) {
   return [...params.stops]
     .map((stop) => ({
       color: stop.color,
@@ -314,6 +349,10 @@ function colorVectorFromStop(stop: ReturnType<typeof sortedGradientStops>[number
 
 function fieldGradientModeValue(mode: SkyboxFieldGradientParams["mode"]) {
   return mode === "gaussian" ? 1 : 0;
+}
+
+function spotColorModeValue(mode: SkyboxSpotParams["colorMode"]) {
+  return mode === "gradient" ? 1 : 0;
 }
 
 function directionVectorFromPoint(x: number, y: number) {
@@ -544,6 +583,209 @@ function applyFieldGradientLayerParamsToShaderUniforms(
   });
 }
 
+function spotShaderValues(params: SkyboxSpotParams) {
+  const spot = normalizeSpotParams(params);
+
+  return {
+    brightness: Math.max(0, spot.brightness),
+    centerDirection: new THREE.Vector3(...spot.centerDirection).normalize(),
+    coreRadius: spot.coreRadius,
+    coreSoftness: spot.coreSoftness,
+    dispersion: spot.dispersion,
+    dogSpread: spot.dogSpread,
+    dogStrength: spot.dogStrength,
+    dogStretch: spot.dogStretch,
+    glareSize: spot.glareSize,
+    glareStrength: spot.glareStrength,
+    glowSize: spot.glowSize,
+    glowStrength: spot.glowStrength,
+    haloInnerWidth: spot.haloInnerWidth,
+    haloOuterWidth: spot.haloOuterWidth,
+    haloRadius: spot.haloRadius,
+    haloStrength: spot.haloStrength,
+    lightColor: colorVectorFromHex(spot.lightColor),
+    mode: spotColorModeValue(spot.colorMode),
+    radius: Math.max(0.0001, spot.angularRadius),
+    stops: sortedGradientStops(spot),
+  };
+}
+
+function createSpotUniformNodes(bindings: SpotLayerShaderBinding[]) {
+  return bindings.map((binding): SpotUniformNodes => {
+    const values = spotShaderValues(binding.layer.params);
+
+    return {
+      brightness: uniform(values.brightness),
+      centerDirection: uniform(values.centerDirection),
+      coreRadius: uniform(values.coreRadius),
+      coreSoftness: uniform(values.coreSoftness),
+      dispersion: uniform(values.dispersion),
+      dogSpread: uniform(values.dogSpread),
+      dogStrength: uniform(values.dogStrength),
+      dogStretch: uniform(values.dogStretch),
+      glareSize: uniform(values.glareSize),
+      glareStrength: uniform(values.glareStrength),
+      glowSize: uniform(values.glowSize),
+      glowStrength: uniform(values.glowStrength),
+      haloInnerWidth: uniform(values.haloInnerWidth),
+      haloOuterWidth: uniform(values.haloOuterWidth),
+      haloRadius: uniform(values.haloRadius),
+      haloStrength: uniform(values.haloStrength),
+      layerId: binding.layer.id,
+      lightColor: uniform(values.lightColor),
+      mode: uniform(values.mode),
+      radius: uniform(values.radius),
+      stops: Array.from({ length: binding.stopCount }, (_, stopIndex) => {
+        const stop = values.stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
+
+        return {
+          color: uniform(colorVectorFromStop(stop)),
+          midpoint: uniform(stop.midpoint),
+          t: uniform(stop.t),
+        };
+      }),
+    };
+  });
+}
+
+function applySpotLayerParamsToUniformNodes(
+  uniforms: SpotUniformNodes[],
+  layer: Extract<SkyboxManifestLayer, { type: "spot" }>
+) {
+  const spotUniforms = uniforms.find((nextUniforms) => nextUniforms.layerId === layer.id);
+
+  if (!spotUniforms) {
+    return;
+  }
+
+  const values = spotShaderValues(layer.params);
+
+  (spotUniforms.brightness as any).value = values.brightness;
+  (spotUniforms.centerDirection as any).value.copy(values.centerDirection);
+  (spotUniforms.coreRadius as any).value = values.coreRadius;
+  (spotUniforms.coreSoftness as any).value = values.coreSoftness;
+  (spotUniforms.dispersion as any).value = values.dispersion;
+  (spotUniforms.dogSpread as any).value = values.dogSpread;
+  (spotUniforms.dogStrength as any).value = values.dogStrength;
+  (spotUniforms.dogStretch as any).value = values.dogStretch;
+  (spotUniforms.glareSize as any).value = values.glareSize;
+  (spotUniforms.glareStrength as any).value = values.glareStrength;
+  (spotUniforms.glowSize as any).value = values.glowSize;
+  (spotUniforms.glowStrength as any).value = values.glowStrength;
+  (spotUniforms.haloInnerWidth as any).value = values.haloInnerWidth;
+  (spotUniforms.haloOuterWidth as any).value = values.haloOuterWidth;
+  (spotUniforms.haloRadius as any).value = values.haloRadius;
+  (spotUniforms.haloStrength as any).value = values.haloStrength;
+  (spotUniforms.lightColor as any).value.copy(values.lightColor);
+  (spotUniforms.mode as any).value = values.mode;
+  (spotUniforms.radius as any).value = values.radius;
+  spotUniforms.stops.forEach((stopUniforms, stopIndex) => {
+    const stop = values.stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
+
+    (stopUniforms.color as any).value.copy(colorVectorFromStop(stop));
+    (stopUniforms.midpoint as any).value = stop.midpoint;
+    (stopUniforms.t as any).value = stop.t;
+  });
+}
+
+function spotShaderUniforms(bindings: SpotLayerShaderBinding[]) {
+  return Object.fromEntries(
+    bindings.flatMap((binding) => {
+      const values = spotShaderValues(binding.layer.params);
+
+      return [
+        [`${binding.parameterPrefix}CenterDirection`, { value: values.centerDirection }],
+        [`${binding.parameterPrefix}Radius`, { value: values.radius }],
+        [`${binding.parameterPrefix}Mode`, { value: values.mode }],
+        [`${binding.parameterPrefix}LightColor`, { value: values.lightColor }],
+        [`${binding.parameterPrefix}Brightness`, { value: values.brightness }],
+        [`${binding.parameterPrefix}CoreRadius`, { value: values.coreRadius }],
+        [`${binding.parameterPrefix}CoreSoftness`, { value: values.coreSoftness }],
+        [`${binding.parameterPrefix}Dispersion`, { value: values.dispersion }],
+        [`${binding.parameterPrefix}DogSpread`, { value: values.dogSpread }],
+        [`${binding.parameterPrefix}DogStrength`, { value: values.dogStrength }],
+        [`${binding.parameterPrefix}DogStretch`, { value: values.dogStretch }],
+        [`${binding.parameterPrefix}GlareSize`, { value: values.glareSize }],
+        [`${binding.parameterPrefix}GlareStrength`, { value: values.glareStrength }],
+        [`${binding.parameterPrefix}GlowSize`, { value: values.glowSize }],
+        [`${binding.parameterPrefix}GlowStrength`, { value: values.glowStrength }],
+        [`${binding.parameterPrefix}HaloInnerWidth`, { value: values.haloInnerWidth }],
+        [`${binding.parameterPrefix}HaloOuterWidth`, { value: values.haloOuterWidth }],
+        [`${binding.parameterPrefix}HaloRadius`, { value: values.haloRadius }],
+        [`${binding.parameterPrefix}HaloStrength`, { value: values.haloStrength }],
+        ...Array.from({ length: binding.stopCount }, (_, stopIndex) => {
+          const stop = values.stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
+
+          return [
+            [`${binding.parameterPrefix}StopColor${stopIndex}`, { value: colorVectorFromStop(stop) }],
+            [`${binding.parameterPrefix}StopMidpoint${stopIndex}`, { value: stop.midpoint }],
+            [`${binding.parameterPrefix}StopT${stopIndex}`, { value: stop.t }],
+          ];
+        }).flat(),
+      ];
+    })
+  );
+}
+
+function applySpotLayerParamsToShaderUniforms(
+  material: THREE.ShaderMaterial,
+  layer: Extract<SkyboxManifestLayer, { type: "spot" }>,
+  bindings: SpotLayerShaderBinding[]
+) {
+  const binding = bindings.find((nextBinding) => nextBinding.layer.id === layer.id);
+
+  if (!binding) {
+    return;
+  }
+
+  const values = spotShaderValues(layer.params);
+
+  material.uniforms[`${binding.parameterPrefix}CenterDirection`]?.value.copy(values.centerDirection);
+  if (material.uniforms[`${binding.parameterPrefix}Radius`]) {
+    material.uniforms[`${binding.parameterPrefix}Radius`].value = values.radius;
+  }
+  if (material.uniforms[`${binding.parameterPrefix}Mode`]) {
+    material.uniforms[`${binding.parameterPrefix}Mode`].value = values.mode;
+  }
+  material.uniforms[`${binding.parameterPrefix}LightColor`]?.value.copy(values.lightColor);
+  if (material.uniforms[`${binding.parameterPrefix}Brightness`]) {
+    material.uniforms[`${binding.parameterPrefix}Brightness`].value = values.brightness;
+  }
+  [
+    ["CoreRadius", values.coreRadius],
+    ["CoreSoftness", values.coreSoftness],
+    ["Dispersion", values.dispersion],
+    ["DogSpread", values.dogSpread],
+    ["DogStrength", values.dogStrength],
+    ["DogStretch", values.dogStretch],
+    ["GlareSize", values.glareSize],
+    ["GlareStrength", values.glareStrength],
+    ["GlowSize", values.glowSize],
+    ["GlowStrength", values.glowStrength],
+    ["HaloInnerWidth", values.haloInnerWidth],
+    ["HaloOuterWidth", values.haloOuterWidth],
+    ["HaloRadius", values.haloRadius],
+    ["HaloStrength", values.haloStrength],
+  ].forEach(([suffix, nextValue]) => {
+    if (material.uniforms[`${binding.parameterPrefix}${suffix}`]) {
+      material.uniforms[`${binding.parameterPrefix}${suffix}`].value = nextValue;
+    }
+  });
+  Array.from({ length: binding.stopCount }, (_, stopIndex) => {
+    const stop = values.stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
+
+    material.uniforms[`${binding.parameterPrefix}StopColor${stopIndex}`]?.value.copy(
+      colorVectorFromStop(stop)
+    );
+    if (material.uniforms[`${binding.parameterPrefix}StopMidpoint${stopIndex}`]) {
+      material.uniforms[`${binding.parameterPrefix}StopMidpoint${stopIndex}`].value = stop.midpoint;
+    }
+    if (material.uniforms[`${binding.parameterPrefix}StopT${stopIndex}`]) {
+      material.uniforms[`${binding.parameterPrefix}StopT${stopIndex}`].value = stop.t;
+    }
+  });
+}
+
 function forEachGradientLayer(
   nodes: SkyboxManifestNode[],
   callback: (layer: Extract<SkyboxManifestLayer, { type: "gradient" }>) => void
@@ -584,6 +826,26 @@ function forEachFieldGradientLayer(
   });
 }
 
+function forEachSpotLayer(
+  nodes: SkyboxManifestNode[],
+  callback: (layer: Extract<SkyboxManifestLayer, { type: "spot" }>) => void
+) {
+  nodes.forEach((node) => {
+    if (!node.enabled) {
+      return;
+    }
+
+    if (node.type === "group") {
+      forEachSpotLayer(node.children, callback);
+      return;
+    }
+
+    if (node.type === "spot") {
+      callback(node);
+    }
+  });
+}
+
 function attachGradientUpdater(
   material: RuntimeMaterial,
   updater: (manifest: SkyboxManifestV2) => void
@@ -596,6 +858,13 @@ function attachFieldGradientUpdater(
   updater: (manifest: SkyboxManifestV2) => void
 ) {
   material.userData.applyFieldGradientLayerParams = updater;
+}
+
+function attachSpotUpdater(
+  material: RuntimeMaterial,
+  updater: (manifest: SkyboxManifestV2) => void
+) {
+  material.userData.applySpotLayerParams = updater;
 }
 
 function resolveGeometryOptions(options?: SkyboxGeometryOptions): SkyboxGeometryOptions {
@@ -792,6 +1061,38 @@ function collectImageLayerBindings(nodes: SkyboxManifestNode[]) {
   return bindings;
 }
 
+function collectSpotLayerBindings(nodes: SkyboxManifestNode[]) {
+  const bindings: SpotLayerShaderBinding[] = [];
+
+  function collect(nextNodes: SkyboxManifestNode[]) {
+    nextNodes.forEach((node) => {
+      if (!node.enabled) {
+        return;
+      }
+
+      if (node.type === "group") {
+        collect(node.children);
+        return;
+      }
+
+      if (node.type === "spot") {
+        const index = bindings.length;
+
+        bindings.push({
+          index,
+          layer: node,
+          parameterPrefix: `spotLayer${index}`,
+          stopCount: node.params.stops.length,
+        });
+      }
+    });
+  }
+
+  collect(nodes);
+
+  return bindings;
+}
+
 function createGradientBindingMap(bindings: GradientLayerShaderBinding[]) {
   return new Map(bindings.map((binding) => [binding.layer.id, binding]));
 }
@@ -801,6 +1102,10 @@ function createFieldGradientBindingMap(bindings: FieldGradientLayerShaderBinding
 }
 
 function createImageBindingMap(bindings: ImageLayerShaderBinding[]) {
+  return new Map(bindings.map((binding) => [binding.layer.id, binding]));
+}
+
+function createSpotBindingMap(bindings: SpotLayerShaderBinding[]) {
   return new Map(bindings.map((binding) => [binding.layer.id, binding]));
 }
 
@@ -1098,12 +1403,122 @@ function fieldGradientSampleExpression(binding: FieldGradientLayerShaderBinding,
   }`;
 }
 
+function spotGradientSampleExpression(binding: SpotLayerShaderBinding, language: ShaderLanguage) {
+  const declare = language === "wgsl" ? "let" : "float";
+  const branches = Array.from({ length: Math.max(0, binding.stopCount - 1) }, (_, index) => {
+    const currentStopT = `${binding.parameterPrefix}StopT${index}`;
+    const nextStopT = `${binding.parameterPrefix}StopT${index + 1}`;
+    const localT = `spotLocalT${index}`;
+    const segmentMidpoint = `spotSegmentMidpoint${index}`;
+    const midpointT = `spotMidpointT${index}`;
+    const midpointUniform = `${binding.parameterPrefix}StopMidpoint${index}`;
+    const lowerMidpoint = `${localT} / max(${segmentMidpoint} * 2.0, 0.00001)`;
+    const upperMidpoint = `0.5 + (${localT} - ${segmentMidpoint}) / max((1.0 - ${segmentMidpoint}) * 2.0, 0.00001)`;
+    const midpointExpression = language === "wgsl"
+      ? `select(${upperMidpoint}, ${lowerMidpoint}, ${localT} <= ${segmentMidpoint})`
+      : `(${localT} <= ${segmentMidpoint} ? ${lowerMidpoint} : ${upperMidpoint})`;
+    const declarationSuffix = language === "wgsl" ? ": f32" : "";
+    const keyword = index === 0 ? "if" : "else if";
+
+    return `${keyword} (spotT <= ${nextStopT}) {
+        ${declare} ${localT}${declarationSuffix} = clamp((spotT - ${currentStopT}) / max(${nextStopT} - ${currentStopT}, 0.00001), 0.0, 1.0);
+        ${declare} ${segmentMidpoint}${declarationSuffix} = clamp(${midpointUniform}, 0.01, 0.99);
+        ${declare} ${midpointT}${declarationSuffix} = ${midpointExpression};
+        effectColor = mix(${binding.parameterPrefix}StopColor${index}, ${binding.parameterPrefix}StopColor${index + 1}, ${midpointT});
+      }`;
+  });
+  const lastStopIndex = Math.max(0, binding.stopCount - 1);
+
+  if (binding.stopCount === 0) {
+    return "";
+  }
+
+  return `if (spotT <= 1.0) {
+      ${branches.join("\n")}
+      ${branches.length > 0 ? "else" : ""} {
+        effectColor = ${binding.parameterPrefix}StopColor${lastStopIndex};
+      }
+    }`;
+}
+
+function spotSampleExpression(binding: SpotLayerShaderBinding, language: ShaderLanguage) {
+  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
+  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
+  const declare = language === "wgsl" ? "let" : "float";
+  const colorModeCondition = `${binding.parameterPrefix}Mode > 0.5`;
+  const gradientBranch = spotGradientSampleExpression(binding, language);
+
+  return `{
+    ${language === "wgsl" ? "let" : "vec3"} spotCenter = normalize(${binding.parameterPrefix}CenterDirection);
+    ${declare} spotDot = clamp(dot(normalize(direction), spotCenter), -1.0, 1.0);
+    ${declare} spotT = acos(spotDot) / max(${binding.parameterPrefix}Radius, 0.0001);
+    if (${colorModeCondition}) {
+      ${gradientBranch || `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`}
+    } else {
+      ${language === "wgsl" ? "let" : "vec3"} spotTangentX = normalize(cross(${vec3Type}(0.0, 1.0, 0.0), spotCenter));
+      ${language === "wgsl" ? "let" : "vec3"} spotTangentY = normalize(cross(spotCenter, spotTangentX));
+      ${declare} spotDenom = max(dot(normalize(direction), spotCenter), 0.000001);
+      ${declare} spotLocalX = dot(normalize(direction), spotTangentX) / spotDenom / max(${binding.parameterPrefix}Radius, 0.0001);
+      ${declare} spotLocalY = dot(normalize(direction), spotTangentY) / spotDenom / max(${binding.parameterPrefix}Radius, 0.0001);
+      ${declare} spotD = length(${language === "wgsl" ? "vec2<f32>" : "vec2"}(spotLocalX, spotLocalY));
+
+      ${declare} spotCore = pow(clamp(1.0 - spotD / ${binding.parameterPrefix}CoreRadius, 0.0, 1.0), ${binding.parameterPrefix}CoreSoftness);
+      ${declare} spotGlow = pow(clamp(1.0 - spotD / ${binding.parameterPrefix}GlowSize, 0.0, 1.0), 2.0) * ${binding.parameterPrefix}GlowStrength;
+      ${declare} spotGlare = pow(clamp(1.0 - spotD / ${binding.parameterPrefix}GlareSize, 0.0, 1.0), 1.15) * ${binding.parameterPrefix}GlareStrength;
+      ${declare} spotMonoLight = (spotCore + spotGlow + spotGlare) * ${binding.parameterPrefix}Brightness;
+      ${mutableDeclaration("spotColor", vec3Type, `${binding.parameterPrefix}LightColor * spotMonoLight + ${vec3Type}(max(spotMonoLight - 1.0, 0.0))`, language)}
+
+      ${declare} spotHaloInner = max(${binding.parameterPrefix}HaloInnerWidth, 0.0001);
+      ${declare} spotHaloOuter = max(${binding.parameterPrefix}HaloOuterWidth, 0.0001);
+      ${declare} spotHaloDelta = spotD - ${binding.parameterPrefix}HaloRadius;
+      ${declare} spotHaloWidth = ${language === "wgsl" ? "select(spotHaloOuter, spotHaloInner, spotHaloDelta < 0.0)" : "(spotHaloDelta < 0.0 ? spotHaloInner : spotHaloOuter)"};
+      ${declare} spotHaloEnvelope = exp(-pow(spotHaloDelta / spotHaloWidth, 2.0));
+      ${declare} spotHaloT = clamp((spotD - (${binding.parameterPrefix}HaloRadius - spotHaloInner)) / (spotHaloInner + spotHaloOuter), 0.0, 1.0);
+      ${mutableDeclaration("spotSpectrum", vec3Type, `${vec3Type}(1.0, 0.12, 0.05)`, language)}
+      spotSpectrum = mix(spotSpectrum, ${vec3Type}(1.0, 0.55, 0.10), smoothstep(0.00, 0.28, spotHaloT));
+      spotSpectrum = mix(spotSpectrum, ${vec3Type}(1.0, 0.93, 0.60), smoothstep(0.22, 0.45, spotHaloT));
+      spotSpectrum = mix(spotSpectrum, ${vec3Type}(1.0), smoothstep(0.42, 0.60, spotHaloT));
+      spotSpectrum = mix(spotSpectrum, ${vec3Type}(0.55, 0.80, 1.0), smoothstep(0.62, 0.85, spotHaloT));
+      spotSpectrum = mix(spotSpectrum, ${vec3Type}(0.35, 0.50, 1.0), smoothstep(0.85, 1.00, spotHaloT));
+      ${language === "wgsl" ? "let" : "vec3"} spotHaloLayerColor = mix(${vec3Type}(1.0), spotSpectrum, ${binding.parameterPrefix}Dispersion);
+      ${language === "wgsl" ? "let" : "vec3"} spotHaloTinted = spotHaloLayerColor * mix(${vec3Type}(1.0), ${binding.parameterPrefix}LightColor, 0.82);
+      ${language === "wgsl" ? "let" : "vec3"} spotHaloColor = mix(${binding.parameterPrefix}LightColor, spotHaloTinted, 0.82);
+      ${declare} spotHaloLight = spotHaloEnvelope * ${binding.parameterPrefix}HaloStrength * ${binding.parameterPrefix}Brightness;
+      spotColor += spotHaloColor * spotHaloLight + ${vec3Type}(max(spotHaloLight - 1.2, 0.0) * 0.22);
+
+      ${declare} spotAxisDistance = abs(spotLocalY);
+      ${declare} spotDogX = abs(spotLocalX);
+      ${declare} spotDogBody = exp(-pow((spotDogX - ${binding.parameterPrefix}HaloRadius) / max(${binding.parameterPrefix}DogSpread, 0.0001), 2.0)) *
+        exp(-pow(spotAxisDistance / max(${binding.parameterPrefix}DogSpread * 0.72, 0.0001), 2.0));
+      ${declare} spotDogTail = smoothstep(${binding.parameterPrefix}HaloRadius, ${binding.parameterPrefix}HaloRadius + max(${binding.parameterPrefix}DogStretch, 0.0001), spotDogX) *
+        (1.0 - smoothstep(${binding.parameterPrefix}HaloRadius + max(${binding.parameterPrefix}DogStretch, 0.0001), ${binding.parameterPrefix}HaloRadius + max(${binding.parameterPrefix}DogStretch * 2.2, 0.0001), spotDogX)) *
+        exp(-pow(spotAxisDistance / max(${binding.parameterPrefix}DogSpread * 0.9, 0.0001), 2.0));
+      ${declare} spotDogT = clamp((spotDogX - (${binding.parameterPrefix}HaloRadius - ${binding.parameterPrefix}DogSpread * 1.4)) / max(${binding.parameterPrefix}DogSpread * 3.5, 0.0001), 0.0, 1.0);
+      ${mutableDeclaration("spotDogSpectrum", vec3Type, `${vec3Type}(1.0, 0.12, 0.05)`, language)}
+      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(1.0, 0.55, 0.10), smoothstep(0.00, 0.28, spotDogT));
+      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(1.0, 0.93, 0.60), smoothstep(0.22, 0.45, spotDogT));
+      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(1.0), smoothstep(0.42, 0.60, spotDogT));
+      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(0.55, 0.80, 1.0), smoothstep(0.62, 0.85, spotDogT));
+      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(0.35, 0.50, 1.0), smoothstep(0.85, 1.00, spotDogT));
+      ${language === "wgsl" ? "let" : "vec3"} spotDogLayerColor = mix(${vec3Type}(1.0), spotDogSpectrum, ${binding.parameterPrefix}Dispersion);
+      ${language === "wgsl" ? "let" : "vec3"} spotDogTinted = spotDogLayerColor * mix(${vec3Type}(1.0), ${binding.parameterPrefix}LightColor, 0.82);
+      ${language === "wgsl" ? "let" : "vec3"} spotDogColor = mix(${binding.parameterPrefix}LightColor, spotDogTinted, 0.82);
+      ${declare} spotDogLight = (spotDogBody + spotDogTail * 0.28) * ${binding.parameterPrefix}DogStrength * ${binding.parameterPrefix}Brightness;
+      spotColor += spotDogColor * spotDogLight + ${vec3Type}(max(spotDogLight - 1.1, 0.0) * 0.18);
+
+      ${declare} spotAlpha = clamp(max(max(spotColor.r, spotColor.g), spotColor.b), 0.0, 1.0);
+      effectColor = ${vec4Type}(spotColor / max(spotAlpha, 0.00001), spotAlpha);
+    }
+  }`;
+}
+
 function effectExpression(
   layer: SkyboxManifestLayer,
   language: ShaderLanguage,
   gradientBindings: Map<string, GradientLayerShaderBinding>,
   fieldGradientBindings: Map<string, FieldGradientLayerShaderBinding>,
-  imageBindings: Map<string, ImageLayerShaderBinding>
+  imageBindings: Map<string, ImageLayerShaderBinding>,
+  spotBindings: Map<string, SpotLayerShaderBinding>
 ) {
   if (layer.type === "gradient") {
     const binding = gradientBindings.get(layer.id);
@@ -1118,6 +1533,14 @@ function effectExpression(
 
     return binding
       ? fieldGradientSampleExpression(binding, language)
+      : `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+  }
+
+  if (layer.type === "spot") {
+    const binding = spotBindings.get(layer.id);
+
+    return binding
+      ? spotSampleExpression(binding, language)
       : `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
   }
 
@@ -1253,6 +1676,7 @@ function composeNodesExpression(
   gradientBindings: Map<string, GradientLayerShaderBinding>,
   fieldGradientBindings: Map<string, FieldGradientLayerShaderBinding>,
   imageBindings: Map<string, ImageLayerShaderBinding>,
+  spotBindings: Map<string, SpotLayerShaderBinding>,
   depth = 0
 ): string {
   const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
@@ -1271,7 +1695,8 @@ function composeNodesExpression(
               language,
               gradientBindings,
               fieldGradientBindings,
-              imageBindings
+              imageBindings,
+              spotBindings
             );
       const groupColorName = `groupColor${depth}_${index}`;
       const groupBlock =
@@ -1286,6 +1711,7 @@ function composeNodesExpression(
             gradientBindings,
             fieldGradientBindings,
             imageBindings,
+            spotBindings,
             depth + 1
           )}
           ${groupColorName} = composedColor;
@@ -1319,17 +1745,20 @@ function createSkyboxFunction(
   manifest: SkyboxManifestV2,
   gradientBindings: GradientLayerShaderBinding[],
   fieldGradientBindings: FieldGradientLayerShaderBinding[],
-  imageBindings: ImageLayerShaderBinding[]
+  imageBindings: ImageLayerShaderBinding[],
+  spotBindings: SpotLayerShaderBinding[]
 ) {
   const gradientBindingMap = createGradientBindingMap(gradientBindings);
   const fieldGradientBindingMap = createFieldGradientBindingMap(fieldGradientBindings);
   const imageBindingMap = createImageBindingMap(imageBindings);
+  const spotBindingMap = createSpotBindingMap(spotBindings);
   const layerBlocks = composeNodesExpression(
     manifest.nodes,
     "wgsl",
     gradientBindingMap,
     fieldGradientBindingMap,
-    imageBindingMap
+    imageBindingMap,
+    spotBindingMap
   );
   const gradientParameters = gradientBindings
     .flatMap((binding) => [
@@ -1367,10 +1796,60 @@ function createSkyboxFunction(
     .map((binding) => `,
       ${binding.parameterName}: vec4<f32>`)
     .join("");
+  const spotParameters = spotBindings
+    .flatMap((binding) => [
+      `,
+      ${binding.parameterPrefix}CenterDirection: vec3<f32>`,
+      `,
+      ${binding.parameterPrefix}Radius: f32`,
+      `,
+      ${binding.parameterPrefix}Mode: f32`,
+      `,
+      ${binding.parameterPrefix}LightColor: vec3<f32>`,
+      `,
+      ${binding.parameterPrefix}Brightness: f32`,
+      `,
+      ${binding.parameterPrefix}CoreRadius: f32`,
+      `,
+      ${binding.parameterPrefix}CoreSoftness: f32`,
+      `,
+      ${binding.parameterPrefix}Dispersion: f32`,
+      `,
+      ${binding.parameterPrefix}DogSpread: f32`,
+      `,
+      ${binding.parameterPrefix}DogStrength: f32`,
+      `,
+      ${binding.parameterPrefix}DogStretch: f32`,
+      `,
+      ${binding.parameterPrefix}GlareSize: f32`,
+      `,
+      ${binding.parameterPrefix}GlareStrength: f32`,
+      `,
+      ${binding.parameterPrefix}GlowSize: f32`,
+      `,
+      ${binding.parameterPrefix}GlowStrength: f32`,
+      `,
+      ${binding.parameterPrefix}HaloInnerWidth: f32`,
+      `,
+      ${binding.parameterPrefix}HaloOuterWidth: f32`,
+      `,
+      ${binding.parameterPrefix}HaloRadius: f32`,
+      `,
+      ${binding.parameterPrefix}HaloStrength: f32`,
+      ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
+        `,
+      ${binding.parameterPrefix}StopColor${stopIndex}: vec4<f32>`,
+        `,
+      ${binding.parameterPrefix}StopMidpoint${stopIndex}: f32`,
+        `,
+      ${binding.parameterPrefix}StopT${stopIndex}: f32`,
+      ]).flat(),
+    ])
+    .join("");
 
   return wgslFn(`
     fn skyboxStudioSample(
-      direction: vec3<f32>${gradientParameters}${fieldGradientParameters}${imageParameters}
+      direction: vec3<f32>${gradientParameters}${fieldGradientParameters}${imageParameters}${spotParameters}
     ) -> vec4<f32> {
       var composedColor = vec3<f32>(0.0);
       ${layerBlocks}
@@ -1428,9 +1907,17 @@ function createWebGpuMaterial(
   const gradientBindings = collectGradientLayerBindings(manifest.nodes);
   const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
   const imageBindings = collectImageLayerBindings(manifest.nodes);
-  const skyboxSample = createSkyboxFunction(manifest, gradientBindings, fieldGradientBindings, imageBindings);
+  const spotBindings = collectSpotLayerBindings(manifest.nodes);
+  const skyboxSample = createSkyboxFunction(
+    manifest,
+    gradientBindings,
+    fieldGradientBindings,
+    imageBindings,
+    spotBindings
+  );
   const gradientUniforms = createGradientUniformNodes(gradientBindings);
   const fieldGradientUniforms = createFieldGradientUniformNodes(fieldGradientBindings);
+  const spotUniforms = createSpotUniformNodes(spotBindings);
   const imageEditorUniforms = editorPresentationEnabled
     ? createImageEditorUniformNodes(imageBindings, editorImageState)
     : null;
@@ -1486,6 +1973,38 @@ function createWebGpuMaterial(
         ];
       })
     ),
+    ...Object.fromEntries(
+      spotBindings.flatMap((binding) => {
+        const spotUniform = spotUniforms[binding.index];
+
+        return [
+          [`${binding.parameterPrefix}CenterDirection`, spotUniform.centerDirection],
+          [`${binding.parameterPrefix}Radius`, spotUniform.radius],
+          [`${binding.parameterPrefix}Mode`, spotUniform.mode],
+          [`${binding.parameterPrefix}LightColor`, spotUniform.lightColor],
+          [`${binding.parameterPrefix}Brightness`, spotUniform.brightness],
+          [`${binding.parameterPrefix}CoreRadius`, spotUniform.coreRadius],
+          [`${binding.parameterPrefix}CoreSoftness`, spotUniform.coreSoftness],
+          [`${binding.parameterPrefix}Dispersion`, spotUniform.dispersion],
+          [`${binding.parameterPrefix}DogSpread`, spotUniform.dogSpread],
+          [`${binding.parameterPrefix}DogStrength`, spotUniform.dogStrength],
+          [`${binding.parameterPrefix}DogStretch`, spotUniform.dogStretch],
+          [`${binding.parameterPrefix}GlareSize`, spotUniform.glareSize],
+          [`${binding.parameterPrefix}GlareStrength`, spotUniform.glareStrength],
+          [`${binding.parameterPrefix}GlowSize`, spotUniform.glowSize],
+          [`${binding.parameterPrefix}GlowStrength`, spotUniform.glowStrength],
+          [`${binding.parameterPrefix}HaloInnerWidth`, spotUniform.haloInnerWidth],
+          [`${binding.parameterPrefix}HaloOuterWidth`, spotUniform.haloOuterWidth],
+          [`${binding.parameterPrefix}HaloRadius`, spotUniform.haloRadius],
+          [`${binding.parameterPrefix}HaloStrength`, spotUniform.haloStrength],
+          ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
+            [`${binding.parameterPrefix}StopColor${stopIndex}`, spotUniform.stops[stopIndex].color],
+            [`${binding.parameterPrefix}StopMidpoint${stopIndex}`, spotUniform.stops[stopIndex].midpoint],
+            [`${binding.parameterPrefix}StopT${stopIndex}`, spotUniform.stops[stopIndex].t],
+          ]).flat(),
+        ];
+      })
+    ),
     ...imageSampleNodes.sampleNodes,
   }) as any;
   if (imageEditorUniforms) {
@@ -1518,6 +2037,11 @@ function createWebGpuMaterial(
   attachFieldGradientUpdater(material, (nextManifest) =>
     forEachFieldGradientLayer(nextManifest.nodes, (layer) =>
       applyFieldGradientLayerParamsToUniformNodes(fieldGradientUniforms, layer)
+    )
+  );
+  attachSpotUpdater(material, (nextManifest) =>
+    forEachSpotLayer(nextManifest.nodes, (layer) =>
+      applySpotLayerParamsToUniformNodes(spotUniforms, layer)
     )
   );
   attachImagePlacementUpdater(material, (layerId, placement) =>
@@ -1566,20 +2090,24 @@ function createWebGlMaterial(
   const gradientBindings = collectGradientLayerBindings(manifest.nodes);
   const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
   const imageBindings = collectImageLayerBindings(manifest.nodes);
+  const spotBindings = collectSpotLayerBindings(manifest.nodes);
   const gradientBindingMap = createGradientBindingMap(gradientBindings);
   const fieldGradientBindingMap = createFieldGradientBindingMap(fieldGradientBindings);
   const imageBindingMap = createImageBindingMap(imageBindings);
+  const spotBindingMap = createSpotBindingMap(spotBindings);
   const layerBlocks = composeNodesExpression(
     manifest.nodes,
     "glsl",
     gradientBindingMap,
     fieldGradientBindingMap,
-    imageBindingMap
+    imageBindingMap,
+    spotBindingMap
   );
   const material = new THREE.ShaderMaterial({
     uniforms: {
       ...gradientShaderUniforms(gradientBindings),
       ...fieldGradientShaderUniforms(fieldGradientBindings),
+      ...spotShaderUniforms(spotBindings),
       ...(editorPresentationEnabled ? imageEditorShaderUniforms(imageBindings, editorImageState) : {}),
       ...imagePlacementShaderUniforms(imageBindings),
       ...imageTextureUniforms(imageBindings, imageTextures),
@@ -1612,6 +2140,30 @@ function createWebGlMaterial(
       uniform float ${binding.parameterPrefix}Power;
       ${Array.from({ length: binding.anchorCount }, (_, anchorIndex) => `uniform vec3 ${binding.parameterPrefix}AnchorDirection${anchorIndex};
       uniform vec3 ${binding.parameterPrefix}AnchorColor${anchorIndex};`).join("\n")}`)
+        .join("\n")}
+      ${spotBindings
+        .map((binding) => `uniform vec3 ${binding.parameterPrefix}CenterDirection;
+      uniform float ${binding.parameterPrefix}Radius;
+      uniform float ${binding.parameterPrefix}Mode;
+      uniform vec3 ${binding.parameterPrefix}LightColor;
+      uniform float ${binding.parameterPrefix}Brightness;
+      uniform float ${binding.parameterPrefix}CoreRadius;
+      uniform float ${binding.parameterPrefix}CoreSoftness;
+      uniform float ${binding.parameterPrefix}Dispersion;
+      uniform float ${binding.parameterPrefix}DogSpread;
+      uniform float ${binding.parameterPrefix}DogStrength;
+      uniform float ${binding.parameterPrefix}DogStretch;
+      uniform float ${binding.parameterPrefix}GlareSize;
+      uniform float ${binding.parameterPrefix}GlareStrength;
+      uniform float ${binding.parameterPrefix}GlowSize;
+      uniform float ${binding.parameterPrefix}GlowStrength;
+      uniform float ${binding.parameterPrefix}HaloInnerWidth;
+      uniform float ${binding.parameterPrefix}HaloOuterWidth;
+      uniform float ${binding.parameterPrefix}HaloRadius;
+      uniform float ${binding.parameterPrefix}HaloStrength;
+      ${Array.from({ length: binding.stopCount }, (_, stopIndex) => `uniform vec4 ${binding.parameterPrefix}StopColor${stopIndex};
+      uniform float ${binding.parameterPrefix}StopMidpoint${stopIndex};
+      uniform float ${binding.parameterPrefix}StopT${stopIndex};`).join("\n")}`)
         .join("\n")}
       ${imageBindings
         .map(
@@ -1745,6 +2297,11 @@ function createWebGlMaterial(
   attachFieldGradientUpdater(material, (nextManifest) =>
     forEachFieldGradientLayer(nextManifest.nodes, (layer) =>
       applyFieldGradientLayerParamsToShaderUniforms(material, layer, fieldGradientBindings)
+    )
+  );
+  attachSpotUpdater(material, (nextManifest) =>
+    forEachSpotLayer(nextManifest.nodes, (layer) =>
+      applySpotLayerParamsToShaderUniforms(material, layer, spotBindings)
     )
   );
   attachImagePlacementUpdater(material, (layerId, placement) =>
@@ -1896,6 +2453,17 @@ function createMaterialTopologyKey(
       };
     }
 
+    if (node.type === "spot") {
+      return {
+        blendMode: node.blendMode,
+        enabled: node.enabled,
+        id: node.id,
+        opacity: node.opacity,
+        stopCount: node.params.stops.length,
+        type: node.type,
+      };
+    }
+
     return {
       anchorCount: node.params.anchors.length,
       blendMode: node.blendMode,
@@ -2038,6 +2606,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   private applyLiveManifestUniformUpdates() {
     this.material.userData.applyGradientLayerParams?.(this.#manifest);
     this.material.userData.applyFieldGradientLayerParams?.(this.#manifest);
+    this.material.userData.applySpotLayerParams?.(this.#manifest);
     this.material.userData.applyImageTextures?.(this.#imageTextures);
     this.material.userData.applyEditorImageState?.(this.#editorImageState);
     this.#imagePlacementOverrides.forEach((placement, layerId) => {

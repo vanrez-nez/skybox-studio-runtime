@@ -5,6 +5,7 @@ import {
   bakeSkyboxImageData,
   blendChannel,
   createAngularDecalPlacement,
+  createDefaultSpotParams,
   evaluateSkyboxDirection,
   migrateManifestToV2,
   normalizeImagePlacement,
@@ -16,6 +17,7 @@ import {
   rotationFromPlacement,
   scaleFromPlacement,
   Skybox,
+  spotFromRadiusScale,
   type SkyboxManifestV1,
   type SkyboxManifestV2,
 } from "../index";
@@ -161,6 +163,49 @@ describe("runtime evaluator", () => {
     expect(color[0]).toBeCloseTo(0.5);
     expect(color[1]).toBeCloseTo(0.5);
     expect(color[2]).toBeCloseTo(0.5);
+  });
+
+  it("evaluates spot light color at the center and fades outside radius", () => {
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "spot",
+          name: "Spot",
+          opacity: 100,
+          params: {
+            ...createDefaultSpotParams(),
+            brightness: 1.5,
+            centerDirection: [0, 0, -1],
+            glow: 1,
+            halo: 0,
+            lightColor: "#ffffff",
+          },
+          type: "spot",
+        },
+      ],
+      version: 2,
+    };
+    const center = evaluateSkyboxDirection(manifest, [0, 0, -1]);
+    const outside = evaluateSkyboxDirection(manifest, [1, 0, 0]);
+
+    expect(center[0]).toBeGreaterThan(0.9);
+    expect(center[1]).toBeGreaterThan(0.9);
+    expect(center[2]).toBeGreaterThan(0.9);
+    expect(outside[0]).toBeCloseTo(0);
+    expect(outside[1]).toBeCloseTo(0);
+    expect(outside[2]).toBeCloseTo(0);
+  });
+
+  it("uses normalized spot radius scale against base radius", () => {
+    const spot = createDefaultSpotParams();
+    const scaledSpot = spotFromRadiusScale(spot, 0.5);
+
+    expect(scaledSpot.angularRadius).toBeCloseTo(spot.baseAngularRadius * 0.5);
+    expect(scaledSpot.baseAngularRadius).toBeCloseTo(spot.baseAngularRadius);
   });
 
   it("keeps gradient midpoint uniform updates on the live material path", () => {

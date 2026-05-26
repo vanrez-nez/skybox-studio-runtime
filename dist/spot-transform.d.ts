@@ -1,0 +1,10 @@
+import type { SkyboxSpotParams } from "./manifest";
+import { type Point2, type VectorTuple } from "./image-placement-transform";
+export declare const DEFAULT_SPOT_BASE_ANGULAR_RADIUS: number;
+export declare function createDefaultSpotParams(): SkyboxSpotParams;
+export declare function normalizeSpotParams(rawParams: unknown): SkyboxSpotParams;
+export declare function positionFromSpot(params: SkyboxSpotParams): Point2;
+export declare function spotFromPosition(params: SkyboxSpotParams, position: Point2): SkyboxSpotParams;
+export declare function radiusScaleFromSpot(params: SkyboxSpotParams): number;
+export declare function spotFromRadiusScale(params: SkyboxSpotParams, radiusScale: number): SkyboxSpotParams;
+export declare function spotContainsDirection(direction: VectorTuple, params: SkyboxSpotParams): boolean;
