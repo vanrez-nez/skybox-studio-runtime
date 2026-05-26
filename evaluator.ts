@@ -23,6 +23,7 @@ const TWO_PI = Math.PI * 2;
 type LinearStop = {
   alpha: number;
   color: Rgb;
+  midpoint: number;
   t: number;
 };
 
@@ -35,9 +36,18 @@ function prepareStops(stops: SkyboxGradientStop[]): LinearStop[] {
     .map((stop) => ({
       alpha: clamp(stop.opacity / 100),
       color: parseHexColor(stop.color),
+      midpoint: clamp((stop.midpoint ?? 50) / 100, 0.01, 0.99),
       t: clamp(stop.location / 100),
     }))
     .sort((firstStop, secondStop) => firstStop.t - secondStop.t);
+}
+
+function remapMidpoint(localT: number, midpoint: number) {
+  if (localT <= midpoint) {
+    return localT / Math.max(midpoint * 2, 0.00001);
+  }
+
+  return 0.5 + (localT - midpoint) / Math.max((1 - midpoint) * 2, 0.00001);
 }
 
 function sampleGradient(stops: LinearStop[], t: number): Rgba {
@@ -67,12 +77,13 @@ function sampleGradient(stops: LinearStop[], t: number): Rgba {
 
     const span = nextStop.t - currentStop.t;
     const localT = span <= 0 ? 0 : (clampedT - currentStop.t) / span;
+    const midpointT = remapMidpoint(localT, currentStop.midpoint);
 
     return [
-      mix(currentStop.color[0], nextStop.color[0], localT),
-      mix(currentStop.color[1], nextStop.color[1], localT),
-      mix(currentStop.color[2], nextStop.color[2], localT),
-      mix(currentStop.alpha, nextStop.alpha, localT),
+      mix(currentStop.color[0], nextStop.color[0], midpointT),
+      mix(currentStop.color[1], nextStop.color[1], midpointT),
+      mix(currentStop.color[2], nextStop.color[2], midpointT),
+      mix(currentStop.alpha, nextStop.alpha, midpointT),
     ];
   }
 

@@ -58,6 +58,7 @@ type GradientUniformNodes = {
   layerId: string;
   stops: Array<{
     color: ReturnType<typeof uniform>;
+    midpoint: ReturnType<typeof uniform>;
     t: ReturnType<typeof uniform>;
   }>;
 };
@@ -298,6 +299,7 @@ function sortedGradientStops(params: SkyboxGradientParams) {
   return [...params.stops]
     .map((stop) => ({
       color: stop.color,
+      midpoint: clamp((stop.midpoint ?? 50) / 100, 0.01, 0.99),
       opacity: clamp(stop.opacity / 100),
       t: clamp(stop.location / 100),
     }))
@@ -340,10 +342,11 @@ function createGradientUniformNodes(bindings: GradientLayerShaderBinding[]) {
       axis: uniform(gradientAxisFromRotation(binding.layer.params.rotation)),
       layerId: binding.layer.id,
       stops: Array.from({ length: binding.stopCount }, (_, stopIndex) => {
-        const stop = stops[stopIndex] ?? { color: "#000000", opacity: 0, t: 0 };
+        const stop = stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
 
         return {
           color: uniform(colorVectorFromStop(stop)),
+          midpoint: uniform(stop.midpoint),
           t: uniform(stop.t),
         };
       }),
@@ -365,9 +368,10 @@ function applyGradientLayerParamsToUniformNodes(
 
   (gradientUniforms.axis as any).value.copy(gradientAxisFromRotation(layer.params.rotation));
   gradientUniforms.stops.forEach((stopUniforms, stopIndex) => {
-    const stop = stops[stopIndex] ?? { color: "#000000", opacity: 0, t: 0 };
+    const stop = stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
 
     (stopUniforms.color as any).value.copy(colorVectorFromStop(stop));
+    (stopUniforms.midpoint as any).value = stop.midpoint;
     (stopUniforms.t as any).value = stop.t;
   });
 }
@@ -380,10 +384,11 @@ function gradientShaderUniforms(bindings: GradientLayerShaderBinding[]) {
       return [
         [`${binding.parameterPrefix}Axis`, { value: gradientAxisFromRotation(binding.layer.params.rotation) }],
         ...Array.from({ length: binding.stopCount }, (_, stopIndex) => {
-          const stop = stops[stopIndex] ?? { color: "#000000", opacity: 0, t: 0 };
+          const stop = stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
 
           return [
             [`${binding.parameterPrefix}StopColor${stopIndex}`, { value: colorVectorFromStop(stop) }],
+            [`${binding.parameterPrefix}StopMidpoint${stopIndex}`, { value: stop.midpoint }],
             [`${binding.parameterPrefix}StopT${stopIndex}`, { value: stop.t }],
           ];
         }).flat(),
@@ -409,7 +414,7 @@ function applyGradientLayerParamsToShaderUniforms(
     gradientAxisFromRotation(layer.params.rotation)
   );
   Array.from({ length: binding.stopCount }, (_, stopIndex) => {
-    const stop = stops[stopIndex] ?? { color: "#000000", opacity: 0, t: 0 };
+    const stop = stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
 
     material.uniforms[`${binding.parameterPrefix}StopColor${stopIndex}`]?.value.copy(
       colorVectorFromStop(stop)
@@ -417,6 +422,10 @@ function applyGradientLayerParamsToShaderUniforms(
 
     if (material.uniforms[`${binding.parameterPrefix}StopT${stopIndex}`]) {
       material.uniforms[`${binding.parameterPrefix}StopT${stopIndex}`].value = stop.t;
+    }
+
+    if (material.uniforms[`${binding.parameterPrefix}StopMidpoint${stopIndex}`]) {
+      material.uniforms[`${binding.parameterPrefix}StopMidpoint${stopIndex}`].value = stop.midpoint;
     }
   });
 }
@@ -996,6 +1005,7 @@ function updateImageTextureUniforms(
 function gradientSampleExpression(binding: GradientLayerShaderBinding, language: ShaderLanguage) {
   const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
   const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
+  const declare = language === "wgsl" ? "let" : "float";
 
   if (binding.stopCount === 0) {
     return `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
@@ -1004,11 +1014,23 @@ function gradientSampleExpression(binding: GradientLayerShaderBinding, language:
   const branches = Array.from({ length: Math.max(0, binding.stopCount - 1) }, (_, index) => {
     const currentStopT = `${binding.parameterPrefix}StopT${index}`;
     const nextStopT = `${binding.parameterPrefix}StopT${index + 1}`;
-    const localT = `clamp((gradientT - ${currentStopT}) / max(${nextStopT} - ${currentStopT}, 0.00001), 0.0, 1.0)`;
+    const localT = `localT${index}`;
+    const segmentMidpoint = `segmentMidpoint${index}`;
+    const midpointT = `midpointT${index}`;
+    const midpointUniform = `${binding.parameterPrefix}StopMidpoint${index}`;
+    const lowerMidpoint = `${localT} / max(${segmentMidpoint} * 2.0, 0.00001)`;
+    const upperMidpoint = `0.5 + (${localT} - ${segmentMidpoint}) / max((1.0 - ${segmentMidpoint}) * 2.0, 0.00001)`;
+    const midpointExpression = language === "wgsl"
+      ? `select(${upperMidpoint}, ${lowerMidpoint}, ${localT} <= ${segmentMidpoint})`
+      : `(${localT} <= ${segmentMidpoint} ? ${lowerMidpoint} : ${upperMidpoint})`;
+    const declarationSuffix = language === "wgsl" ? ": f32" : "";
     const keyword = index === 0 ? "if" : "else if";
 
     return `${keyword} (gradientT <= ${nextStopT}) {
-      effectColor = mix(${binding.parameterPrefix}StopColor${index}, ${binding.parameterPrefix}StopColor${index + 1}, ${localT});
+      ${declare} ${localT}${declarationSuffix} = clamp((gradientT - ${currentStopT}) / max(${nextStopT} - ${currentStopT}, 0.00001), 0.0, 1.0);
+      ${declare} ${segmentMidpoint}${declarationSuffix} = clamp(${midpointUniform}, 0.01, 0.99);
+      ${declare} ${midpointT}${declarationSuffix} = ${midpointExpression};
+      effectColor = mix(${binding.parameterPrefix}StopColor${index}, ${binding.parameterPrefix}StopColor${index + 1}, ${midpointT});
     }`;
   });
   const lastStopIndex = binding.stopCount - 1;
@@ -1317,6 +1339,8 @@ function createSkyboxFunction(
         `,
       ${binding.parameterPrefix}StopColor${stopIndex}: vec4<f32>`,
         `,
+      ${binding.parameterPrefix}StopMidpoint${stopIndex}: f32`,
+        `,
       ${binding.parameterPrefix}StopT${stopIndex}: f32`,
       ]).flat(),
     ])
@@ -1440,6 +1464,7 @@ function createWebGpuMaterial(
           [`${binding.parameterPrefix}Axis`, gradientUniform.axis],
           ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
             [`${binding.parameterPrefix}StopColor${stopIndex}`, gradientUniform.stops[stopIndex].color],
+            [`${binding.parameterPrefix}StopMidpoint${stopIndex}`, gradientUniform.stops[stopIndex].midpoint],
             [`${binding.parameterPrefix}StopT${stopIndex}`, gradientUniform.stops[stopIndex].t],
           ]).flat(),
         ];
@@ -1577,6 +1602,7 @@ function createWebGlMaterial(
       ${gradientBindings
         .map((binding) => `uniform vec3 ${binding.parameterPrefix}Axis;
       ${Array.from({ length: binding.stopCount }, (_, stopIndex) => `uniform vec4 ${binding.parameterPrefix}StopColor${stopIndex};
+      uniform float ${binding.parameterPrefix}StopMidpoint${stopIndex};
       uniform float ${binding.parameterPrefix}StopT${stopIndex};`).join("\n")}`)
         .join("\n")}
       ${fieldGradientBindings

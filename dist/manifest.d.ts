@@ -18,6 +18,7 @@ export type SkyboxBakeOptions = {
 export type SkyboxGradientStop = {
     color: string;
     location: number;
+    midpoint?: number;
     opacity: number;
 };
 export type SkyboxGradientParams = {

@@ -132,6 +132,124 @@ describe("runtime evaluator", () => {
     expect(blendChannel("overlay", 0.2, 0.8)).toBeCloseTo(blendChannel("hard-light", 0.8, 0.2));
   });
 
+  it("evaluates linear gradient midpoint interpolation", () => {
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "gradient",
+          name: "Gradient",
+          opacity: 100,
+          params: {
+            mode: "linear",
+            rotation: 0,
+            stops: [
+              { color: "#000000", location: 0, midpoint: 25, opacity: 100 },
+              { color: "#ffffff", location: 100, opacity: 100 },
+            ],
+          },
+          type: "gradient",
+        },
+      ],
+      version: 2,
+    };
+    const color = evaluateSkyboxDirection(manifest, [0, -0.5, -Math.sqrt(0.75)]);
+
+    expect(color[0]).toBeCloseTo(0.5);
+    expect(color[1]).toBeCloseTo(0.5);
+    expect(color[2]).toBeCloseTo(0.5);
+  });
+
+  it("keeps gradient midpoint uniform updates on the live material path", () => {
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "gradient",
+          name: "Gradient",
+          opacity: 100,
+          params: {
+            mode: "linear",
+            rotation: 0,
+            stops: [
+              { color: "#000000", location: 0, midpoint: 25, opacity: 100 },
+              { color: "#ffffff", location: 100, opacity: 100 },
+            ],
+          },
+          type: "gradient",
+        },
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(manifest)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    expect(material.fragmentShader).toContain("StopMidpoint0");
+    expect(material.uniforms.gradientLayer0StopMidpoint0.value).toBeCloseTo(0.25);
+
+    skybox.setManifest({
+      ...manifest,
+      nodes: [
+        {
+          ...manifest.nodes[0],
+          params: {
+            ...(manifest.nodes[0] as Extract<SkyboxManifestV2["nodes"][number], { type: "gradient" }>).params,
+            stops: [
+              { color: "#000000", location: 0, midpoint: 75, opacity: 100 },
+              { color: "#ffffff", location: 100, opacity: 100 },
+            ],
+          },
+        } as Extract<SkyboxManifestV2["nodes"][number], { type: "gradient" }>,
+      ],
+    });
+
+    expect(skybox.material).toBe(material);
+    expect(material.uniforms.gradientLayer0StopMidpoint0.value).toBeCloseTo(0.75);
+    skybox.dispose();
+  });
+
+  it("defaults legacy gradient midpoint uniforms to center", () => {
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest({
+        composition: { mode: "alpha-over", order: "bottom-to-top" },
+        geometry: { type: "box" },
+        nodes: [
+          {
+            blendMode: "normal",
+            enabled: true,
+            id: "gradient",
+            name: "Gradient",
+            opacity: 100,
+            params: {
+              mode: "linear",
+              rotation: 0,
+              stops: [
+                { color: "#000000", location: 0, opacity: 100 },
+                { color: "#ffffff", location: 100, opacity: 100 },
+              ],
+            },
+            type: "gradient",
+          },
+        ],
+        version: 2,
+      })
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    expect(material.uniforms.gradientLayer0StopMidpoint0.value).toBeCloseTo(0.5);
+    skybox.dispose();
+  });
+
   it("round-trips image placement position as yaw and elevation", () => {
     const placement = createAngularDecalPlacement({
       angularHeight: 0.25,
