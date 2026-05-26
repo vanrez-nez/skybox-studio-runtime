@@ -54,12 +54,6 @@ export type SkyboxImageParams = {
     src: string | null;
     width: number;
 };
-export type SkyboxSelectionDot = {
-    color: string;
-    direction: [number, number, number];
-    opacity: number;
-    radius: number;
-};
 export type SkyboxGradientLayer = {
     blendMode: SkyboxLayerBlendMode;
     enabled: boolean;
@@ -138,7 +132,6 @@ export type SkyboxManifestV2 = {
     };
     geometry?: SkyboxGeometryOptions;
     nodes: SkyboxManifestNode[];
-    selectionDot?: SkyboxSelectionDot | null;
     version: 2;
 };
 export type SkyboxManifest = SkyboxManifestV1 | SkyboxManifestV2;

@@ -53,10 +53,6 @@ type FieldGradientLayerShaderBinding = {
   layer: Extract<SkyboxManifestLayer, { type: "field-gradient" }>;
   parameterPrefix: string;
 };
-type ImageHoverUniformNode = {
-  layerId: string;
-  node: ReturnType<typeof uniform>;
-};
 type GradientUniformNodes = {
   axis: ReturnType<typeof uniform>;
   layerId: string;
@@ -83,9 +79,21 @@ type ImagePlacementUniformNodes = {
   tangentX: ReturnType<typeof uniform>;
   tangentY: ReturnType<typeof uniform>;
 };
+type ImageEditorUniformNodes = {
+  active: ReturnType<typeof uniform>;
+  layerId: string;
+};
 
 type ImageTextureMap = Record<string, THREE.Texture | null | undefined>;
 type HoveredImageLayerId = string | null;
+type WebGpuImageSampleNodeData = {
+  sampleInfo: any;
+  sampleNode: any;
+};
+export type SkyboxEditorImageState = {
+  hoveredImageLayerId: string | null;
+  selectedImageLayerId: string | null;
+};
 
 const DEFAULT_MANIFEST: SkyboxManifestV2 = {
   composition: { mode: "alpha-over", order: "bottom-to-top" },
@@ -94,7 +102,15 @@ const DEFAULT_MANIFEST: SkyboxManifestV2 = {
   version: 2,
 };
 
-const IMAGE_HOVER_TINT_AMOUNT = 0.8;
+const IMAGE_ACTIVE_RECT_ALPHA = 0.18;
+const IMAGE_ACTIVE_BOUNDS_INNER_PIXELS = 0.75;
+const IMAGE_ACTIVE_BOUNDS_OUTER_PIXELS = 1.75;
+const IMAGE_PROJECTION_DENOM_EPSILON = 0.0001;
+const IMAGE_PROJECTION_MAX_EDGE_WIDTH = 0.01;
+const DEFAULT_EDITOR_IMAGE_STATE: SkyboxEditorImageState = {
+  hoveredImageLayerId: null,
+  selectedImageLayerId: null,
+};
 const EMPTY_IMAGE_TEXTURE = new THREE.DataTexture(
   new Uint8Array([0, 0, 0, 0]),
   1,
@@ -109,59 +125,67 @@ function imageHoverValue(layerId: string, hoveredImageLayerId: HoveredImageLayer
   return hoveredImageLayerId === layerId ? 1 : 0;
 }
 
-function createImageHoverUniformNodes(
+function imageSelectedValue(layerId: string, selectedImageLayerId: string | null) {
+  return selectedImageLayerId === layerId ? 1 : 0;
+}
+
+function imageActiveValue(layerId: string, editorImageState: SkyboxEditorImageState) {
+  return Math.max(
+    imageHoverValue(layerId, editorImageState.hoveredImageLayerId),
+    imageSelectedValue(layerId, editorImageState.selectedImageLayerId)
+  );
+}
+
+function createImageEditorUniformNodes(
   bindings: ImageLayerShaderBinding[],
-  hoveredImageLayerId: HoveredImageLayerId
-): ImageHoverUniformNode[] {
+  editorImageState: SkyboxEditorImageState
+): ImageEditorUniformNodes[] {
   return bindings.map((binding) => ({
+    active: uniform(imageActiveValue(binding.layer.id, editorImageState)),
     layerId: binding.layer.id,
-    node: uniform(imageHoverValue(binding.layer.id, hoveredImageLayerId)),
   }));
 }
 
-function applyHoveredImageLayerIdToUniformNodes(
-  uniforms: ImageHoverUniformNode[],
-  hoveredImageLayerId: HoveredImageLayerId
+function applyEditorImageStateToUniformNodes(
+  uniforms: ImageEditorUniformNodes[],
+  editorImageState: SkyboxEditorImageState
 ) {
-  uniforms.forEach((hoverUniform) => {
-    (hoverUniform.node as any).value = imageHoverValue(hoverUniform.layerId, hoveredImageLayerId);
+  uniforms.forEach((editorUniform) => {
+    (editorUniform.active as any).value = imageActiveValue(editorUniform.layerId, editorImageState);
   });
 }
 
-function imageHoverShaderUniforms(
+function imageEditorShaderUniforms(
   bindings: ImageLayerShaderBinding[],
-  hoveredImageLayerId: HoveredImageLayerId
+  editorImageState: SkyboxEditorImageState
 ) {
   return Object.fromEntries(
     bindings.map((binding) => [
-      `imageHover${binding.index}`,
-      { value: imageHoverValue(binding.layer.id, hoveredImageLayerId) },
+      `imageActive${binding.index}`,
+      { value: imageActiveValue(binding.layer.id, editorImageState) },
     ])
   );
 }
 
-function applyHoveredImageLayerIdToShaderUniforms(
+function applyEditorImageStateToShaderUniforms(
   material: THREE.ShaderMaterial,
   bindings: ImageLayerShaderBinding[],
-  hoveredImageLayerId: HoveredImageLayerId
+  editorImageState: SkyboxEditorImageState
 ) {
   bindings.forEach((binding) => {
-    const uniformName = `imageHover${binding.index}`;
+    const activeUniformName = `imageActive${binding.index}`;
 
-    if (material.uniforms[uniformName]) {
-      material.uniforms[uniformName].value = imageHoverValue(
-        binding.layer.id,
-        hoveredImageLayerId
-      );
+    if (material.uniforms[activeUniformName]) {
+      material.uniforms[activeUniformName].value = imageActiveValue(binding.layer.id, editorImageState);
     }
   });
 }
 
-function attachHoveredImageUpdater(
+function attachEditorImageStateUpdater(
   material: RuntimeMaterial,
-  updater: (hoveredImageLayerId: HoveredImageLayerId) => void
+  updater: (editorImageState: SkyboxEditorImageState) => void
 ) {
-  material.userData.applyHoveredImageLayerId = updater;
+  material.userData.applyEditorImageState = updater;
 }
 
 function imagePlacementShaderValues(
@@ -789,8 +813,8 @@ function imageSampleInfoExpression(
 ) {
   const { width, height } = binding.layer.params;
   const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
-  const floatType = language === "wgsl" ? "f32" : "float";
   const declare = language === "wgsl" ? "let" : "float";
+  const validDeclare = language === "wgsl" ? "let" : "float";
   const vecDeclare = language === "wgsl" ? "let" : "vec3";
 
   if (width <= 0 || height <= 0) {
@@ -805,20 +829,15 @@ function imageSampleInfoExpression(
       ${declare} projectedY = dot(imageDirection, ${refs.tangentY}) / safeImageDenom;
       ${declare} imageU = projectedX / max(${refs.halfSize}.x * 2.0, 0.000001) + 0.5;
       ${declare} imageV = 0.5 - projectedY / max(${refs.halfSize}.y * 2.0, 0.000001);
-      ${mutableDeclaration("imageValid", floatType, "0.0", language)}
-      if (imageDenom > 0.0 &&
-        ${refs.halfSize}.x > 0.0 &&
-        ${refs.halfSize}.y > 0.0 &&
-        projectedX >= -${refs.halfSize}.x &&
-        projectedX <= ${refs.halfSize}.x &&
-        projectedY >= -${refs.halfSize}.y &&
-        projectedY <= ${refs.halfSize}.y &&
-        imageU >= 0.0 &&
-        imageU <= 1.0 &&
-        imageV >= 0.0 &&
-        imageV <= 1.0) {
-        imageValid = 1.0;
-      }
+      ${declare} imageEdgeDistance = min(min(imageU, 1.0 - imageU), min(imageV, 1.0 - imageV));
+      ${declare} imageEdgeWidth = clamp(fwidth(imageEdgeDistance), 0.000001, ${numberLiteral(IMAGE_PROJECTION_MAX_EDGE_WIDTH)});
+      ${declare} imageHardInside = step(${numberLiteral(IMAGE_PROJECTION_DENOM_EPSILON)}, imageDenom) *
+        step(0.0, ${refs.halfSize}.x) *
+        step(0.0, ${refs.halfSize}.y);
+      ${declare} imageNearRect = step(-imageEdgeWidth, imageEdgeDistance);
+      ${validDeclare} imageValid = imageHardInside *
+        imageNearRect *
+        smoothstep(-imageEdgeWidth, imageEdgeWidth, imageEdgeDistance);
       return ${vec4Type}(imageU, imageV, imageValid, 0.0);
     `;
 }
@@ -842,10 +861,6 @@ function imageSampleExpression(
   return `{
     vec4 imageSampleInfo = skyboxStudioImageSampleInfo${binding.index}(direction);
     vec4 imageSampleColor = texture2D(imageTexture${binding.index}, imageSampleInfo.xy);
-    imageSampleColor = vec4(
-      mix(imageSampleColor.rgb, vec3(1.0, 0.0, 0.0), imageHover${binding.index} * ${numberLiteral(IMAGE_HOVER_TINT_AMOUNT)}),
-      imageSampleColor.a
-    );
     effectColor = vec4(imageSampleColor.rgb, imageSampleColor.a * imageSampleInfo.z);
   }`;
 }
@@ -875,10 +890,28 @@ const webGpuImageMaskFunction = wgslFn(`
   }
 `);
 
-const webGpuImageHoverFunction = wgslFn(`
-  fn skyboxStudioApplyImageHover(color: vec4<f32>, hover: f32) -> vec4<f32> {
+const webGpuImageEditorRectOverlayFunction = wgslFn(`
+  fn skyboxStudioApplyImageEditorRectOverlay(
+    color: vec4<f32>,
+    uv: vec2<f32>,
+    valid: f32,
+    activeValue: f32
+  ) -> vec4<f32> {
+    let activeAmount = clamp(activeValue, 0.0, 1.0);
+    let rectCoverage = valid * activeAmount;
+    let edgeDistance = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    let edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${numberLiteral(IMAGE_PROJECTION_MAX_EDGE_WIDTH)});
+    let bounds = rectCoverage * (
+      1.0 - smoothstep(
+        edgeWidth * ${numberLiteral(IMAGE_ACTIVE_BOUNDS_INNER_PIXELS)},
+        edgeWidth * ${numberLiteral(IMAGE_ACTIVE_BOUNDS_OUTER_PIXELS)},
+        edgeDistance
+      )
+    );
+    let rectAlpha = rectCoverage * ${numberLiteral(IMAGE_ACTIVE_RECT_ALPHA)};
+    let overlayAlpha = max(rectAlpha, bounds);
     return vec4<f32>(
-      mix(color.rgb, vec3<f32>(1.0, 0.0, 0.0), clamp(hover, 0.0, 1.0) * ${numberLiteral(IMAGE_HOVER_TINT_AMOUNT)}),
+      mix(color.rgb, vec3<f32>(1.0, 0.0, 0.0), overlayAlpha),
       color.a
     );
   }
@@ -895,6 +928,32 @@ function glslImageSampleInfoFunctions(bindings: ImageLayerShaderBinding[]) {
             tangentX: `imageTangentX${binding.index}`,
             tangentY: `imageTangentY${binding.index}`,
           })}
+        }
+      `
+    )
+    .join("\n");
+}
+
+function glslImageEditorRectOverlayExpression(bindings: ImageLayerShaderBinding[]) {
+  return bindings
+    .map(
+      (binding) => `
+        {
+          vec4 imageEditorInfo = skyboxStudioImageSampleInfo${binding.index}(direction);
+          float activeAmount = clamp(imageActive${binding.index}, 0.0, 1.0);
+          float rectCoverage = imageEditorInfo.z * activeAmount;
+          float edgeDistance = min(min(imageEditorInfo.x, 1.0 - imageEditorInfo.x), min(imageEditorInfo.y, 1.0 - imageEditorInfo.y));
+          float edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${numberLiteral(IMAGE_PROJECTION_MAX_EDGE_WIDTH)});
+          float bounds = rectCoverage * (
+            1.0 - smoothstep(
+              edgeWidth * ${numberLiteral(IMAGE_ACTIVE_BOUNDS_INNER_PIXELS)},
+              edgeWidth * ${numberLiteral(IMAGE_ACTIVE_BOUNDS_OUTER_PIXELS)},
+              edgeDistance
+            )
+          );
+          float rectAlpha = rectCoverage * ${numberLiteral(IMAGE_ACTIVE_RECT_ALPHA)};
+          float overlayAlpha = max(rectAlpha, bounds);
+          composedColor = mix(composedColor, vec3(1.0, 0.0, 0.0), overlayAlpha);
         }
       `
     )
@@ -1185,7 +1244,13 @@ function composeNodesExpression(
               const variableName = `groupColor${depth}_${index}`;
               return variableName;
             })()}, 1.0);`
-          : effectExpression(node, language, gradientBindings, fieldGradientBindings, imageBindings);
+          : effectExpression(
+              node,
+              language,
+              gradientBindings,
+              fieldGradientBindings,
+              imageBindings
+            );
       const groupColorName = `groupColor${depth}_${index}`;
       const groupBlock =
         node.type === "group"
@@ -1193,7 +1258,14 @@ function composeNodesExpression(
         {
           ${mutableDeclaration("previousComposedColor", vec3Type, "composedColor", language)}
           composedColor = ${vec3Type}(0.0);
-          ${composeNodesExpression(node.children, language, gradientBindings, fieldGradientBindings, imageBindings, depth + 1)}
+          ${composeNodesExpression(
+            node.children,
+            language,
+            gradientBindings,
+            fieldGradientBindings,
+            imageBindings,
+            depth + 1
+          )}
           ${groupColorName} = composedColor;
           composedColor = previousComposedColor;
         }`
@@ -1287,10 +1359,10 @@ function createWebGpuImageSampleNodes(
   bindings: ImageLayerShaderBinding[],
   direction: unknown,
   imageTextures: Map<string, THREE.Texture>,
-  hoverUniforms: ImageHoverUniformNode[],
   placementUniforms: ImagePlacementUniformNodes[]
 ) {
-  return Object.fromEntries(
+  const sampleData = new Map<string, WebGpuImageSampleNodeData>();
+  const sampleNodes = Object.fromEntries(
     bindings.map((binding) => {
       const placement = placementUniforms[binding.index];
       const sampleInfo = webGpuImageSampleInfoFunction(binding)({
@@ -1305,24 +1377,28 @@ function createWebGpuImageSampleNodes(
         getImageTexture(imageTextures, binding.layer),
         sampleUv
       );
-      const hoverColor = webGpuImageHoverFunction({
-        color: sampleColor,
-        hover: hoverUniforms[binding.index].node,
-      });
       const maskedColor = webGpuImageMaskFunction({
-        color: hoverColor,
+        color: sampleColor,
         valid: sampleInfo.z,
+      });
+
+      sampleData.set(binding.layer.id, {
+        sampleInfo,
+        sampleNode: maskedColor,
       });
 
       return [binding.parameterName, maskedColor];
     })
   );
+
+  return { sampleData, sampleNodes };
 }
 
 function createWebGpuMaterial(
   manifest: SkyboxManifestV2,
-  hoveredImageLayerId: HoveredImageLayerId,
-  imageTextures: Map<string, THREE.Texture>
+  editorImageState: SkyboxEditorImageState,
+  imageTextures: Map<string, THREE.Texture>,
+  editorPresentationEnabled: boolean
 ) {
   const material = new NodeMaterial();
   const gradientBindings = collectGradientLayerBindings(manifest.nodes);
@@ -1331,7 +1407,9 @@ function createWebGpuMaterial(
   const skyboxSample = createSkyboxFunction(manifest, gradientBindings, fieldGradientBindings, imageBindings);
   const gradientUniforms = createGradientUniformNodes(gradientBindings);
   const fieldGradientUniforms = createFieldGradientUniformNodes(fieldGradientBindings);
-  const imageHoverUniforms = createImageHoverUniformNodes(imageBindings, hoveredImageLayerId);
+  const imageEditorUniforms = editorPresentationEnabled
+    ? createImageEditorUniformNodes(imageBindings, editorImageState)
+    : null;
   const imagePlacementUniforms = createImagePlacementUniformNodes(imageBindings);
   const vertexNode = Fn(() => {
     const position = modelViewProjection as any;
@@ -1346,7 +1424,13 @@ function createWebGpuMaterial(
   material.depthWrite = false;
   material.vertexNode = vertexNode as any;
   const direction = normalize(positionWorld.sub(cameraPosition));
-  material.colorNode = skyboxSample({
+  const imageSampleNodes = createWebGpuImageSampleNodes(
+    imageBindings,
+    direction,
+    imageTextures,
+    imagePlacementUniforms
+  );
+  let colorNode = skyboxSample({
     direction,
     ...Object.fromEntries(
       gradientBindings.flatMap((binding) => {
@@ -1377,17 +1461,30 @@ function createWebGpuMaterial(
         ];
       })
     ),
-    ...createWebGpuImageSampleNodes(
-      imageBindings,
-      direction,
-      imageTextures,
-      imageHoverUniforms,
-      imagePlacementUniforms
-    ),
+    ...imageSampleNodes.sampleNodes,
   }) as any;
-  attachHoveredImageUpdater(material, (nextHoveredImageLayerId) =>
-    applyHoveredImageLayerIdToUniformNodes(imageHoverUniforms, nextHoveredImageLayerId)
-  );
+  if (imageEditorUniforms) {
+    imageBindings.forEach((binding) => {
+      const sampleInfo = imageSampleNodes.sampleData.get(binding.layer.id)?.sampleInfo;
+
+      if (!sampleInfo) {
+        return;
+      }
+
+      colorNode = webGpuImageEditorRectOverlayFunction({
+        color: colorNode,
+        activeValue: imageEditorUniforms[binding.index].active,
+        uv: vec2(sampleInfo.x, sampleInfo.y),
+        valid: sampleInfo.z,
+      }) as any;
+    });
+  }
+  material.colorNode = colorNode as any;
+  if (imageEditorUniforms) {
+    attachEditorImageStateUpdater(material, (nextEditorImageState) =>
+      applyEditorImageStateToUniformNodes(imageEditorUniforms, nextEditorImageState)
+    );
+  }
   attachGradientUpdater(material, (nextManifest) =>
     forEachGradientLayer(nextManifest.nodes, (layer) =>
       applyGradientLayerParamsToUniformNodes(gradientUniforms, layer)
@@ -1437,8 +1534,9 @@ function createWebGpuBakedMaterial(texture: THREE.Texture) {
 
 function createWebGlMaterial(
   manifest: SkyboxManifestV2,
-  hoveredImageLayerId: HoveredImageLayerId,
-  imageTextures: Map<string, THREE.Texture>
+  editorImageState: SkyboxEditorImageState,
+  imageTextures: Map<string, THREE.Texture>,
+  editorPresentationEnabled: boolean
 ) {
   const gradientBindings = collectGradientLayerBindings(manifest.nodes);
   const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
@@ -1457,7 +1555,7 @@ function createWebGlMaterial(
     uniforms: {
       ...gradientShaderUniforms(gradientBindings),
       ...fieldGradientShaderUniforms(fieldGradientBindings),
-      ...imageHoverShaderUniforms(imageBindings, hoveredImageLayerId),
+      ...(editorPresentationEnabled ? imageEditorShaderUniforms(imageBindings, editorImageState) : {}),
       ...imagePlacementShaderUniforms(imageBindings),
       ...imageTextureUniforms(imageBindings, imageTextures),
     },
@@ -1495,8 +1593,12 @@ function createWebGlMaterial(
       uniform vec3 imageCenterDirection${binding.index};
       uniform vec3 imageTangentX${binding.index};
       uniform vec3 imageTangentY${binding.index};
-      uniform vec2 imageHalfSize${binding.index};
-      uniform float imageHover${binding.index};`
+      uniform vec2 imageHalfSize${binding.index};${
+        editorPresentationEnabled
+          ? `
+      uniform float imageActive${binding.index};`
+          : ""
+      }`
         )
         .join("\n")}
       varying vec3 vDirection;
@@ -1594,14 +1696,21 @@ function createWebGlMaterial(
         vec3 direction = normalize(vDirection);
         vec3 composedColor = vec3(0.0);
         ${layerBlocks}
+        ${editorPresentationEnabled ? glslImageEditorRectOverlayExpression(imageBindings) : ""}
         gl_FragColor = vec4(composedColor, 1.0);
       }
     `,
   });
 
-  attachHoveredImageUpdater(material, (nextHoveredImageLayerId) =>
-    applyHoveredImageLayerIdToShaderUniforms(material, imageBindings, nextHoveredImageLayerId)
-  );
+  if (imageBindings.length > 0) {
+    (material.extensions as { derivatives?: boolean }).derivatives = true;
+  }
+
+  if (editorPresentationEnabled) {
+    attachEditorImageStateUpdater(material, (nextEditorImageState) =>
+      applyEditorImageStateToShaderUniforms(material, imageBindings, nextEditorImageState)
+    );
+  }
   attachGradientUpdater(material, (nextManifest) =>
     forEachGradientLayer(nextManifest.nodes, (layer) =>
       applyGradientLayerParamsToShaderUniforms(material, layer, gradientBindings)
@@ -1720,7 +1829,8 @@ function resolveRenderMode(mode: SkyboxRenderMode, renderer?: SupportedRenderer 
 
 function createMaterialTopologyKey(
   manifest: SkyboxManifestV2,
-  renderMode: Exclude<SkyboxRenderMode, "auto">
+  renderMode: Exclude<SkyboxRenderMode, "auto">,
+  editorPresentationEnabled: boolean
 ) {
   const nodeKey = (node: SkyboxManifestNode): unknown => {
     if (node.type === "group") {
@@ -1771,6 +1881,7 @@ function createMaterialTopologyKey(
   };
 
   return JSON.stringify({
+    editorPresentationEnabled,
     geometry: manifest.geometry?.type ?? DEFAULT_SKYBOX_GEOMETRY.type,
     nodes: manifest.nodes.map(nodeKey),
     renderMode,
@@ -1779,8 +1890,9 @@ function createMaterialTopologyKey(
 
 export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #bakeOptions: SkyboxBakeOptions = {};
+  #editorImageState: SkyboxEditorImageState = { ...DEFAULT_EDITOR_IMAGE_STATE };
+  #editorPresentationEnabled = false;
   #geometryOptions: SkyboxGeometryOptions = DEFAULT_SKYBOX_GEOMETRY;
-  #hoveredImageLayerId: HoveredImageLayerId = null;
   #imagePlacementOverrides = new Map<string, SkyboxImagePlacement | null>();
   #imageTextures = new Map<string, THREE.Texture>();
   #manifest: SkyboxManifestV2 = DEFAULT_MANIFEST;
@@ -1792,7 +1904,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   constructor() {
     super(
       createSkyboxGeometry(DEFAULT_SKYBOX_GEOMETRY),
-      createWebGpuMaterial(DEFAULT_MANIFEST, null, new Map())
+      createWebGpuMaterial(DEFAULT_MANIFEST, DEFAULT_EDITOR_IMAGE_STATE, new Map(), false)
     );
     this.frustumCulled = false;
     this.renderOrder = -1;
@@ -1888,7 +2000,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     const previousMaterial = this.material;
 
     this.material = nextMaterial;
-    nextMaterial.userData.applyHoveredImageLayerId?.(this.#hoveredImageLayerId);
+    nextMaterial.userData.applyEditorImageState?.(this.#editorImageState);
     this.#imagePlacementOverrides.forEach((placement, layerId) => {
       nextMaterial.userData.applyImageLayerPlacement?.(layerId, placement);
     });
@@ -1901,18 +2013,45 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.material.userData.applyGradientLayerParams?.(this.#manifest);
     this.material.userData.applyFieldGradientLayerParams?.(this.#manifest);
     this.material.userData.applyImageTextures?.(this.#imageTextures);
+    this.material.userData.applyEditorImageState?.(this.#editorImageState);
     this.#imagePlacementOverrides.forEach((placement, layerId) => {
       this.material.userData.applyImageLayerPlacement?.(layerId, placement);
     });
   }
 
-  setHoveredImageLayerId(layerId: string | null) {
-    if (this.#hoveredImageLayerId === layerId) {
+  setEditorPresentationEnabled(enabled: boolean) {
+    if (this.#editorPresentationEnabled === enabled) {
       return this;
     }
 
-    this.#hoveredImageLayerId = layerId;
-    this.material.userData.applyHoveredImageLayerId?.(this.#hoveredImageLayerId);
+    this.#editorPresentationEnabled = enabled;
+    this.#materialTopologyKey = null;
+    this.setManifest(this.#manifest);
+
+    return this;
+  }
+
+  setEditorImageState(state: Partial<SkyboxEditorImageState>) {
+    const nextEditorImageState = {
+      ...this.#editorImageState,
+      ...state,
+    };
+
+    if (
+      nextEditorImageState.hoveredImageLayerId === this.#editorImageState.hoveredImageLayerId &&
+      nextEditorImageState.selectedImageLayerId === this.#editorImageState.selectedImageLayerId
+    ) {
+      return this;
+    }
+
+    this.#editorImageState = nextEditorImageState;
+    this.material.userData.applyEditorImageState?.(this.#editorImageState);
+
+    return this;
+  }
+
+  setHoveredImageLayerId(layerId: string | null) {
+    this.setEditorImageState({ hoveredImageLayerId: layerId });
 
     return this;
   }
@@ -1929,7 +2068,11 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#manifest = nextManifest;
     this.applyGeometry(this.#manifest.geometry ?? this.#geometryOptions);
     const renderMode = resolveRenderMode(this.#renderMode, this.#renderer);
-    const nextTopologyKey = createMaterialTopologyKey(this.#manifest, renderMode);
+    const nextTopologyKey = createMaterialTopologyKey(
+      this.#manifest,
+      renderMode,
+      this.#editorPresentationEnabled
+    );
 
     if (
       this.#materialTopologyKey === nextTopologyKey &&
@@ -1940,9 +2083,19 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     }
 
     if (renderMode === "live-webgpu") {
-      this.replaceMaterial(createWebGpuMaterial(this.#manifest, this.#hoveredImageLayerId, this.#imageTextures));
+      this.replaceMaterial(createWebGpuMaterial(
+        this.#manifest,
+        this.#editorImageState,
+        this.#imageTextures,
+        this.#editorPresentationEnabled
+      ));
     } else if (renderMode === "live-webgl") {
-      this.replaceMaterial(createWebGlMaterial(this.#manifest, this.#hoveredImageLayerId, this.#imageTextures));
+      this.replaceMaterial(createWebGlMaterial(
+        this.#manifest,
+        this.#editorImageState,
+        this.#imageTextures,
+        this.#editorPresentationEnabled
+      ));
     } else {
       const texture = createBakedSkyboxTexture(this.#manifest, this.#bakeOptions);
       this.replaceMaterial(createBakedMaterialFromTexture(texture, this.#renderer), texture);

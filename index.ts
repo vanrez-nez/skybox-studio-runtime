@@ -4,6 +4,7 @@ export {
   createSkyboxWireGeometry,
   Skybox,
 } from "./Skybox";
+export type { SkyboxEditorImageState } from "./Skybox";
 export {
   bakeSkyboxImageData,
   createBakeCacheKey,
@@ -62,6 +63,5 @@ export type {
   SkyboxManifestV1,
   SkyboxManifestV2,
   SkyboxRenderMode,
-  SkyboxSelectionDot,
 } from "./manifest";
 export { migrateManifestToV2 } from "./manifest";

@@ -19,6 +19,33 @@ import {
 } from "../index";
 
 describe("runtime evaluator", () => {
+  const createImageManifest = (): SkyboxManifestV2 => ({
+    composition: { mode: "alpha-over", order: "bottom-to-top" },
+    geometry: { type: "box" },
+    nodes: [
+      {
+        blendMode: "normal",
+        enabled: true,
+        id: "image",
+        name: "Image",
+        opacity: 100,
+        params: {
+          height: 16,
+          pixels: null,
+          placement: createAngularDecalPlacement({
+            angularHeight: 0.25,
+            angularWidth: 0.25,
+            centerDirection: [0, 0, -1],
+          }),
+          src: "data:image/png;base64,",
+          width: 16,
+        },
+        type: "image",
+      },
+    ],
+    version: 2,
+  });
+
   it("migrates v1 manifests into v2 nodes", () => {
     const manifest: SkyboxManifestV1 = {
       composition: { mode: "alpha-over", order: "bottom-to-top" },
@@ -226,6 +253,61 @@ describe("runtime evaluator", () => {
 
     expect(material.fragmentShader).toContain("imageCenterDirection0");
     expect(material.fragmentShader).not.toContain("return vec4(0.0, 0.0, 0.0, 0.0);");
+
+    skybox.dispose();
+  });
+
+  it("omits editor image presentation shader code by default", () => {
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(createImageManifest())
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    expect(material.fragmentShader).not.toContain("imageActive0");
+    expect(material.fragmentShader).not.toContain("rectCoverage");
+
+    skybox.dispose();
+  });
+
+  it("includes editor image presentation shader code only when enabled", () => {
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(createImageManifest())
+      .setEditorPresentationEnabled(true)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    expect(material.fragmentShader).toContain("imageActive0");
+    expect(material.fragmentShader).toContain("rectCoverage");
+    expect(material.fragmentShader).toContain("rectAlpha");
+    expect(material.fragmentShader).toContain("bounds");
+    expect(material.fragmentShader).toContain("clamp(fwidth(imageEdgeDistance)");
+    expect(material.fragmentShader).toContain("imageHardInside");
+    expect(material.fragmentShader).toContain("imageNearRect");
+    expect(material.fragmentShader).toContain(
+      "effectColor = vec4(imageSampleColor.rgb, imageSampleColor.a * imageSampleInfo.z);"
+    );
+    expect(material.fragmentShader).not.toContain("imageSampleColor = skyboxStudioApplyImageEditorOverlay");
+    expect(material.fragmentShader).not.toContain("selectionFill");
+
+    skybox.dispose();
+  });
+
+  it("updates editor image state without rebuilding the material", () => {
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(createImageManifest())
+      .setEditorPresentationEnabled(true)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    skybox.setEditorImageState({
+      selectedImageLayerId: "image",
+    });
+
+    expect(skybox.material).toBe(material);
+    expect(material.uniforms.imageActive0.value).toBe(1);
 
     skybox.dispose();
   });

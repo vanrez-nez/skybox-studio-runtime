@@ -14,7 +14,6 @@ import type {
   SkyboxManifest,
   SkyboxManifestLayer,
   SkyboxManifestNode,
-  SkyboxSelectionDot,
 } from "./manifest";
 import { migrateManifestToV2 } from "./manifest";
 import { projectDirectionToImageUv } from "./image-placement-transform";
@@ -189,10 +188,6 @@ function sampleFieldGradientLayer(direction: Rgb, params: SkyboxFieldGradientPar
   return [red / weightSum, green / weightSum, blue / weightSum, 1];
 }
 
-function dot(first: Rgb, second: Rgb) {
-  return first[0] * second[0] + first[1] * second[1] + first[2] * second[2];
-}
-
 function mixRgba(first: Rgba, second: Rgba, amount: number): Rgba {
   return [
     mix(first[0], second[0], amount),
@@ -284,27 +279,6 @@ export function composeNodes(direction: Rgb, nodes: SkyboxManifestNode[]): Rgb {
     }, [0, 0, 0]);
 }
 
-function applySelectionDot(color: Rgb, direction: Rgb, selectionDot?: SkyboxSelectionDot | null): Rgb {
-  if (!selectionDot || selectionDot.opacity <= 0 || selectionDot.radius <= 0) {
-    return color;
-  }
-
-  const dotDistance = 1 - clamp(dot(direction, selectionDot.direction), -1, 1);
-
-  if (dotDistance > selectionDot.radius) {
-    return color;
-  }
-
-  const source = parseHexColor(selectionDot.color);
-  const alpha = clamp(selectionDot.opacity);
-
-  return [
-    source[0] * alpha + color[0] * (1 - alpha),
-    source[1] * alpha + color[1] * (1 - alpha),
-    source[2] * alpha + color[2] * (1 - alpha),
-  ];
-}
-
 function findGroup(nodes: SkyboxManifestNode[], id: string): SkyboxManifestNode | null {
   for (const node of nodes) {
     if (node.type === "group") {
@@ -338,5 +312,5 @@ export function evaluateSkyboxDirection(
       : []
     : migratedManifest.nodes;
 
-  return applySelectionDot(composeNodes(direction, nodes), direction, migratedManifest.selectionDot);
+  return composeNodes(direction, nodes);
 }
