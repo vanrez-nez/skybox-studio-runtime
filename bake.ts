@@ -54,9 +54,9 @@ export function bakeSkyboxImageData(
   options: SkyboxBakeOptions = {}
 ): BakedSkyboxImageData {
   const resolvedOptions = resolveBakeOptions(options);
-  const cacheKey = createBakeCacheKey(manifest, resolvedOptions);
+  const cacheKey = resolvedOptions.cache ? createBakeCacheKey(manifest, resolvedOptions) : null;
 
-  if (resolvedOptions.cache) {
+  if (cacheKey) {
     const cachedImage = imageDataCache.get(cacheKey);
 
     if (cachedImage) {
@@ -89,7 +89,7 @@ export function bakeSkyboxImageData(
 
   const bakedImage = { data, height, width };
 
-  if (resolvedOptions.cache) {
+  if (cacheKey) {
     imageDataCache.set(cacheKey, {
       ...bakedImage,
       data: new Uint8ClampedArray(data) as Uint8ClampedArray<ArrayBuffer>,

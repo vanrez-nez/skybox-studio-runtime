@@ -40,9 +40,40 @@ type ImageLayerShaderBinding = {
   layer: Extract<SkyboxManifestLayer, { type: "image" }>;
   parameterName: string;
 };
+type GradientLayerShaderBinding = {
+  index: number;
+  layer: Extract<SkyboxManifestLayer, { type: "gradient" }>;
+  parameterPrefix: string;
+  stopCount: number;
+};
+type FieldGradientLayerShaderBinding = {
+  anchorCount: number;
+  index: number;
+  layer: Extract<SkyboxManifestLayer, { type: "field-gradient" }>;
+  parameterPrefix: string;
+};
 type ImageHoverUniformNode = {
   layerId: string;
   node: ReturnType<typeof uniform>;
+};
+type GradientUniformNodes = {
+  axis: ReturnType<typeof uniform>;
+  layerId: string;
+  stops: Array<{
+    color: ReturnType<typeof uniform>;
+    t: ReturnType<typeof uniform>;
+  }>;
+};
+type FieldGradientUniformNodes = {
+  amplitude: ReturnType<typeof uniform>;
+  anchors: Array<{
+    color: ReturnType<typeof uniform>;
+    direction: ReturnType<typeof uniform>;
+  }>;
+  frequency: ReturnType<typeof uniform>;
+  layerId: string;
+  mode: ReturnType<typeof uniform>;
+  power: ReturnType<typeof uniform>;
 };
 type ImagePlacementUniformNodes = {
   centerDirection: ReturnType<typeof uniform>;
@@ -232,6 +263,307 @@ function attachImagePlacementUpdater(
   material.userData.applyImageLayerPlacement = updater;
 }
 
+function gradientAxisFromRotation(rotation: number) {
+  const radians = (rotation * Math.PI) / 180;
+
+  return new THREE.Vector3(Math.sin(radians), Math.cos(radians), 0).normalize();
+}
+
+function sortedGradientStops(params: SkyboxGradientParams) {
+  return [...params.stops]
+    .map((stop) => ({
+      color: stop.color,
+      opacity: clamp(stop.opacity / 100),
+      t: clamp(stop.location / 100),
+    }))
+    .sort((firstStop, secondStop) => firstStop.t - secondStop.t);
+}
+
+function colorVectorFromStop(stop: ReturnType<typeof sortedGradientStops>[number]) {
+  const [red, green, blue] = parseHexColor(stop.color);
+
+  return new THREE.Vector4(red, green, blue, stop.opacity);
+}
+
+function fieldGradientModeValue(mode: SkyboxFieldGradientParams["mode"]) {
+  return mode === "gaussian" ? 1 : 0;
+}
+
+function directionVectorFromPoint(x: number, y: number) {
+  const lambda = (clamp(x) - 0.5) * Math.PI * 2;
+  const phi = (0.5 - clamp(y)) * Math.PI;
+  const cosPhi = Math.cos(phi);
+
+  return new THREE.Vector3(
+    cosPhi * Math.cos(lambda),
+    Math.sin(phi),
+    cosPhi * Math.sin(lambda)
+  ).normalize();
+}
+
+function colorVectorFromHex(color: string) {
+  const [red, green, blue] = parseHexColor(color);
+
+  return new THREE.Vector3(red, green, blue);
+}
+
+function createGradientUniformNodes(bindings: GradientLayerShaderBinding[]) {
+  return bindings.map((binding): GradientUniformNodes => {
+    const stops = sortedGradientStops(binding.layer.params);
+
+    return {
+      axis: uniform(gradientAxisFromRotation(binding.layer.params.rotation)),
+      layerId: binding.layer.id,
+      stops: Array.from({ length: binding.stopCount }, (_, stopIndex) => {
+        const stop = stops[stopIndex] ?? { color: "#000000", opacity: 0, t: 0 };
+
+        return {
+          color: uniform(colorVectorFromStop(stop)),
+          t: uniform(stop.t),
+        };
+      }),
+    };
+  });
+}
+
+function applyGradientLayerParamsToUniformNodes(
+  uniforms: GradientUniformNodes[],
+  layer: Extract<SkyboxManifestLayer, { type: "gradient" }>
+) {
+  const gradientUniforms = uniforms.find((nextUniforms) => nextUniforms.layerId === layer.id);
+
+  if (!gradientUniforms) {
+    return;
+  }
+
+  const stops = sortedGradientStops(layer.params);
+
+  (gradientUniforms.axis as any).value.copy(gradientAxisFromRotation(layer.params.rotation));
+  gradientUniforms.stops.forEach((stopUniforms, stopIndex) => {
+    const stop = stops[stopIndex] ?? { color: "#000000", opacity: 0, t: 0 };
+
+    (stopUniforms.color as any).value.copy(colorVectorFromStop(stop));
+    (stopUniforms.t as any).value = stop.t;
+  });
+}
+
+function gradientShaderUniforms(bindings: GradientLayerShaderBinding[]) {
+  return Object.fromEntries(
+    bindings.flatMap((binding) => {
+      const stops = sortedGradientStops(binding.layer.params);
+
+      return [
+        [`${binding.parameterPrefix}Axis`, { value: gradientAxisFromRotation(binding.layer.params.rotation) }],
+        ...Array.from({ length: binding.stopCount }, (_, stopIndex) => {
+          const stop = stops[stopIndex] ?? { color: "#000000", opacity: 0, t: 0 };
+
+          return [
+            [`${binding.parameterPrefix}StopColor${stopIndex}`, { value: colorVectorFromStop(stop) }],
+            [`${binding.parameterPrefix}StopT${stopIndex}`, { value: stop.t }],
+          ];
+        }).flat(),
+      ];
+    })
+  );
+}
+
+function applyGradientLayerParamsToShaderUniforms(
+  material: THREE.ShaderMaterial,
+  layer: Extract<SkyboxManifestLayer, { type: "gradient" }>,
+  bindings: GradientLayerShaderBinding[]
+) {
+  const binding = bindings.find((nextBinding) => nextBinding.layer.id === layer.id);
+
+  if (!binding) {
+    return;
+  }
+
+  const stops = sortedGradientStops(layer.params);
+
+  material.uniforms[`${binding.parameterPrefix}Axis`]?.value.copy(
+    gradientAxisFromRotation(layer.params.rotation)
+  );
+  Array.from({ length: binding.stopCount }, (_, stopIndex) => {
+    const stop = stops[stopIndex] ?? { color: "#000000", opacity: 0, t: 0 };
+
+    material.uniforms[`${binding.parameterPrefix}StopColor${stopIndex}`]?.value.copy(
+      colorVectorFromStop(stop)
+    );
+
+    if (material.uniforms[`${binding.parameterPrefix}StopT${stopIndex}`]) {
+      material.uniforms[`${binding.parameterPrefix}StopT${stopIndex}`].value = stop.t;
+    }
+  });
+}
+
+function createFieldGradientUniformNodes(bindings: FieldGradientLayerShaderBinding[]) {
+  return bindings.map((binding): FieldGradientUniformNodes => ({
+    amplitude: uniform(clamp(binding.layer.params.amplitude, 0, 0.6)),
+    anchors: Array.from({ length: binding.anchorCount }, (_, anchorIndex) => {
+      const anchor = binding.layer.params.anchors[anchorIndex] ?? {
+        color: "#000000",
+        x: 0.5,
+        y: 0.5,
+      };
+
+      return {
+        color: uniform(colorVectorFromHex(anchor.color)),
+        direction: uniform(directionVectorFromPoint(anchor.x, anchor.y)),
+      };
+    }),
+    frequency: uniform(Math.max(0.0001, binding.layer.params.frequency)),
+    layerId: binding.layer.id,
+    mode: uniform(fieldGradientModeValue(binding.layer.params.mode)),
+    power: uniform(Math.max(0.0001, binding.layer.params.power)),
+  }));
+}
+
+function applyFieldGradientLayerParamsToUniformNodes(
+  uniforms: FieldGradientUniformNodes[],
+  layer: Extract<SkyboxManifestLayer, { type: "field-gradient" }>
+) {
+  const fieldUniforms = uniforms.find((nextUniforms) => nextUniforms.layerId === layer.id);
+
+  if (!fieldUniforms) {
+    return;
+  }
+
+  (fieldUniforms.amplitude as any).value = clamp(layer.params.amplitude, 0, 0.6);
+  (fieldUniforms.frequency as any).value = Math.max(0.0001, layer.params.frequency);
+  (fieldUniforms.mode as any).value = fieldGradientModeValue(layer.params.mode);
+  (fieldUniforms.power as any).value = Math.max(0.0001, layer.params.power);
+  fieldUniforms.anchors.forEach((anchorUniforms, anchorIndex) => {
+    const anchor = layer.params.anchors[anchorIndex] ?? {
+      color: "#000000",
+      x: 0.5,
+      y: 0.5,
+    };
+
+    (anchorUniforms.color as any).value.copy(colorVectorFromHex(anchor.color));
+    (anchorUniforms.direction as any).value.copy(directionVectorFromPoint(anchor.x, anchor.y));
+  });
+}
+
+function fieldGradientShaderUniforms(bindings: FieldGradientLayerShaderBinding[]) {
+  return Object.fromEntries(
+    bindings.flatMap((binding) => [
+      [`${binding.parameterPrefix}Amplitude`, { value: clamp(binding.layer.params.amplitude, 0, 0.6) }],
+      [`${binding.parameterPrefix}Frequency`, { value: Math.max(0.0001, binding.layer.params.frequency) }],
+      [`${binding.parameterPrefix}Mode`, { value: fieldGradientModeValue(binding.layer.params.mode) }],
+      [`${binding.parameterPrefix}Power`, { value: Math.max(0.0001, binding.layer.params.power) }],
+      ...Array.from({ length: binding.anchorCount }, (_, anchorIndex) => {
+        const anchor = binding.layer.params.anchors[anchorIndex] ?? {
+          color: "#000000",
+          x: 0.5,
+          y: 0.5,
+        };
+
+        return [
+          [`${binding.parameterPrefix}AnchorDirection${anchorIndex}`, { value: directionVectorFromPoint(anchor.x, anchor.y) }],
+          [`${binding.parameterPrefix}AnchorColor${anchorIndex}`, { value: colorVectorFromHex(anchor.color) }],
+        ];
+      }).flat(),
+    ])
+  );
+}
+
+function applyFieldGradientLayerParamsToShaderUniforms(
+  material: THREE.ShaderMaterial,
+  layer: Extract<SkyboxManifestLayer, { type: "field-gradient" }>,
+  bindings: FieldGradientLayerShaderBinding[]
+) {
+  const binding = bindings.find((nextBinding) => nextBinding.layer.id === layer.id);
+
+  if (!binding) {
+    return;
+  }
+
+  if (material.uniforms[`${binding.parameterPrefix}Amplitude`]) {
+    material.uniforms[`${binding.parameterPrefix}Amplitude`].value = clamp(layer.params.amplitude, 0, 0.6);
+  }
+
+  if (material.uniforms[`${binding.parameterPrefix}Frequency`]) {
+    material.uniforms[`${binding.parameterPrefix}Frequency`].value = Math.max(0.0001, layer.params.frequency);
+  }
+
+  if (material.uniforms[`${binding.parameterPrefix}Mode`]) {
+    material.uniforms[`${binding.parameterPrefix}Mode`].value = fieldGradientModeValue(layer.params.mode);
+  }
+
+  if (material.uniforms[`${binding.parameterPrefix}Power`]) {
+    material.uniforms[`${binding.parameterPrefix}Power`].value = Math.max(0.0001, layer.params.power);
+  }
+
+  Array.from({ length: binding.anchorCount }, (_, anchorIndex) => {
+    const anchor = layer.params.anchors[anchorIndex] ?? {
+      color: "#000000",
+      x: 0.5,
+      y: 0.5,
+    };
+
+    material.uniforms[`${binding.parameterPrefix}AnchorDirection${anchorIndex}`]?.value.copy(
+      directionVectorFromPoint(anchor.x, anchor.y)
+    );
+    material.uniforms[`${binding.parameterPrefix}AnchorColor${anchorIndex}`]?.value.copy(
+      colorVectorFromHex(anchor.color)
+    );
+  });
+}
+
+function forEachGradientLayer(
+  nodes: SkyboxManifestNode[],
+  callback: (layer: Extract<SkyboxManifestLayer, { type: "gradient" }>) => void
+) {
+  nodes.forEach((node) => {
+    if (!node.enabled) {
+      return;
+    }
+
+    if (node.type === "group") {
+      forEachGradientLayer(node.children, callback);
+      return;
+    }
+
+    if (node.type === "gradient") {
+      callback(node);
+    }
+  });
+}
+
+function forEachFieldGradientLayer(
+  nodes: SkyboxManifestNode[],
+  callback: (layer: Extract<SkyboxManifestLayer, { type: "field-gradient" }>) => void
+) {
+  nodes.forEach((node) => {
+    if (!node.enabled) {
+      return;
+    }
+
+    if (node.type === "group") {
+      forEachFieldGradientLayer(node.children, callback);
+      return;
+    }
+
+    if (node.type === "field-gradient") {
+      callback(node);
+    }
+  });
+}
+
+function attachGradientUpdater(
+  material: RuntimeMaterial,
+  updater: (manifest: SkyboxManifestV2) => void
+) {
+  material.userData.applyGradientLayerParams = updater;
+}
+
+function attachFieldGradientUpdater(
+  material: RuntimeMaterial,
+  updater: (manifest: SkyboxManifestV2) => void
+) {
+  material.userData.applyFieldGradientLayerParams = updater;
+}
+
 function resolveGeometryOptions(options?: SkyboxGeometryOptions): SkyboxGeometryOptions {
   return options ?? DEFAULT_SKYBOX_GEOMETRY;
 }
@@ -276,17 +608,6 @@ function vec4Literal(color: string, alpha: number, language: ShaderLanguage) {
   return `${type}(${colorLiteral(color, language)}, ${numberLiteral(clamp(alpha))})`;
 }
 
-function directionLiteralFromPoint(x: number, y: number, language: ShaderLanguage) {
-  const lambda = (clamp(x) - 0.5) * Math.PI * 2;
-  const phi = (0.5 - clamp(y)) * Math.PI;
-  const cosPhi = Math.cos(phi);
-  const type = language === "wgsl" ? "vec3<f32>" : "vec3";
-
-  return `${type}(${numberLiteral(cosPhi * Math.cos(lambda))}, ${numberLiteral(
-    Math.sin(phi)
-  )}, ${numberLiteral(cosPhi * Math.sin(lambda))})`;
-}
-
 function vectorLiteral(value: number, language: ShaderLanguage) {
   return language === "wgsl" ? `vec3<f32>(${numberLiteral(value)})` : `vec3(${numberLiteral(value)})`;
 }
@@ -304,6 +625,70 @@ function mutableDeclaration(
 
 function getRenderableNodes(nodes: SkyboxManifestNode[]) {
   return nodes.filter((node) => node.enabled).reverse();
+}
+
+function collectGradientLayerBindings(nodes: SkyboxManifestNode[]) {
+  const bindings: GradientLayerShaderBinding[] = [];
+
+  function collect(nextNodes: SkyboxManifestNode[]) {
+    nextNodes.forEach((node) => {
+      if (!node.enabled) {
+        return;
+      }
+
+      if (node.type === "group") {
+        collect(node.children);
+        return;
+      }
+
+      if (node.type === "gradient") {
+        const index = bindings.length;
+
+        bindings.push({
+          index,
+          layer: node,
+          parameterPrefix: `gradientLayer${index}`,
+          stopCount: node.params.stops.length,
+        });
+      }
+    });
+  }
+
+  collect(nodes);
+
+  return bindings;
+}
+
+function collectFieldGradientLayerBindings(nodes: SkyboxManifestNode[]) {
+  const bindings: FieldGradientLayerShaderBinding[] = [];
+
+  function collect(nextNodes: SkyboxManifestNode[]) {
+    nextNodes.forEach((node) => {
+      if (!node.enabled) {
+        return;
+      }
+
+      if (node.type === "group") {
+        collect(node.children);
+        return;
+      }
+
+      if (node.type === "field-gradient") {
+        const index = bindings.length;
+
+        bindings.push({
+          anchorCount: node.params.anchors.length,
+          index,
+          layer: node,
+          parameterPrefix: `fieldGradientLayer${index}`,
+        });
+      }
+    });
+  }
+
+  collect(nodes);
+
+  return bindings;
 }
 
 function collectImageLayerBindings(nodes: SkyboxManifestNode[]) {
@@ -335,6 +720,14 @@ function collectImageLayerBindings(nodes: SkyboxManifestNode[]) {
   collect(nodes);
 
   return bindings;
+}
+
+function createGradientBindingMap(bindings: GradientLayerShaderBinding[]) {
+  return new Map(bindings.map((binding) => [binding.layer.id, binding]));
+}
+
+function createFieldGradientBindingMap(bindings: FieldGradientLayerShaderBinding[]) {
+  return new Map(bindings.map((binding) => [binding.layer.id, binding]));
 }
 
 function createImageBindingMap(bindings: ImageLayerShaderBinding[]) {
@@ -565,85 +958,64 @@ function updateImageTextureUniforms(
   });
 }
 
-function gradientSampleExpression(params: SkyboxGradientParams, language: ShaderLanguage) {
-  const stops = [...params.stops]
-    .map((stop) => ({
-      color: stop.color,
-      opacity: clamp(stop.opacity / 100),
-      t: clamp(stop.location / 100),
-    }))
-    .sort((firstStop, secondStop) => firstStop.t - secondStop.t);
+function gradientSampleExpression(binding: GradientLayerShaderBinding, language: ShaderLanguage) {
   const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
   const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
 
-  if (stops.length === 0) {
+  if (binding.stopCount === 0) {
     return `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
   }
 
-  const rotationRadians = (params.rotation * Math.PI) / 180;
-  const axis = `${vec3Type}(${numberLiteral(Math.sin(rotationRadians))}, ${numberLiteral(
-    Math.cos(rotationRadians)
-  )}, 0.0)`;
-  const branches = stops.slice(0, -1).map((currentStop, index) => {
-    const nextStop = stops[index + 1];
-    const span = Math.max(0.00001, nextStop.t - currentStop.t);
-    const localT = `clamp((gradientT - ${numberLiteral(currentStop.t)}) / ${numberLiteral(
-      span
-    )}, 0.0, 1.0)`;
+  const branches = Array.from({ length: Math.max(0, binding.stopCount - 1) }, (_, index) => {
+    const currentStopT = `${binding.parameterPrefix}StopT${index}`;
+    const nextStopT = `${binding.parameterPrefix}StopT${index + 1}`;
+    const localT = `clamp((gradientT - ${currentStopT}) / max(${nextStopT} - ${currentStopT}, 0.00001), 0.0, 1.0)`;
     const keyword = index === 0 ? "if" : "else if";
 
-    return `${keyword} (gradientT <= ${numberLiteral(nextStop.t)}) {
-      effectColor = mix(${vec4Literal(
-      currentStop.color,
-      currentStop.opacity,
-      language
-    )}, ${vec4Literal(nextStop.color, nextStop.opacity, language)}, ${localT});
+    return `${keyword} (gradientT <= ${nextStopT}) {
+      effectColor = mix(${binding.parameterPrefix}StopColor${index}, ${binding.parameterPrefix}StopColor${index + 1}, ${localT});
     }`;
   });
-  const lastStop = stops[stops.length - 1];
+  const lastStopIndex = binding.stopCount - 1;
 
   return `{
-    ${language === "wgsl" ? "let" : "vec3"} gradientAxis = normalize(${axis});
+    ${language === "wgsl" ? "let" : "vec3"} gradientAxis = normalize(${binding.parameterPrefix}Axis);
     ${language === "wgsl" ? "let" : "float"} gradientT = dot(direction, gradientAxis) * 0.5 + 0.5;
     ${branches.join("\n")}
     ${branches.length > 0 ? "else" : ""} {
-      effectColor = ${vec4Literal(lastStop.color, lastStop.opacity, language)};
+      effectColor = ${binding.parameterPrefix}StopColor${lastStopIndex};
     }
   }`;
 }
 
-function fieldGradientSampleExpression(params: SkyboxFieldGradientParams, language: ShaderLanguage) {
+function fieldGradientSampleExpression(binding: FieldGradientLayerShaderBinding, language: ShaderLanguage) {
   const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
   const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
   const declare = language === "wgsl" ? "let" : "float";
 
-  if (params.anchors.length === 0) {
+  if (binding.anchorCount === 0) {
     return `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
   }
 
-  const warpAmplitude = clamp(params.amplitude, 0, 0.6);
-  const frequency = Math.max(0.0001, params.frequency);
-  const power = Math.max(0.0001, params.power);
-  const sigma = 0.46 / power;
-  const anchorLines = params.anchors
-    .map(
-      (anchor) => `{
-        ${declare} anchorDirection = normalize(${directionLiteralFromPoint(anchor.x, anchor.y, language)});
+  const anchorLines = Array.from({ length: binding.anchorCount }, (_, anchorIndex) => `{
+        ${declare} anchorDirection = normalize(${binding.parameterPrefix}AnchorDirection${anchorIndex});
         ${declare} anchorDistance = 1.0 - clamp(dot(fieldDirection, anchorDirection), -1.0, 1.0);
+        ${declare} fieldSigma = 0.46 / max(${binding.parameterPrefix}Power, 0.0001);
+        ${declare} inverseDistanceWeight = 1.0 / pow(anchorDistance + 0.0005, max(${binding.parameterPrefix}Power, 0.0001));
+        ${declare} gaussianWeight = exp(-(anchorDistance * anchorDistance) / max(2.0 * fieldSigma * fieldSigma, 0.000001));
         ${declare} weight = ${
-          params.mode === "gaussian"
-            ? `exp(-(anchorDistance * anchorDistance) / ${numberLiteral(2 * sigma * sigma)})`
-            : `1.0 / pow(anchorDistance + 0.0005, ${numberLiteral(power)})`
+          language === "wgsl"
+            ? `select(inverseDistanceWeight, gaussianWeight, ${binding.parameterPrefix}Mode > 0.5)`
+            : `(${binding.parameterPrefix}Mode > 0.5 ? gaussianWeight : inverseDistanceWeight)`
         };
-        weightedColor += ${colorLiteral(anchor.color, language)} * weight;
+        weightedColor += ${binding.parameterPrefix}AnchorColor${anchorIndex} * weight;
         weightSum += weight;
       }`
-    )
-    .join("\n");
+  ).join("\n");
 
   return `{
-    ${declare} warpAmplitude = ${numberLiteral(warpAmplitude)};
-    ${declare} warpFrequency = ${numberLiteral(frequency)};
+    ${declare} warpAmplitude = clamp(${binding.parameterPrefix}Amplitude, 0.0, 0.6);
+    ${declare} warpFrequency = max(${binding.parameterPrefix}Frequency, 0.0001);
     ${mutableDeclaration("fieldDirection", vec3Type, "direction", language)}
     ${declare} warpScale = warpAmplitude;
     if (warpScale > 0.0) {
@@ -672,14 +1044,24 @@ function fieldGradientSampleExpression(params: SkyboxFieldGradientParams, langua
 function effectExpression(
   layer: SkyboxManifestLayer,
   language: ShaderLanguage,
+  gradientBindings: Map<string, GradientLayerShaderBinding>,
+  fieldGradientBindings: Map<string, FieldGradientLayerShaderBinding>,
   imageBindings: Map<string, ImageLayerShaderBinding>
 ) {
   if (layer.type === "gradient") {
-    return gradientSampleExpression(layer.params, language);
+    const binding = gradientBindings.get(layer.id);
+
+    return binding
+      ? gradientSampleExpression(binding, language)
+      : `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
   }
 
   if (layer.type === "field-gradient") {
-    return fieldGradientSampleExpression(layer.params, language);
+    const binding = fieldGradientBindings.get(layer.id);
+
+    return binding
+      ? fieldGradientSampleExpression(binding, language)
+      : `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
   }
 
   return imageSampleExpression(layer, imageBindings, language);
@@ -811,6 +1193,8 @@ function blendSetupExpression(node: SkyboxManifestNode, language: ShaderLanguage
 function composeNodesExpression(
   nodes: SkyboxManifestNode[],
   language: ShaderLanguage,
+  gradientBindings: Map<string, GradientLayerShaderBinding>,
+  fieldGradientBindings: Map<string, FieldGradientLayerShaderBinding>,
   imageBindings: Map<string, ImageLayerShaderBinding>,
   depth = 0
 ): string {
@@ -825,7 +1209,7 @@ function composeNodesExpression(
               const variableName = `groupColor${depth}_${index}`;
               return variableName;
             })()}, 1.0);`
-          : effectExpression(node, language, imageBindings);
+          : effectExpression(node, language, gradientBindings, fieldGradientBindings, imageBindings);
       const groupColorName = `groupColor${depth}_${index}`;
       const groupBlock =
         node.type === "group"
@@ -833,7 +1217,7 @@ function composeNodesExpression(
         {
           ${mutableDeclaration("previousComposedColor", vec3Type, "composedColor", language)}
           composedColor = ${vec3Type}(0.0);
-          ${composeNodesExpression(node.children, language, imageBindings, depth + 1)}
+          ${composeNodesExpression(node.children, language, gradientBindings, fieldGradientBindings, imageBindings, depth + 1)}
           ${groupColorName} = composedColor;
           composedColor = previousComposedColor;
         }`
@@ -863,10 +1247,50 @@ function composeNodesExpression(
 
 function createSkyboxFunction(
   manifest: SkyboxManifestV2,
+  gradientBindings: GradientLayerShaderBinding[],
+  fieldGradientBindings: FieldGradientLayerShaderBinding[],
   imageBindings: ImageLayerShaderBinding[]
 ) {
+  const gradientBindingMap = createGradientBindingMap(gradientBindings);
+  const fieldGradientBindingMap = createFieldGradientBindingMap(fieldGradientBindings);
   const imageBindingMap = createImageBindingMap(imageBindings);
-  const layerBlocks = composeNodesExpression(manifest.nodes, "wgsl", imageBindingMap);
+  const layerBlocks = composeNodesExpression(
+    manifest.nodes,
+    "wgsl",
+    gradientBindingMap,
+    fieldGradientBindingMap,
+    imageBindingMap
+  );
+  const gradientParameters = gradientBindings
+    .flatMap((binding) => [
+      `,
+      ${binding.parameterPrefix}Axis: vec3<f32>`,
+      ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
+        `,
+      ${binding.parameterPrefix}StopColor${stopIndex}: vec4<f32>`,
+        `,
+      ${binding.parameterPrefix}StopT${stopIndex}: f32`,
+      ]).flat(),
+    ])
+    .join("");
+  const fieldGradientParameters = fieldGradientBindings
+    .flatMap((binding) => [
+      `,
+      ${binding.parameterPrefix}Amplitude: f32`,
+      `,
+      ${binding.parameterPrefix}Frequency: f32`,
+      `,
+      ${binding.parameterPrefix}Mode: f32`,
+      `,
+      ${binding.parameterPrefix}Power: f32`,
+      ...Array.from({ length: binding.anchorCount }, (_, anchorIndex) => [
+        `,
+      ${binding.parameterPrefix}AnchorDirection${anchorIndex}: vec3<f32>`,
+        `,
+      ${binding.parameterPrefix}AnchorColor${anchorIndex}: vec3<f32>`,
+      ]).flat(),
+    ])
+    .join("");
   const imageParameters = imageBindings
     .map((binding) => `,
       ${binding.parameterName}: vec4<f32>`)
@@ -874,7 +1298,7 @@ function createSkyboxFunction(
 
   return wgslFn(`
     fn skyboxStudioSample(
-      direction: vec3<f32>${imageParameters}
+      direction: vec3<f32>${gradientParameters}${fieldGradientParameters}${imageParameters}
     ) -> vec4<f32> {
       var composedColor = vec3<f32>(0.0);
       ${layerBlocks}
@@ -925,8 +1349,12 @@ function createWebGpuMaterial(
   imageTextures: Map<string, THREE.Texture>
 ) {
   const material = new NodeMaterial();
+  const gradientBindings = collectGradientLayerBindings(manifest.nodes);
+  const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
   const imageBindings = collectImageLayerBindings(manifest.nodes);
-  const skyboxSample = createSkyboxFunction(manifest, imageBindings);
+  const skyboxSample = createSkyboxFunction(manifest, gradientBindings, fieldGradientBindings, imageBindings);
+  const gradientUniforms = createGradientUniformNodes(gradientBindings);
+  const fieldGradientUniforms = createFieldGradientUniformNodes(fieldGradientBindings);
   const imageHoverUniforms = createImageHoverUniformNodes(imageBindings, hoveredImageLayerId);
   const imagePlacementUniforms = createImagePlacementUniformNodes(imageBindings);
   const vertexNode = Fn(() => {
@@ -944,6 +1372,35 @@ function createWebGpuMaterial(
   const direction = normalize(positionWorld.sub(cameraPosition));
   material.colorNode = skyboxSample({
     direction,
+    ...Object.fromEntries(
+      gradientBindings.flatMap((binding) => {
+        const gradientUniform = gradientUniforms[binding.index];
+
+        return [
+          [`${binding.parameterPrefix}Axis`, gradientUniform.axis],
+          ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
+            [`${binding.parameterPrefix}StopColor${stopIndex}`, gradientUniform.stops[stopIndex].color],
+            [`${binding.parameterPrefix}StopT${stopIndex}`, gradientUniform.stops[stopIndex].t],
+          ]).flat(),
+        ];
+      })
+    ),
+    ...Object.fromEntries(
+      fieldGradientBindings.flatMap((binding) => {
+        const fieldGradientUniform = fieldGradientUniforms[binding.index];
+
+        return [
+          [`${binding.parameterPrefix}Amplitude`, fieldGradientUniform.amplitude],
+          [`${binding.parameterPrefix}Frequency`, fieldGradientUniform.frequency],
+          [`${binding.parameterPrefix}Mode`, fieldGradientUniform.mode],
+          [`${binding.parameterPrefix}Power`, fieldGradientUniform.power],
+          ...Array.from({ length: binding.anchorCount }, (_, anchorIndex) => [
+            [`${binding.parameterPrefix}AnchorDirection${anchorIndex}`, fieldGradientUniform.anchors[anchorIndex].direction],
+            [`${binding.parameterPrefix}AnchorColor${anchorIndex}`, fieldGradientUniform.anchors[anchorIndex].color],
+          ]).flat(),
+        ];
+      })
+    ),
     ...createWebGpuImageSampleNodes(
       imageBindings,
       direction,
@@ -954,6 +1411,16 @@ function createWebGpuMaterial(
   }) as any;
   attachHoveredImageUpdater(material, (nextHoveredImageLayerId) =>
     applyHoveredImageLayerIdToUniformNodes(imageHoverUniforms, nextHoveredImageLayerId)
+  );
+  attachGradientUpdater(material, (nextManifest) =>
+    forEachGradientLayer(nextManifest.nodes, (layer) =>
+      applyGradientLayerParamsToUniformNodes(gradientUniforms, layer)
+    )
+  );
+  attachFieldGradientUpdater(material, (nextManifest) =>
+    forEachFieldGradientLayer(nextManifest.nodes, (layer) =>
+      applyFieldGradientLayerParamsToUniformNodes(fieldGradientUniforms, layer)
+    )
   );
   attachImagePlacementUpdater(material, (layerId, placement) =>
     applyImageLayerPlacementToUniformNodes(imagePlacementUniforms, layerId, placement)
@@ -997,11 +1464,23 @@ function createWebGlMaterial(
   hoveredImageLayerId: HoveredImageLayerId,
   imageTextures: Map<string, THREE.Texture>
 ) {
+  const gradientBindings = collectGradientLayerBindings(manifest.nodes);
+  const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
   const imageBindings = collectImageLayerBindings(manifest.nodes);
+  const gradientBindingMap = createGradientBindingMap(gradientBindings);
+  const fieldGradientBindingMap = createFieldGradientBindingMap(fieldGradientBindings);
   const imageBindingMap = createImageBindingMap(imageBindings);
-  const layerBlocks = composeNodesExpression(manifest.nodes, "glsl", imageBindingMap);
+  const layerBlocks = composeNodesExpression(
+    manifest.nodes,
+    "glsl",
+    gradientBindingMap,
+    fieldGradientBindingMap,
+    imageBindingMap
+  );
   const material = new THREE.ShaderMaterial({
     uniforms: {
+      ...gradientShaderUniforms(gradientBindings),
+      ...fieldGradientShaderUniforms(fieldGradientBindings),
       ...imageHoverShaderUniforms(imageBindings, hoveredImageLayerId),
       ...imagePlacementShaderUniforms(imageBindings),
       ...imageTextureUniforms(imageBindings, imageTextures),
@@ -1021,6 +1500,19 @@ function createWebGlMaterial(
     `,
     fragmentShader: `
       precision highp float;
+      ${gradientBindings
+        .map((binding) => `uniform vec3 ${binding.parameterPrefix}Axis;
+      ${Array.from({ length: binding.stopCount }, (_, stopIndex) => `uniform vec4 ${binding.parameterPrefix}StopColor${stopIndex};
+      uniform float ${binding.parameterPrefix}StopT${stopIndex};`).join("\n")}`)
+        .join("\n")}
+      ${fieldGradientBindings
+        .map((binding) => `uniform float ${binding.parameterPrefix}Amplitude;
+      uniform float ${binding.parameterPrefix}Frequency;
+      uniform float ${binding.parameterPrefix}Mode;
+      uniform float ${binding.parameterPrefix}Power;
+      ${Array.from({ length: binding.anchorCount }, (_, anchorIndex) => `uniform vec3 ${binding.parameterPrefix}AnchorDirection${anchorIndex};
+      uniform vec3 ${binding.parameterPrefix}AnchorColor${anchorIndex};`).join("\n")}`)
+        .join("\n")}
       ${imageBindings
         .map(
           (binding) => `uniform sampler2D imageTexture${binding.index};
@@ -1134,6 +1626,16 @@ function createWebGlMaterial(
   attachHoveredImageUpdater(material, (nextHoveredImageLayerId) =>
     applyHoveredImageLayerIdToShaderUniforms(material, imageBindings, nextHoveredImageLayerId)
   );
+  attachGradientUpdater(material, (nextManifest) =>
+    forEachGradientLayer(nextManifest.nodes, (layer) =>
+      applyGradientLayerParamsToShaderUniforms(material, layer, gradientBindings)
+    )
+  );
+  attachFieldGradientUpdater(material, (nextManifest) =>
+    forEachFieldGradientLayer(nextManifest.nodes, (layer) =>
+      applyFieldGradientLayerParamsToShaderUniforms(material, layer, fieldGradientBindings)
+    )
+  );
   attachImagePlacementUpdater(material, (layerId, placement) =>
     applyImageLayerPlacementToShaderUniforms(material, imageBindings, layerId, placement)
   );
@@ -1240,6 +1742,65 @@ function resolveRenderMode(mode: SkyboxRenderMode, renderer?: SupportedRenderer 
   return isWebGpuRenderer(renderer) ? "live-webgpu" : "live-webgl";
 }
 
+function createMaterialTopologyKey(
+  manifest: SkyboxManifestV2,
+  renderMode: Exclude<SkyboxRenderMode, "auto">
+) {
+  const nodeKey = (node: SkyboxManifestNode): unknown => {
+    if (node.type === "group") {
+      return {
+        blendMode: node.blendMode,
+        children: node.children.map(nodeKey),
+        enabled: node.enabled,
+        id: node.id,
+        opacity: node.opacity,
+        type: node.type,
+      };
+    }
+
+    if (node.type === "gradient") {
+      return {
+        blendMode: node.blendMode,
+        enabled: node.enabled,
+        id: node.id,
+        mode: node.params.mode,
+        opacity: node.opacity,
+        stopCount: node.params.stops.length,
+        type: node.type,
+      };
+    }
+
+    if (node.type === "image") {
+      return {
+        blendMode: node.blendMode,
+        enabled: node.enabled,
+        hasPlacement: Boolean(node.params.placement),
+        hasSrc: Boolean(node.params.src),
+        height: node.params.height,
+        id: node.id,
+        opacity: node.opacity,
+        type: node.type,
+        width: node.params.width,
+      };
+    }
+
+    return {
+      anchorCount: node.params.anchors.length,
+      blendMode: node.blendMode,
+      enabled: node.enabled,
+      id: node.id,
+      opacity: node.opacity,
+      type: node.type,
+    };
+  };
+
+  return JSON.stringify({
+    geometry: manifest.geometry?.type ?? DEFAULT_SKYBOX_GEOMETRY.type,
+    nodes: manifest.nodes.map(nodeKey),
+    renderMode,
+  });
+}
+
 export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #bakeOptions: SkyboxBakeOptions = {};
   #geometryOptions: SkyboxGeometryOptions = DEFAULT_SKYBOX_GEOMETRY;
@@ -1247,6 +1808,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #imagePlacementOverrides = new Map<string, SkyboxImagePlacement | null>();
   #imageTextures = new Map<string, THREE.Texture>();
   #manifest: SkyboxManifestV2 = DEFAULT_MANIFEST;
+  #materialTopologyKey: string | null = null;
   #ownedTexture: THREE.Texture | null = null;
   #renderMode: SkyboxRenderMode = "auto";
   #renderer: SupportedRenderer | null = null;
@@ -1294,6 +1856,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       this.#imageTextures.delete(layerId);
     }
 
+    this.#materialTopologyKey = null;
     this.setManifest(this.#manifest);
 
     return this;
@@ -1308,6 +1871,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       }
     });
 
+    this.#materialTopologyKey = null;
     this.setManifest(this.#manifest);
 
     return this;
@@ -1357,6 +1921,15 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#ownedTexture = ownedTexture;
   }
 
+  private applyLiveManifestUniformUpdates() {
+    this.material.userData.applyGradientLayerParams?.(this.#manifest);
+    this.material.userData.applyFieldGradientLayerParams?.(this.#manifest);
+    this.material.userData.applyImageTextures?.(this.#imageTextures);
+    this.#imagePlacementOverrides.forEach((placement, layerId) => {
+      this.material.userData.applyImageLayerPlacement?.(layerId, placement);
+    });
+  }
+
   setHoveredImageLayerId(layerId: string | null) {
     if (this.#hoveredImageLayerId === layerId) {
       return this;
@@ -1376,9 +1949,19 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   }
 
   setManifest(manifest: SkyboxManifest) {
-    this.#manifest = migrateManifestToV2(manifest);
+    const nextManifest = migrateManifestToV2(manifest);
+    this.#manifest = nextManifest;
     this.applyGeometry(this.#manifest.geometry ?? this.#geometryOptions);
     const renderMode = resolveRenderMode(this.#renderMode, this.#renderer);
+    const nextTopologyKey = createMaterialTopologyKey(this.#manifest, renderMode);
+
+    if (
+      this.#materialTopologyKey === nextTopologyKey &&
+      (renderMode === "live-webgpu" || renderMode === "live-webgl")
+    ) {
+      this.applyLiveManifestUniformUpdates();
+      return this;
+    }
 
     if (renderMode === "live-webgpu") {
       this.replaceMaterial(createWebGpuMaterial(this.#manifest, this.#hoveredImageLayerId, this.#imageTextures));
@@ -1389,11 +1972,14 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       this.replaceMaterial(createBakedMaterialFromTexture(texture, this.#renderer), texture);
     }
 
+    this.#materialTopologyKey = nextTopologyKey;
+
     return this;
   }
 
   setBakedTexture(texture: THREE.Texture) {
     this.replaceMaterial(createBakedMaterialFromTexture(texture, this.#renderer));
+    this.#materialTopologyKey = null;
 
     return this;
   }

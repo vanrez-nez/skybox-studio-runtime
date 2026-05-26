@@ -24,6 +24,7 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     private applyGeometry;
     private disposeOwnedTexture;
     private replaceMaterial;
+    private applyLiveManifestUniformUpdates;
     setHoveredImageLayerId(layerId: string | null): this;
     setImageLayerPlacement(layerId: string, placement: SkyboxImagePlacement | null): this;
     setManifest(manifest: SkyboxManifest): this;
