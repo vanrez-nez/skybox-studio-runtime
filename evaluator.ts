@@ -17,6 +17,7 @@ import type {
   SkyboxSelectionDot,
 } from "./manifest";
 import { migrateManifestToV2 } from "./manifest";
+import { projectDirectionToImageUv } from "./image-placement-transform";
 
 const TWO_PI = Math.PI * 2;
 
@@ -218,38 +219,6 @@ function sampleImagePixel(params: SkyboxImageParams, x: number, y: number): Rgba
   ];
 }
 
-function resolveImagePlacement(placement: NonNullable<SkyboxImageParams["placement"]>) {
-  const rawPlacement = placement as unknown as {
-    angularHeight?: number;
-    angularWidth?: number;
-    center?: Rgb;
-    centerDirection?: Rgb;
-    height?: number;
-    normal?: Rgb;
-    tangentX?: Rgb;
-    tangentY?: Rgb;
-    width?: number;
-  };
-  const centerDirection = normalizeDirection(
-    rawPlacement.centerDirection ?? rawPlacement.normal ?? rawPlacement.center ?? [0, 0, -1]
-  );
-  const tangentX = normalizeDirection(rawPlacement.tangentX ?? [1, 0, 0]);
-  const tangentY = normalizeDirection(rawPlacement.tangentY ?? [0, 1, 0]);
-  const legacyDistance = rawPlacement.center
-    ? Math.max(0.0001, Math.hypot(rawPlacement.center[0], rawPlacement.center[1], rawPlacement.center[2]))
-    : 1;
-  const angularWidth =
-    typeof rawPlacement.angularWidth === "number"
-      ? rawPlacement.angularWidth
-      : 2 * Math.atan(Math.max(0.0001, rawPlacement.width ?? 0.4) / (2 * legacyDistance));
-  const angularHeight =
-    typeof rawPlacement.angularHeight === "number"
-      ? rawPlacement.angularHeight
-      : 2 * Math.atan(Math.max(0.0001, rawPlacement.height ?? 0.3) / (2 * legacyDistance));
-
-  return { angularHeight, angularWidth, centerDirection, tangentX, tangentY };
-}
-
 function sampleImageLayer(direction: Rgb, params: SkyboxImageParams): Rgba {
   const placement = params.placement;
 
@@ -262,32 +231,13 @@ function sampleImageLayer(direction: Rgb, params: SkyboxImageParams): Rgba {
     return [0, 0, 0, 0];
   }
 
-  const resolvedPlacement = resolveImagePlacement(placement);
-  const normalizedDirection = normalizeDirection(direction);
-  const denom = dot(normalizedDirection, resolvedPlacement.centerDirection);
+  const uv = projectDirectionToImageUv(direction, placement);
 
-  if (denom <= 0) {
+  if (!uv) {
     return [0, 0, 0, 0];
   }
 
-  const projectedX = dot(normalizedDirection, resolvedPlacement.tangentX) / denom;
-  const projectedY = dot(normalizedDirection, resolvedPlacement.tangentY) / denom;
-  const halfWidth = Math.tan(resolvedPlacement.angularWidth / 2);
-  const halfHeight = Math.tan(resolvedPlacement.angularHeight / 2);
-
-  if (
-    halfWidth <= 0 ||
-    halfHeight <= 0 ||
-    projectedX < -halfWidth ||
-    projectedX > halfWidth ||
-    projectedY < -halfHeight ||
-    projectedY > halfHeight
-  ) {
-    return [0, 0, 0, 0];
-  }
-
-  const u = projectedX / (2 * halfWidth) + 0.5;
-  const v = 0.5 - projectedY / (2 * halfHeight);
+  const { u, v } = uv;
 
   if (u < 0 || u > 1 || v < 0 || v > 1) {
     return [0, 0, 0, 0];

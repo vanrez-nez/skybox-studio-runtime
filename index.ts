@@ -22,6 +22,22 @@ export {
   parseHexColor,
   srgbChannelToLinear,
 } from "./math";
+export {
+  createAngularDecalPlacement,
+  createImagePlacementTangents,
+  directionFromPosition,
+  IMAGE_PLACEMENT_ELEVATION_LIMIT,
+  normalizeImagePlacement,
+  normalizeVector,
+  placementFromPosition,
+  placementFromScale,
+  positionFromPlacement,
+  projectDirectionToImageUv,
+  scaleFromPlacement,
+  type ImageProjectionUv,
+  type Point2,
+  type VectorTuple,
+} from "./image-placement-transform";
 export { evaluateSkyboxDirection, equirectPointToDirection, equirectUvToDirection } from "./evaluator";
 export type {
   SkyboxBakeOptions,

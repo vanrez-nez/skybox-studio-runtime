@@ -40,6 +40,8 @@ export type SkyboxFieldGradientParams = {
 export type SkyboxImagePlacement = {
     angularHeight: number;
     angularWidth: number;
+    baseAngularHeight: number;
+    baseAngularWidth: number;
     centerDirection: [number, number, number];
     projection: "angular-decal";
     tangentX: [number, number, number];
