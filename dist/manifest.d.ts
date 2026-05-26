@@ -44,6 +44,7 @@ export type SkyboxImagePlacement = {
     baseAngularWidth: number;
     centerDirection: [number, number, number];
     projection: "angular-decal";
+    rotation: number;
     tangentX: [number, number, number];
     tangentY: [number, number, number];
 };

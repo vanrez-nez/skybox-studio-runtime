@@ -15,6 +15,7 @@ export type CreateAngularDecalPlacementOptions = {
   baseAngularHeight?: number;
   baseAngularWidth?: number;
   centerDirection: VectorTuple;
+  rotation?: number;
   upDirection?: VectorTuple;
 };
 export type ImagePlacementPositionOptions = {
@@ -43,6 +44,10 @@ function normalizeAngleDegrees(degrees: number) {
   return ((degrees + 180) % 360 + 360) % 360 - 180;
 }
 
+function normalizeRotationDegrees(degrees: number) {
+  return ((Math.round(degrees) % 360) + 360) % 360;
+}
+
 function dotVector(firstVector: VectorTuple, secondVector: VectorTuple) {
   return (
     firstVector[0] * secondVector[0] +
@@ -61,6 +66,14 @@ function subtractVector(firstVector: VectorTuple, secondVector: VectorTuple): Ve
 
 function multiplyVector(vector: VectorTuple, scalar: number): VectorTuple {
   return [vector[0] * scalar, vector[1] * scalar, vector[2] * scalar];
+}
+
+function addVector(firstVector: VectorTuple, secondVector: VectorTuple): VectorTuple {
+  return [
+    firstVector[0] + secondVector[0],
+    firstVector[1] + secondVector[1],
+    firstVector[2] + secondVector[2],
+  ];
 }
 
 function crossVector(firstVector: VectorTuple, secondVector: VectorTuple): VectorTuple {
@@ -90,9 +103,26 @@ export function normalizeVector(
   return fallback;
 }
 
+function rotateVectorAroundAxis(vector: VectorTuple, axis: VectorTuple, degrees: number): VectorTuple {
+  const radians = degreesToRadians(degrees);
+  const cosRotation = Math.cos(radians);
+  const sinRotation = Math.sin(radians);
+  const normalizedAxis = normalizeVector(axis);
+  const rotated = addVector(
+    addVector(
+      multiplyVector(vector, cosRotation),
+      multiplyVector(crossVector(normalizedAxis, vector), sinRotation)
+    ),
+    multiplyVector(normalizedAxis, dotVector(normalizedAxis, vector) * (1 - cosRotation))
+  );
+
+  return normalizeVector(rotated, vector);
+}
+
 export function createImagePlacementTangents(
   centerDirection: VectorTuple,
-  upDirection: VectorTuple = WORLD_UP
+  upDirection: VectorTuple = WORLD_UP,
+  rotation = 0
 ) {
   const normalizedCenterDirection = normalizeVector(centerDirection);
   let tangentY = subtractVector(
@@ -117,8 +147,12 @@ export function createImagePlacementTangents(
   tangentY = normalizeVector(tangentY, DEFAULT_TANGENT_Y);
 
   return {
-    tangentX: normalizeVector(crossVector(normalizedCenterDirection, tangentY), DEFAULT_TANGENT_X),
-    tangentY,
+    tangentX: rotateVectorAroundAxis(
+      normalizeVector(crossVector(normalizedCenterDirection, tangentY), DEFAULT_TANGENT_X),
+      normalizedCenterDirection,
+      rotation
+    ),
+    tangentY: rotateVectorAroundAxis(tangentY, normalizedCenterDirection, rotation),
   };
 }
 
@@ -128,10 +162,16 @@ export function createAngularDecalPlacement({
   baseAngularHeight,
   baseAngularWidth,
   centerDirection,
+  rotation = 0,
   upDirection = WORLD_UP,
 }: CreateAngularDecalPlacementOptions): SkyboxImagePlacement {
   const normalizedCenterDirection = normalizeVector(centerDirection);
-  const { tangentX, tangentY } = createImagePlacementTangents(normalizedCenterDirection, upDirection);
+  const normalizedRotation = normalizeRotationDegrees(rotation);
+  const { tangentX, tangentY } = createImagePlacementTangents(
+    normalizedCenterDirection,
+    upDirection,
+    normalizedRotation
+  );
   const normalizedAngularHeight = Math.max(0.0001, angularHeight);
   const normalizedAngularWidth = Math.max(0.0001, angularWidth);
 
@@ -142,6 +182,7 @@ export function createAngularDecalPlacement({
     baseAngularWidth: Math.max(0.0001, baseAngularWidth ?? normalizedAngularWidth),
     centerDirection: normalizedCenterDirection,
     projection: "angular-decal",
+    rotation: normalizedRotation,
     tangentX,
     tangentY,
   };
@@ -157,6 +198,7 @@ export function normalizeImagePlacement(rawPlacement: unknown): SkyboxImagePlace
     centerDirection?: VectorTuple;
     height?: number;
     normal?: VectorTuple;
+    rotation?: number;
     tangentX?: VectorTuple;
     tangentY?: VectorTuple;
     width?: number;
@@ -183,6 +225,7 @@ export function normalizeImagePlacement(rawPlacement: unknown): SkyboxImagePlace
     baseAngularHeight: typeof raw?.baseAngularHeight === "number" ? raw.baseAngularHeight : angularHeight,
     baseAngularWidth: typeof raw?.baseAngularWidth === "number" ? raw.baseAngularWidth : angularWidth,
     centerDirection,
+    rotation: typeof raw?.rotation === "number" ? raw.rotation : 0,
   });
 }
 
@@ -222,6 +265,7 @@ export function placementFromPosition(
     baseAngularHeight: normalizedPlacement.baseAngularHeight,
     baseAngularWidth: normalizedPlacement.baseAngularWidth,
     centerDirection: directionFromPosition(position),
+    rotation: normalizedPlacement.rotation,
     upDirection: options?.upDirection,
   });
 }
@@ -243,6 +287,26 @@ export function placementFromScale(placement: SkyboxImagePlacement, scale: Point
     angularHeight: Math.max(0.0001, normalizedPlacement.baseAngularHeight * Math.max(0.0001, scale.y)),
     angularWidth: Math.max(0.0001, normalizedPlacement.baseAngularWidth * Math.max(0.0001, scale.x)),
   };
+}
+
+export function rotationFromPlacement(placement: SkyboxImagePlacement) {
+  return normalizeImagePlacement(placement).rotation;
+}
+
+export function placementFromRotation(
+  placement: SkyboxImagePlacement,
+  rotation: number
+): SkyboxImagePlacement {
+  const normalizedPlacement = normalizeImagePlacement(placement);
+
+  return createAngularDecalPlacement({
+    angularHeight: normalizedPlacement.angularHeight,
+    angularWidth: normalizedPlacement.angularWidth,
+    baseAngularHeight: normalizedPlacement.baseAngularHeight,
+    baseAngularWidth: normalizedPlacement.baseAngularWidth,
+    centerDirection: normalizedPlacement.centerDirection,
+    rotation,
+  });
 }
 
 export function projectDirectionToImageUv(

@@ -9,9 +9,11 @@ import {
   migrateManifestToV2,
   normalizeImagePlacement,
   placementFromPosition,
+  placementFromRotation,
   placementFromScale,
   positionFromPlacement,
   projectDirectionToImageUv,
+  rotationFromPlacement,
   scaleFromPlacement,
   Skybox,
   type SkyboxManifestV1,
@@ -159,6 +161,52 @@ describe("runtime evaluator", () => {
     expect(position.y).toBeCloseTo(-18);
   });
 
+  it("round-trips image placement rotation", () => {
+    const placement = createAngularDecalPlacement({
+      angularHeight: 0.25,
+      angularWidth: 0.5,
+      centerDirection: [0, 0, -1],
+    });
+    const rotatedPlacement = placementFromRotation(placement, 90);
+
+    expect(rotationFromPlacement(rotatedPlacement)).toBe(90);
+  });
+
+  it("rotates image placement UV orientation around the center direction", () => {
+    const unrotatedPlacement = createAngularDecalPlacement({
+      angularHeight: 0.5,
+      angularWidth: 0.5,
+      centerDirection: [0, 0, -1],
+    });
+    const rotatedPlacement = placementFromRotation(unrotatedPlacement, 90);
+    const rightDirection: [number, number, number] = [0.1, 0, -1];
+    const unrotatedUv = projectDirectionToImageUv(rightDirection, unrotatedPlacement);
+    const rotatedUv = projectDirectionToImageUv(rightDirection, rotatedPlacement);
+
+    expect(unrotatedUv).not.toBeNull();
+    expect(rotatedUv).not.toBeNull();
+    expect(unrotatedUv!.u).toBeGreaterThan(0.5);
+    expect(unrotatedUv!.v).toBeCloseTo(0.5);
+    expect(rotatedUv!.u).toBeCloseTo(0.5);
+    expect(rotatedUv!.v).toBeLessThan(0.5);
+  });
+
+  it("preserves image placement rotation through position and scale changes", () => {
+    const placement = placementFromRotation(
+      createAngularDecalPlacement({
+        angularHeight: 0.25,
+        angularWidth: 0.5,
+        centerDirection: [0, 0, -1],
+      }),
+      37
+    );
+    const movedPlacement = placementFromPosition(placement, { x: 20, y: 12 });
+    const scaledPlacement = placementFromScale(movedPlacement, { x: 0.75, y: 0.5 });
+
+    expect(rotationFromPlacement(movedPlacement)).toBe(37);
+    expect(rotationFromPlacement(scaledPlacement)).toBe(37);
+  });
+
   it("projects image placement center and rejects the back hemisphere", () => {
     const placement = createAngularDecalPlacement({
       angularHeight: 0.5,
@@ -203,6 +251,7 @@ describe("runtime evaluator", () => {
     });
 
     expect(scaleFromPlacement(placement)).toEqual({ x: 1, y: 1 });
+    expect(rotationFromPlacement(placement)).toBe(0);
   });
 
   it("normalizes legacy image placement tangents from the shared world-up convention", () => {
