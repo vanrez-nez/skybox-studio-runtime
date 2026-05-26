@@ -95,8 +95,8 @@ var C = [
 	0,
 	1,
 	0
-], w = 89.9;
-function re(e, t, n) {
+], re = 89.9;
+function w(e, t, n) {
 	return Math.min(n, Math.max(t, e));
 }
 function ie(e) {
@@ -185,11 +185,11 @@ function de(e) {
 	let t = E(e.centerDirection);
 	return {
 		x: oe(ae(Math.atan2(t[0], -t[2]))),
-		y: ae(Math.asin(re(t[1], -1, 1)))
+		y: ae(Math.asin(w(t[1], -1, 1)))
 	};
 }
 function fe(e) {
-	let t = ie(e.x), n = ie(re(e.y, -89.9, w)), r = Math.cos(n);
+	let t = ie(e.x), n = ie(w(e.y, -89.9, re)), r = Math.cos(n);
 	return E([
 		Math.sin(t) * r,
 		Math.sin(n),
@@ -752,11 +752,28 @@ function G(e) {
 function K(t = x) {
 	return G(t).type === "sphere" ? new e.SphereGeometry(1, 64, 32) : new e.BoxGeometry(1, 1, 1);
 }
-function ct(t = x) {
-	if (G(t).type === "sphere") {
-		let t = new e.SphereGeometry(1, 32, 16), n = new e.WireframeGeometry(t);
-		return t.dispose(), n;
+function ct(t = 1, n = 25, r = 25) {
+	let i = [], a = (e, n) => {
+		i.push(t * Math.sin(n) * Math.cos(e), t * Math.cos(n), t * Math.sin(n) * Math.sin(e));
+	};
+	for (let e = 0; e < n; e += 1) {
+		let t = e / n * Math.PI * 2;
+		for (let e = 0; e < r; e += 1) {
+			let n = e / r * Math.PI, i = (e + 1) / r * Math.PI;
+			a(t, n), a(t, i);
+		}
 	}
+	for (let e = 1; e < r; e += 1) {
+		let t = e / r * Math.PI;
+		for (let e = 0; e < n; e += 1) {
+			let r = e / n * Math.PI * 2, i = (e + 1) / n * Math.PI * 2;
+			a(r, t), a(i, t);
+		}
+	}
+	return new e.BufferGeometry().setAttribute("position", new e.Float32BufferAttribute(i, 3));
+}
+function lt(t = x) {
+	if (G(t).type === "sphere") return ct();
 	let n = new e.BoxGeometry(1, 1, 1), r = new e.EdgesGeometry(n);
 	return n.dispose(), r;
 }
@@ -769,10 +786,10 @@ function J(e, t) {
 function Y(e, t, n, r) {
 	return r === "wgsl" ? `var ${e}: ${t} = ${n};` : `${t} ${e} = ${n};`;
 }
-function lt(e) {
+function ut(e) {
 	return e.filter((e) => e.enabled).reverse();
 }
-function ut(e) {
+function dt(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -795,7 +812,7 @@ function ut(e) {
 	}
 	return n(e), t;
 }
-function dt(e) {
+function ft(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -818,7 +835,7 @@ function dt(e) {
 	}
 	return n(e), t;
 }
-function ft(e) {
+function pt(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -840,26 +857,26 @@ function ft(e) {
 	}
 	return n(e), t;
 }
-function X(e) {
-	return new Map(e.map((e) => [e.layer.id, e]));
-}
-function pt(e) {
-	return new Map(e.map((e) => [e.layer.id, e]));
-}
 function mt(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function ht(e, t, n) {
-	let { placement: r, src: i, width: a, height: o } = e.layer.params, s = t === "wgsl" ? "vec4<f32>" : "vec4", c = t === "wgsl" ? "f32" : "float", l = t === "wgsl" ? "let" : "float";
-	return !i || a <= 0 || o <= 0 ? `return ${s}(0.0, 0.0, 0.0, 0.0);` : `
+function ht(e) {
+	return new Map(e.map((e) => [e.layer.id, e]));
+}
+function gt(e) {
+	return new Map(e.map((e) => [e.layer.id, e]));
+}
+function _t(e, t, n) {
+	let { width: r, height: i } = e.layer.params, a = t === "wgsl" ? "vec4<f32>" : "vec4", o = t === "wgsl" ? "f32" : "float", s = t === "wgsl" ? "let" : "float";
+	return r <= 0 || i <= 0 ? `return ${a}(0.0, 0.0, 0.0, 0.0);` : `
       ${t === "wgsl" ? "let" : "vec3"} imageDirection = normalize(direction);
-      ${l} imageDenom = dot(imageDirection, ${n.centerDirection});
-      ${l} safeImageDenom = max(imageDenom, 0.000001);
-      ${l} projectedX = dot(imageDirection, ${n.tangentX}) / safeImageDenom;
-      ${l} projectedY = dot(imageDirection, ${n.tangentY}) / safeImageDenom;
-      ${l} imageU = projectedX / max(${n.halfSize}.x * 2.0, 0.000001) + 0.5;
-      ${l} imageV = 0.5 - projectedY / max(${n.halfSize}.y * 2.0, 0.000001);
-      ${Y("imageValid", c, "0.0", t)}
+      ${s} imageDenom = dot(imageDirection, ${n.centerDirection});
+      ${s} safeImageDenom = max(imageDenom, 0.000001);
+      ${s} projectedX = dot(imageDirection, ${n.tangentX}) / safeImageDenom;
+      ${s} projectedY = dot(imageDirection, ${n.tangentY}) / safeImageDenom;
+      ${s} imageU = projectedX / max(${n.halfSize}.x * 2.0, 0.000001) + 0.5;
+      ${s} imageV = 0.5 - projectedY / max(${n.halfSize}.y * 2.0, 0.000001);
+      ${Y("imageValid", o, "0.0", t)}
       if (imageDenom > 0.0 &&
         ${n.halfSize}.x > 0.0 &&
         ${n.halfSize}.y > 0.0 &&
@@ -873,10 +890,10 @@ function ht(e, t, n) {
         imageV <= 1.0) {
         imageValid = 1.0;
       }
-      return ${s}(imageU, imageV, imageValid, 0.0);
+      return ${a}(imageU, imageV, imageValid, 0.0);
     `;
 }
-function gt(e, t, n) {
+function vt(e, t, n) {
 	let r = t.get(e.id);
 	return r ? n === "wgsl" ? `effectColor = ${r.parameterName};` : `{
     vec4 imageSampleInfo = skyboxStudioImageSampleInfo${r.index}(direction);
@@ -888,7 +905,7 @@ function gt(e, t, n) {
     effectColor = vec4(imageSampleColor.rgb, imageSampleColor.a * imageSampleInfo.z);
   }` : `effectColor = ${n === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
 }
-function _t(e) {
+function yt(e) {
 	return u(`
     fn skyboxStudioImageSampleInfo${e.index}(
       direction: vec3<f32>,
@@ -897,7 +914,7 @@ function _t(e) {
       imageTangentY: vec3<f32>,
       imageHalfSize: vec2<f32>
     ) -> vec4<f32> {
-      ${ht(e, "wgsl", {
+      ${_t(e, "wgsl", {
 		centerDirection: "imageCenterDirection",
 		halfSize: "imageHalfSize",
 		tangentX: "imageTangentX",
@@ -906,7 +923,7 @@ function _t(e) {
     }
   `);
 }
-var vt = u("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> vec4<f32> {\n    return vec4<f32>(color.rgb, color.a * valid);\n  }\n"), yt = u(`
+var bt = u("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> vec4<f32> {\n    return vec4<f32>(color.rgb, color.a * valid);\n  }\n"), xt = u(`
   fn skyboxStudioApplyImageHover(color: vec4<f32>, hover: f32) -> vec4<f32> {
     return vec4<f32>(
       mix(color.rgb, vec3<f32>(1.0, 0.0, 0.0), clamp(hover, 0.0, 1.0) * ${q(Ve)}),
@@ -914,10 +931,10 @@ var vt = u("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> v
     );
   }
 `);
-function bt(e) {
+function St(e) {
 	return e.map((e) => `
         vec4 skyboxStudioImageSampleInfo${e.index}(vec3 direction) {
-          ${ht(e, "glsl", {
+          ${_t(e, "glsl", {
 		centerDirection: `imageCenterDirection${e.index}`,
 		halfSize: `imageHalfSize${e.index}`,
 		tangentX: `imageTangentX${e.index}`,
@@ -926,19 +943,19 @@ function bt(e) {
         }
       `).join("\n");
 }
-function Z(e, t) {
-	return t.params.src ? e.get(t.id) ?? P : P;
-}
-function xt(e, t) {
-	return Object.fromEntries(e.map((e) => [`imageTexture${e.index}`, { value: Z(t, e.layer) }]));
-}
-function St(e, t, n) {
-	t.forEach((t) => {
-		let r = `imageTexture${t.index}`;
-		e.uniforms[r] && (e.uniforms[r].value = Z(n, t.layer));
-	});
+function X(e, t) {
+	return e.get(t.id) ?? P;
 }
 function Ct(e, t) {
+	return Object.fromEntries(e.map((e) => [`imageTexture${e.index}`, { value: X(t, e.layer) }]));
+}
+function wt(e, t, n) {
+	t.forEach((t) => {
+		let r = `imageTexture${t.index}`;
+		e.uniforms[r] && (e.uniforms[r].value = X(n, t.layer));
+	});
+}
+function Tt(e, t) {
 	let n = t === "wgsl" ? "vec4<f32>" : "vec4";
 	if (e.stopCount === 0) return `effectColor = ${n}(0.0, 0.0, 0.0, 0.0);`;
 	let r = Array.from({ length: Math.max(0, e.stopCount - 1) }, (t, n) => {
@@ -956,7 +973,7 @@ function Ct(e, t) {
     }
   }`;
 }
-function wt(e, t) {
+function Et(e, t) {
 	let n = t === "wgsl" ? "vec4<f32>" : "vec4", r = t === "wgsl" ? "vec3<f32>" : "vec3", i = t === "wgsl" ? "let" : "float";
 	if (e.anchorCount === 0) return `effectColor = ${n}(0.0, 0.0, 0.0, 0.0);`;
 	let a = Array.from({ length: e.anchorCount }, (n, r) => `{
@@ -990,21 +1007,21 @@ function wt(e, t) {
     }
   }`;
 }
-function Tt(e, t, n, r, i) {
+function Dt(e, t, n, r, i) {
 	if (e.type === "gradient") {
 		let r = n.get(e.id);
-		return r ? Ct(r, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+		return r ? Tt(r, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
 	}
 	if (e.type === "field-gradient") {
 		let n = r.get(e.id);
-		return n ? wt(n, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+		return n ? Et(n, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
 	}
-	return gt(e, i, t);
+	return vt(e, i, t);
 }
-function Q(e, t, n, r) {
+function Z(e, t, n, r) {
 	return r === "wgsl" ? `select(${n}, ${t}, ${e})` : `((${e}) ? ${t} : ${n})`;
 }
-function Et(e, t) {
+function Ot(e, t) {
 	if (t === "glsl") switch (e.blendMode) {
 		case "darken": return "min(composedColor, effectColor.rgb)";
 		case "multiply": return "composedColor * effectColor.rgb";
@@ -1023,41 +1040,41 @@ function Et(e, t) {
 	switch (e.blendMode) {
 		case "darken": return `min(${o}, ${a})`;
 		case "multiply": return `${o} * ${a}`;
-		case "color-burn": return Q(`${o} == ${n}`, n, Q(`${a} == ${i}`, i, `${n} - min(${n}, (${n} - ${o}) / ${a})`, t), t);
+		case "color-burn": return Z(`${o} == ${n}`, n, Z(`${a} == ${i}`, i, `${n} - min(${n}, (${n} - ${o}) / ${a})`, t), t);
 		case "lighten": return `max(${o}, ${a})`;
 		case "screen": return `${o} + ${a} - ${o} * ${a}`;
-		case "color-dodge": return Q(`${o} == ${i}`, i, Q(`${a} == ${n}`, n, `min(${n}, ${o} / (${n} - ${a}))`, t), t);
-		case "overlay": return Q(`${o} <= ${r}`, `2.0 * ${o} * ${a}`, `${n} - 2.0 * (${n} - ${o}) * (${n} - ${a})`, t);
-		case "soft-light": return Q(`${a} <= ${r}`, `${o} - (${n} - 2.0 * ${a}) * ${o} * (${n} - ${o})`, `${o} + (2.0 * ${a} - ${n}) * (softLightD - ${o})`, t);
-		case "hard-light": return Q(`${a} <= ${r}`, `2.0 * ${o} * ${a}`, `${o} + (2.0 * ${a} - ${n}) - ${o} * (2.0 * ${a} - ${n})`, t);
+		case "color-dodge": return Z(`${o} == ${i}`, i, Z(`${a} == ${n}`, n, `min(${n}, ${o} / (${n} - ${a}))`, t), t);
+		case "overlay": return Z(`${o} <= ${r}`, `2.0 * ${o} * ${a}`, `${n} - 2.0 * (${n} - ${o}) * (${n} - ${a})`, t);
+		case "soft-light": return Z(`${a} <= ${r}`, `${o} - (${n} - 2.0 * ${a}) * ${o} * (${n} - ${o})`, `${o} + (2.0 * ${a} - ${n}) * (softLightD - ${o})`, t);
+		case "hard-light": return Z(`${a} <= ${r}`, `2.0 * ${o} * ${a}`, `${o} + (2.0 * ${a} - ${n}) - ${o} * (2.0 * ${a} - ${n})`, t);
 		case "difference": return `abs(${o} - ${a})`;
 		case "exclusion": return `${o} + ${a} - 2.0 * ${o} * ${a}`;
 		default: return a;
 	}
 }
-function Dt(e, t) {
+function kt(e, t) {
 	if (t === "glsl" || e.blendMode !== "soft-light") return "";
 	let n = t === "wgsl" ? "vec3<f32>" : "vec3";
-	return `${t === "wgsl" ? "let" : "vec3"} softLightD = ${Q(`composedColor <= ${n}(0.25)`, `((16.0 * composedColor - ${n}(12.0)) * composedColor + ${n}(4.0)) * composedColor`, "sqrt(composedColor)", t)};`;
+	return `${t === "wgsl" ? "let" : "vec3"} softLightD = ${Z(`composedColor <= ${n}(0.25)`, `((16.0 * composedColor - ${n}(12.0)) * composedColor + ${n}(4.0)) * composedColor`, "sqrt(composedColor)", t)};`;
 }
-function $(e, t, n, r, i, a = 0) {
+function Q(e, t, n, r, i, a = 0) {
 	let o = t === "wgsl" ? "vec3<f32>" : "vec3", s = t === "wgsl" ? "vec4<f32>" : "vec4";
-	return lt(e).map((e, c) => {
-		let l = e.type === "group" ? `effectColor = ${s}(${`groupColor${a}_${c}`}, 1.0);` : Tt(e, t, n, r, i), u = `groupColor${a}_${c}`;
+	return ut(e).map((e, c) => {
+		let l = e.type === "group" ? `effectColor = ${s}(${`groupColor${a}_${c}`}, 1.0);` : Dt(e, t, n, r, i), u = `groupColor${a}_${c}`;
 		return `{
         ${e.type === "group" ? `${Y(u, o, `${o}(0.0)`, t)}
         {
           ${Y("previousComposedColor", o, "composedColor", t)}
           composedColor = ${o}(0.0);
-          ${$(e.children, t, n, r, i, a + 1)}
+          ${Q(e.children, t, n, r, i, a + 1)}
           ${u} = composedColor;
           composedColor = previousComposedColor;
         }` : ""}
         ${Y("effectColor", s, `${s}(0.0)`, t)}
         ${l}
         ${t === "wgsl" ? "let" : "float"} sourceAlpha = clamp(effectColor.a * ${q(e.opacity / 100)}, 0.0, 1.0);
-        ${Dt(e, t)}
-        ${t === "wgsl" ? "let" : "vec3"} blendedColor = clamp(${Et(e, t)}, ${o}(0.0), ${o}(1.0));
+        ${kt(e, t)}
+        ${t === "wgsl" ? "let" : "vec3"} blendedColor = clamp(${Ot(e, t)}, ${o}(0.0), ${o}(1.0));
         composedColor = clamp(
           blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha),
           ${o}(0.0),
@@ -1066,8 +1083,8 @@ function $(e, t, n, r, i, a = 0) {
       }`;
 	}).join("\n");
 }
-function Ot(e, t, n, r) {
-	let i = X(t), a = pt(n), o = mt(r), s = $(e.nodes, "wgsl", i, a, o);
+function At(e, t, n, r) {
+	let i = mt(t), a = ht(n), o = gt(r), s = Q(e.nodes, "wgsl", i, a, o);
 	return u(`
     fn skyboxStudioSample(
       direction: vec3<f32>${t.flatMap((e) => [`,
@@ -1094,17 +1111,17 @@ function Ot(e, t, n, r) {
     }
   `);
 }
-function kt(e, t, n, r, i) {
+function jt(e, t, n, r, i) {
 	return Object.fromEntries(e.map((e) => {
-		let a = i[e.index], o = _t(e)({
+		let a = i[e.index], o = yt(e)({
 			direction: t,
 			imageCenterDirection: a.centerDirection,
 			imageHalfSize: a.halfSize,
 			imageTangentX: a.tangentX,
 			imageTangentY: a.tangentY
-		}), c = l(o.x, o.y), u = vt({
-			color: yt({
-				color: s(Z(n, e.layer), c),
+		}), c = l(o.x, o.y), u = bt({
+			color: xt({
+				color: s(X(n, e.layer), c),
 				hover: r[e.index].node
 			}),
 			valid: o.z
@@ -1112,8 +1129,8 @@ function kt(e, t, n, r, i) {
 		return [e.parameterName, u];
 	}));
 }
-function At(s, c, l) {
-	let u = new t(), d = ut(s.nodes), f = dt(s.nodes), p = ft(s.nodes), m = Ot(s, d, f, p), h = Qe(d), g = nt(f), _ = He(p, c), v = qe(p), y = n(() => {
+function $(s, c, l) {
+	let u = new t(), d = dt(s.nodes), f = ft(s.nodes), p = pt(s.nodes), m = At(s, d, f, p), h = Qe(d), g = nt(f), _ = He(p, c), v = qe(p), y = n(() => {
 		let e = i;
 		return e.z.assign(e.w), e;
 	})();
@@ -1135,25 +1152,25 @@ function At(s, c, l) {
 				...Array.from({ length: e.anchorCount }, (n, r) => [[`${e.parameterPrefix}AnchorDirection${r}`, t.anchors[r].direction], [`${e.parameterPrefix}AnchorColor${r}`, t.anchors[r].color]]).flat()
 			];
 		})),
-		...kt(p, b, l, _, v)
+		...jt(p, b, l, _, v)
 	}), Ke(u, (e) => Ue(_, e)), ot(u, (e) => U(e.nodes, (e) => $e(h, e))), st(u, (e) => W(e.nodes, (e) => rt(g, e))), Ze(u, (e, t) => Je(v, e, t)), u;
 }
-var jt = u("\n  fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let longitude = atan2(normalizedDirection.z, normalizedDirection.x);\n    let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n    return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);\n  }\n");
-function Mt(c) {
+var Mt = u("\n  fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let longitude = atan2(normalizedDirection.z, normalizedDirection.x);\n    let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n    return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);\n  }\n");
+function Nt(c) {
 	let l = new t(), u = n(() => {
 		let e = i;
 		return e.z.assign(e.w), e;
 	})(), d = a(o.sub(r));
-	return l.side = e.BackSide, l.depthTest = !1, l.depthWrite = !1, l.vertexNode = u, l.colorNode = s(c, jt({ direction: d })), l;
+	return l.side = e.BackSide, l.depthTest = !1, l.depthWrite = !1, l.vertexNode = u, l.colorNode = s(c, Mt({ direction: d })), l;
 }
-function Nt(t, n, r) {
-	let i = ut(t.nodes), a = dt(t.nodes), o = ft(t.nodes), s = X(i), c = pt(a), l = mt(o), u = $(t.nodes, "glsl", s, c, l), d = new e.ShaderMaterial({
+function Pt(t, n, r) {
+	let i = dt(t.nodes), a = ft(t.nodes), o = pt(t.nodes), s = mt(i), c = ht(a), l = gt(o), u = Q(t.nodes, "glsl", s, c, l), d = new e.ShaderMaterial({
 		uniforms: {
 			...et(i),
 			...it(a),
 			...We(o, n),
 			...Ye(o),
-			...xt(o, r)
+			...Ct(o, r)
 		},
 		depthTest: !1,
 		depthWrite: !1,
@@ -1177,7 +1194,7 @@ function Nt(t, n, r) {
       uniform vec2 imageHalfSize${e.index};
       uniform float imageHover${e.index};`).join("\n")}
       varying vec3 vDirection;
-      ${bt(o)}
+      ${St(o)}
 
       float softLightDChannel(float backdrop) {
         return backdrop <= 0.25
@@ -1275,23 +1292,23 @@ function Nt(t, n, r) {
       }
     `
 	});
-	return Ke(d, (e) => Ge(d, o, e)), ot(d, (e) => U(e.nodes, (e) => tt(d, e, i))), st(d, (e) => W(e.nodes, (e) => at(d, e, a))), Ze(d, (e, t) => Xe(d, o, e, t)), d.userData.applyImageTextures = (e) => St(d, o, e), d;
+	return Ke(d, (e) => Ge(d, o, e)), ot(d, (e) => U(e.nodes, (e) => tt(d, e, i))), st(d, (e) => W(e.nodes, (e) => at(d, e, a))), Ze(d, (e, t) => Xe(d, o, e, t)), d.userData.applyImageTextures = (e) => wt(d, o, e), d;
 }
-function Pt(e, t) {
+function Ft(e, t) {
 	if (typeof document < "u") {
 		let n = document.createElement("canvas");
 		return n.width = e, n.height = t, n;
 	}
 	return new OffscreenCanvas(e, t);
 }
-function Ft(t, n = {}) {
-	let r = ze(t, n), i = Pt(r.width, r.height), a = i.getContext("2d");
+function It(t, n = {}) {
+	let r = ze(t, n), i = Ft(r.width, r.height), a = i.getContext("2d");
 	if (!a || !("putImageData" in a)) throw Error("Skybox runtime: unable to create a 2D canvas context for baking.");
 	a.putImageData(new ImageData(r.data, r.width, r.height), 0, 0);
 	let o = new e.CanvasTexture(i);
 	return o.mapping = e.EquirectangularReflectionMapping, o.wrapS = e.RepeatWrapping, o.wrapT = e.ClampToEdgeWrapping, o.colorSpace = e.SRGBColorSpace, o.flipY = !1, o.needsUpdate = !0, o;
 }
-function It(t) {
+function Lt(t) {
 	return new e.ShaderMaterial({
 		depthTest: !1,
 		depthWrite: !1,
@@ -1301,16 +1318,16 @@ function It(t) {
 		fragmentShader: "\n      precision highp float;\n      uniform sampler2D skyboxTexture;\n      varying vec3 vDirection;\n\n      const float PI = 3.141592653589793;\n\n      vec2 directionToEquirectUv(vec3 direction) {\n        vec3 normalizedDirection = normalize(direction);\n        float longitude = atan(normalizedDirection.z, normalizedDirection.x);\n        float latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n        return vec2(longitude / (2.0 * PI) + 0.5, latitude / PI + 0.5);\n      }\n\n      void main() {\n        vec3 direction = normalize(vDirection);\n        vec4 sampledColor = texture2D(skyboxTexture, directionToEquirectUv(direction));\n        gl_FragColor = vec4(sampledColor.rgb, sampledColor.a);\n      }\n    "
 	});
 }
-function Lt(e, t) {
-	return Rt(t) ? Mt(e) : It(e);
+function Rt(e, t) {
+	return zt(t) ? Nt(e) : Lt(e);
 }
-function Rt(e) {
+function zt(e) {
 	return !!(e && "isWebGPURenderer" in e && e.isWebGPURenderer);
 }
-function zt(e, t) {
-	return e === "auto" ? Rt(t) ? "live-webgpu" : "live-webgl" : e;
-}
 function Bt(e, t) {
+	return e === "auto" ? zt(t) ? "live-webgpu" : "live-webgl" : e;
+}
+function Vt(e, t) {
 	let n = (e) => e.type === "group" ? {
 		blendMode: e.blendMode,
 		children: e.children.map(n),
@@ -1350,7 +1367,7 @@ function Bt(e, t) {
 		renderMode: t
 	});
 }
-var Vt = class extends e.Mesh {
+var Ht = class extends e.Mesh {
 	#e = {};
 	#t = x;
 	#n = null;
@@ -1362,7 +1379,7 @@ var Vt = class extends e.Mesh {
 	#c = "auto";
 	#l = null;
 	constructor() {
-		super(K(x), At(Be, null, /* @__PURE__ */ new Map())), this.frustumCulled = !1, this.renderOrder = -1;
+		super(K(x), $(Be, null, /* @__PURE__ */ new Map())), this.frustumCulled = !1, this.renderOrder = -1;
 	}
 	fromManifest(e) {
 		return this.#a = S(e), this.applyGeometry(this.#a.geometry ?? x), this;
@@ -1425,18 +1442,18 @@ var Vt = class extends e.Mesh {
 	setManifest(e) {
 		let t = S(e);
 		this.#a = t, this.applyGeometry(this.#a.geometry ?? this.#t);
-		let n = zt(this.#c, this.#l), r = Bt(this.#a, n);
+		let n = Bt(this.#c, this.#l), r = Vt(this.#a, n);
 		if (this.#o === r && (n === "live-webgpu" || n === "live-webgl")) return this.applyLiveManifestUniformUpdates(), this;
-		if (n === "live-webgpu") this.replaceMaterial(At(this.#a, this.#n, this.#i));
-		else if (n === "live-webgl") this.replaceMaterial(Nt(this.#a, this.#n, this.#i));
+		if (n === "live-webgpu") this.replaceMaterial($(this.#a, this.#n, this.#i));
+		else if (n === "live-webgl") this.replaceMaterial(Pt(this.#a, this.#n, this.#i));
 		else {
-			let e = Ft(this.#a, this.#e);
-			this.replaceMaterial(Lt(e, this.#l), e);
+			let e = It(this.#a, this.#e);
+			this.replaceMaterial(Rt(e, this.#l), e);
 		}
 		return this.#o = r, this;
 	}
 	setBakedTexture(e) {
-		return this.replaceMaterial(Lt(e, this.#l)), this.#o = null, this;
+		return this.replaceMaterial(Rt(e, this.#l)), this.#o = null, this;
 	}
 	invalidateBakeCache() {
 		return Re(), this;
@@ -1446,4 +1463,4 @@ var Vt = class extends e.Mesh {
 	}
 };
 //#endregion
-export { Pe as DEFAULT_BAKE_WIDTH, w as IMAGE_PLACEMENT_ELEVATION_LIMIT, Vt as Skybox, ze as bakeSkyboxImageData, _ as blendChannel, d as clamp, v as compositeBlendChannel, y as compositeOver, D as createAngularDecalPlacement, Le as createBakeCacheKey, Ft as createBakedSkyboxTexture, ue as createImagePlacementTangents, K as createSkyboxGeometry, ct as createSkyboxWireGeometry, fe as directionFromPosition, xe as equirectPointToDirection, Se as equirectUvToDirection, Ne as evaluateSkyboxDirection, Re as invalidateBakeCache, p as linearChannelToSrgb, h as linearRgbToSrgbBytes, S as migrateManifestToV2, O as normalizeImagePlacement, E as normalizeVector, m as parseHexColor, pe as placementFromPosition, he as placementFromScale, de as positionFromPlacement, ge as projectDirectionToImageUv, Ie as resolveBakeOptions, me as scaleFromPlacement, f as srgbChannelToLinear };
+export { Pe as DEFAULT_BAKE_WIDTH, re as IMAGE_PLACEMENT_ELEVATION_LIMIT, Ht as Skybox, ze as bakeSkyboxImageData, _ as blendChannel, d as clamp, v as compositeBlendChannel, y as compositeOver, D as createAngularDecalPlacement, Le as createBakeCacheKey, It as createBakedSkyboxTexture, ue as createImagePlacementTangents, K as createSkyboxGeometry, lt as createSkyboxWireGeometry, fe as directionFromPosition, xe as equirectPointToDirection, Se as equirectUvToDirection, Ne as evaluateSkyboxDirection, Re as invalidateBakeCache, p as linearChannelToSrgb, h as linearRgbToSrgbBytes, S as migrateManifestToV2, O as normalizeImagePlacement, E as normalizeVector, m as parseHexColor, pe as placementFromPosition, he as placementFromScale, de as positionFromPlacement, ge as projectDirectionToImageUv, Ie as resolveBakeOptions, me as scaleFromPlacement, f as srgbChannelToLinear };

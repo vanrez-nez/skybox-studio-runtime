@@ -7,7 +7,7 @@ type SupportedRenderer = THREE.WebGLRenderer | {
 type RuntimeMaterial = THREE.ShaderMaterial | NodeMaterial;
 type ImageTextureMap = Record<string, THREE.Texture | null | undefined>;
 export declare function createSkyboxGeometry(options?: SkyboxGeometryOptions): THREE.SphereGeometry | THREE.BoxGeometry;
-export declare function createSkyboxWireGeometry(options?: SkyboxGeometryOptions): THREE.WireframeGeometry<THREE.SphereGeometry> | THREE.EdgesGeometry<THREE.BoxGeometry>;
+export declare function createSkyboxWireGeometry(options?: SkyboxGeometryOptions): THREE.BufferGeometry<THREE.NormalBufferAttributes, THREE.BufferGeometryEventMap>;
 export declare function createBakedSkyboxTexture(manifest: SkyboxManifest, options?: SkyboxBakeOptions): THREE.CanvasTexture<HTMLCanvasElement>;
 export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     #private;
