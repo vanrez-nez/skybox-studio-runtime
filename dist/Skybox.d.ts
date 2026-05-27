@@ -1,11 +1,15 @@
 import * as THREE from "three";
 import { NodeMaterial } from "three/webgpu";
-import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxManifest, SkyboxRenderMode } from "./manifest";
+import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxLayerBlendMode, SkyboxManifest, SkyboxRenderMode, SkyboxSpotParams } from "./manifest";
 type SupportedRenderer = THREE.WebGLRenderer | {
     isWebGPURenderer?: boolean;
 };
 type RuntimeMaterial = THREE.ShaderMaterial | NodeMaterial;
 type ImageTextureMap = Record<string, THREE.Texture | null | undefined>;
+type LayerCompositionUpdate = {
+    blendMode?: SkyboxLayerBlendMode;
+    opacity?: number;
+};
 export type SkyboxEditorImageState = {
     hoveredImageLayerId: string | null;
     selectedImageLayerId: string | null;
@@ -23,6 +27,7 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     setRenderMode(mode: SkyboxRenderMode): this;
     setImageTexture(layerId: string, texture: THREE.Texture | null): this;
     setImageTextures(textures: ImageTextureMap): this;
+    refreshImageTextureBindings(): this;
     otherOverridingSetup(): this;
     load(renderer?: SupportedRenderer): this;
     private applyGeometry;
@@ -33,6 +38,11 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     setEditorImageState(state: Partial<SkyboxEditorImageState>): this;
     setHoveredImageLayerId(layerId: string | null): this;
     setImageLayerPlacement(layerId: string, placement: SkyboxImagePlacement | null): this;
+    updateImageLayerPlacement(layerId: string, placement: SkyboxImagePlacement | null): this;
+    updateLayerComposition(layerId: string, composition: LayerCompositionUpdate): this;
+    updateGradientLayer(layerId: string, params: SkyboxGradientParams): this;
+    updateFieldGradientLayer(layerId: string, params: SkyboxFieldGradientParams): this;
+    updateSpotLayer(layerId: string, params: SkyboxSpotParams): this;
     setManifest(manifest: SkyboxManifest): this;
     setBakedTexture(texture: THREE.Texture): this;
     invalidateBakeCache(): this;

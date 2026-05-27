@@ -381,6 +381,285 @@ describe("runtime evaluator", () => {
     skybox.dispose();
   });
 
+  it("updates layer composition directly without replacing the live material", () => {
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "gradient",
+          name: "Gradient",
+          opacity: 100,
+          params: {
+            mode: "linear",
+            rotation: 0,
+            stops: [
+              { color: "#000000", location: 0, opacity: 100 },
+              { color: "#ffffff", location: 100, opacity: 100 },
+            ],
+          },
+          type: "gradient",
+        },
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(manifest)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    skybox.updateLayerComposition("gradient", { blendMode: "screen", opacity: 40 });
+
+    expect(skybox.material).toBe(material);
+    expect(material.uniforms.compositionNode0BlendMode.value).toBe(5);
+    expect(material.uniforms.compositionNode0Opacity.value).toBeCloseTo(0.4);
+    skybox.dispose();
+  });
+
+  it("updates field gradient params directly without replacing the live material", () => {
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "field",
+          name: "Field Gradient",
+          opacity: 100,
+          params: {
+            amplitude: 0.1,
+            anchors: [{ color: "#ff0000", x: 0.5, y: 0.5 }],
+            frequency: 1,
+            mode: "inverse-distance",
+            power: 2,
+          },
+          type: "field-gradient",
+        },
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(manifest)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    skybox.updateFieldGradientLayer("field", {
+      amplitude: 0.3,
+      anchors: [{ color: "#00ff00", x: 0.5, y: 0.5 }],
+      frequency: 2,
+      mode: "gaussian",
+      power: 4,
+    });
+
+    expect(skybox.material).toBe(material);
+    expect(material.uniforms.fieldGradientLayer0Amplitude.value).toBeCloseTo(0.3);
+    expect(material.uniforms.fieldGradientLayer0Frequency.value).toBeCloseTo(2);
+    expect(material.uniforms.fieldGradientLayer0Mode.value).toBe(1);
+    expect(material.uniforms.fieldGradientLayer0Power.value).toBeCloseTo(4);
+    skybox.dispose();
+  });
+
+  it("updates spot params directly without replacing the live material", () => {
+    const spot = createDefaultSpotParams();
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "spot",
+          name: "Spot",
+          opacity: 100,
+          params: spot,
+          type: "spot",
+        },
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(manifest)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    skybox.updateSpotLayer("spot", {
+      ...spot,
+      brightness: 2.5,
+      glareStrength: 0.75,
+      haloStrength: 0.45,
+    });
+
+    expect(skybox.material).toBe(material);
+    expect(material.uniforms.spotLayer0Brightness.value).toBeCloseTo(2.5);
+    expect(material.uniforms.spotLayer0GlareStrength.value).toBeCloseTo(0.75);
+    expect(material.uniforms.spotLayer0HaloStrength.value).toBeCloseTo(0.45);
+    skybox.dispose();
+  });
+
+  it("updates WebGPU image textures directly without replacing the live material", () => {
+    const skybox = new Skybox()
+      .setRenderer({ isWebGPURenderer: true })
+      .fromManifest(createImageManifest())
+      .load();
+    const material = skybox.material;
+    const texture = new THREE.DataTexture(
+      new Uint8Array([255, 255, 255, 255]),
+      1,
+      1,
+      THREE.RGBAFormat
+    );
+
+    texture.needsUpdate = true;
+
+    expect(material.userData.applyImageTextures).toBeTypeOf("function");
+
+    skybox.setImageTexture("image", texture);
+
+    expect(skybox.material).toBe(material);
+    texture.dispose();
+    skybox.dispose();
+  });
+
+  it("keeps WebGPU image texture slots distinct when images start unloaded", () => {
+    const imageA = createImageManifest().nodes[0] as Extract<
+      SkyboxManifestV2["nodes"][number],
+      { type: "image" }
+    >;
+    const imageB: typeof imageA = {
+      ...imageA,
+      id: "image-b",
+      name: "Image B",
+      params: {
+        ...imageA.params,
+        src: "data:image/png;base64,b",
+      },
+    };
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          ...imageA,
+          params: {
+            ...imageA.params,
+            src: "data:image/png;base64,a",
+          },
+        },
+        imageB,
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({ isWebGPURenderer: true })
+      .fromManifest(manifest)
+      .load();
+    const material = skybox.material;
+    const textureA = new THREE.DataTexture(
+      new Uint8Array([255, 0, 0, 255]),
+      1,
+      1,
+      THREE.RGBAFormat
+    );
+    const textureB = new THREE.DataTexture(
+      new Uint8Array([0, 255, 0, 255]),
+      1,
+      1,
+      THREE.RGBAFormat
+    );
+
+    textureA.needsUpdate = true;
+    textureB.needsUpdate = true;
+
+    expect(material.userData.applyImageTextures).toBeTypeOf("function");
+    expect(material.userData.debugImageTextureSlots?.image).not.toBe(
+      material.userData.debugImageTextureSlots?.["image-b"]
+    );
+    expect(material.userData.debugImageTextureSlots?.image.getUniformHash()).not.toBe(
+      material.userData.debugImageTextureSlots?.["image-b"].getUniformHash()
+    );
+
+    skybox.setImageTexture("image-b", textureB);
+    skybox.setImageTexture("image", textureA);
+
+    expect(skybox.material).toBe(material);
+    expect(material.userData.debugImageTextureSlots?.image.value).toBe(textureA);
+    expect(material.userData.debugImageTextureSlots?.["image-b"].value).toBe(textureB);
+    textureA.dispose();
+    textureB.dispose();
+    skybox.dispose();
+  });
+
+  it("refreshes WebGPU image texture bindings after concrete textures load", () => {
+    const imageA = createImageManifest().nodes[0] as Extract<
+      SkyboxManifestV2["nodes"][number],
+      { type: "image" }
+    >;
+    const imageB: typeof imageA = {
+      ...imageA,
+      id: "image-b",
+      name: "Image B",
+      params: {
+        ...imageA.params,
+        src: "data:image/png;base64,b",
+      },
+    };
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          ...imageA,
+          params: {
+            ...imageA.params,
+            src: "data:image/png;base64,a",
+          },
+        },
+        imageB,
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({ isWebGPURenderer: true })
+      .fromManifest(manifest)
+      .load();
+    const initialMaterial = skybox.material;
+    const textureA = new THREE.DataTexture(
+      new Uint8Array(8 * 4 * 4).fill(255),
+      8,
+      4,
+      THREE.RGBAFormat
+    );
+    const textureB = new THREE.DataTexture(
+      new Uint8Array(4 * 8 * 4).fill(128),
+      4,
+      8,
+      THREE.RGBAFormat
+    );
+
+    textureA.needsUpdate = true;
+    textureB.needsUpdate = true;
+
+    skybox.setImageTexture("image", textureA);
+    skybox.setImageTexture("image-b", textureB);
+    skybox.refreshImageTextureBindings();
+
+    expect(skybox.material).not.toBe(initialMaterial);
+    expect(skybox.material.userData.debugImageTextureSlots?.image.value).toBe(textureA);
+    expect(skybox.material.userData.debugImageTextureSlots?.["image-b"].value).toBe(textureB);
+    expect(skybox.material.userData.debugImageTextureSlots?.image).not.toBe(
+      skybox.material.userData.debugImageTextureSlots?.["image-b"]
+    );
+    textureA.dispose();
+    textureB.dispose();
+    skybox.dispose();
+  });
+
   it("still rebuilds live material topology when gradient stop count changes", () => {
     const manifest: SkyboxManifestV2 = {
       composition: { mode: "alpha-over", order: "bottom-to-top" },

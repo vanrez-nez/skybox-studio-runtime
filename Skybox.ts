@@ -133,9 +133,14 @@ type ImageEditorUniformNodes = {
 
 type ImageTextureMap = Record<string, THREE.Texture | null | undefined>;
 type HoveredImageLayerId = string | null;
+type LayerCompositionUpdate = {
+  blendMode?: SkyboxLayerBlendMode;
+  opacity?: number;
+};
 type WebGpuImageSampleNodeData = {
   sampleInfo: any;
   sampleNode: any;
+  textureNode: any;
 };
 export type SkyboxEditorImageState = {
   hoveredImageLayerId: string | null;
@@ -886,6 +891,22 @@ function applyCompositionParamsToUniformNodes(
   });
 }
 
+function applyLayerCompositionToUniformNodes(
+  uniforms: CompositionUniformNodes[],
+  node: SkyboxManifestNode
+) {
+  const compositionUniforms = uniforms.find((nextUniforms) => nextUniforms.nodeId === node.id);
+
+  if (!compositionUniforms) {
+    return;
+  }
+
+  const values = compositionNodeValues(node);
+
+  (compositionUniforms.opacity as any).value = values.opacity;
+  (compositionUniforms.blendMode as any).value = values.blendMode;
+}
+
 function compositionShaderUniforms(bindings: CompositionNodeShaderBinding[]) {
   return Object.fromEntries(
     bindings.flatMap((binding) => {
@@ -923,6 +944,30 @@ function applyCompositionParamsToShaderUniforms(
       blendModeUniform.value = values.blendMode;
     }
   });
+}
+
+function applyLayerCompositionToShaderUniforms(
+  material: THREE.ShaderMaterial,
+  bindings: CompositionNodeShaderBinding[],
+  node: SkyboxManifestNode
+) {
+  const binding = bindings.find((nextBinding) => nextBinding.node.id === node.id);
+
+  if (!binding) {
+    return;
+  }
+
+  const values = compositionNodeValues(node);
+  const opacityUniform = material.uniforms[`${binding.parameterPrefix}Opacity`];
+  const blendModeUniform = material.uniforms[`${binding.parameterPrefix}BlendMode`];
+
+  if (opacityUniform) {
+    opacityUniform.value = values.opacity;
+  }
+
+  if (blendModeUniform) {
+    blendModeUniform.value = values.blendMode;
+  }
 }
 
 function forEachGradientLayer(
@@ -992,11 +1037,25 @@ function attachGradientUpdater(
   material.userData.applyGradientLayerParams = updater;
 }
 
+function attachGradientLayerUpdater(
+  material: RuntimeMaterial,
+  updater: (layer: Extract<SkyboxManifestLayer, { type: "gradient" }>) => void
+) {
+  material.userData.applyGradientLayerParam = updater;
+}
+
 function attachFieldGradientUpdater(
   material: RuntimeMaterial,
   updater: (manifest: SkyboxManifestV2) => void
 ) {
   material.userData.applyFieldGradientLayerParams = updater;
+}
+
+function attachFieldGradientLayerUpdater(
+  material: RuntimeMaterial,
+  updater: (layer: Extract<SkyboxManifestLayer, { type: "field-gradient" }>) => void
+) {
+  material.userData.applyFieldGradientLayerParam = updater;
 }
 
 function attachSpotUpdater(
@@ -1006,11 +1065,25 @@ function attachSpotUpdater(
   material.userData.applySpotLayerParams = updater;
 }
 
+function attachSpotLayerUpdater(
+  material: RuntimeMaterial,
+  updater: (layer: Extract<SkyboxManifestLayer, { type: "spot" }>) => void
+) {
+  material.userData.applySpotLayerParam = updater;
+}
+
 function attachCompositionUpdater(
   material: RuntimeMaterial,
   updater: (manifest: SkyboxManifestV2) => void
 ) {
   material.userData.applyCompositionParams = updater;
+}
+
+function attachLayerCompositionUpdater(
+  material: RuntimeMaterial,
+  updater: (node: SkyboxManifestNode) => void
+) {
+  material.userData.applyLayerComposition = updater;
 }
 
 function resolveGeometryOptions(options?: SkyboxGeometryOptions): SkyboxGeometryOptions {
@@ -1478,6 +1551,15 @@ function updateImageTextureUniforms(
     if (material.uniforms[uniformName]) {
       material.uniforms[uniformName].value = getImageTexture(imageTextures, binding.layer);
     }
+  });
+}
+
+function updateImageTextureNodes(
+  sampleData: Map<string, WebGpuImageSampleNodeData>,
+  imageTextures: Map<string, THREE.Texture>
+) {
+  sampleData.forEach((sample, layerId) => {
+    sample.textureNode.value = imageTextures.get(layerId) ?? EMPTY_IMAGE_TEXTURE;
   });
 }
 
@@ -2097,10 +2179,15 @@ function createWebGpuImageSampleNodes(
         imageTangentY: placement.tangentY,
       } as any) as any;
       const sampleUv = vec2(sampleInfo.x, sampleInfo.y);
-      const sampleColor = textureNode(
+      const sampleTextureNode = textureNode(
         getImageTexture(imageTextures, binding.layer),
         sampleUv
-      );
+      ).setName(`imageTexture${binding.index}`);
+
+      (sampleTextureNode as any).getUniformHash = () =>
+        `skybox-image-texture:${binding.layer.id}`;
+
+      const sampleColor = sampleTextureNode;
       const maskedColor = webGpuImageMaskFunction({
         color: sampleColor,
         valid: sampleInfo.z,
@@ -2109,6 +2196,7 @@ function createWebGpuImageSampleNodes(
       sampleData.set(binding.layer.id, {
         sampleInfo,
         sampleNode: maskedColor,
+        textureNode: sampleTextureNode,
       });
 
       return [binding.parameterName, maskedColor];
@@ -2268,21 +2356,41 @@ function createWebGpuMaterial(
       applyGradientLayerParamsToUniformNodes(gradientUniforms, layer)
     )
   );
+  attachGradientLayerUpdater(material, (layer) =>
+    applyGradientLayerParamsToUniformNodes(gradientUniforms, layer)
+  );
   attachFieldGradientUpdater(material, (nextManifest) =>
     forEachFieldGradientLayer(nextManifest.nodes, (layer) =>
       applyFieldGradientLayerParamsToUniformNodes(fieldGradientUniforms, layer)
     )
+  );
+  attachFieldGradientLayerUpdater(material, (layer) =>
+    applyFieldGradientLayerParamsToUniformNodes(fieldGradientUniforms, layer)
   );
   attachSpotUpdater(material, (nextManifest) =>
     forEachSpotLayer(nextManifest.nodes, (layer) =>
       applySpotLayerParamsToUniformNodes(spotUniforms, layer)
     )
   );
+  attachSpotLayerUpdater(material, (layer) =>
+    applySpotLayerParamsToUniformNodes(spotUniforms, layer)
+  );
   attachCompositionUpdater(material, (nextManifest) =>
     applyCompositionParamsToUniformNodes(compositionUniforms, nextManifest)
   );
+  attachLayerCompositionUpdater(material, (node) =>
+    applyLayerCompositionToUniformNodes(compositionUniforms, node)
+  );
   attachImagePlacementUpdater(material, (layerId, placement) =>
     applyImageLayerPlacementToUniformNodes(imagePlacementUniforms, layerId, placement)
+  );
+  material.userData.applyImageTextures = (textures: Map<string, THREE.Texture>) =>
+    updateImageTextureNodes(imageSampleNodes.sampleData, textures);
+  material.userData.debugImageTextureSlots = Object.fromEntries(
+    Array.from(imageSampleNodes.sampleData.entries()).map(([layerId, sample]) => [
+      layerId,
+      sample.textureNode,
+    ])
   );
 
   return material;
@@ -2539,18 +2647,30 @@ function createWebGlMaterial(
       applyGradientLayerParamsToShaderUniforms(material, layer, gradientBindings)
     )
   );
+  attachGradientLayerUpdater(material, (layer) =>
+    applyGradientLayerParamsToShaderUniforms(material, layer, gradientBindings)
+  );
   attachFieldGradientUpdater(material, (nextManifest) =>
     forEachFieldGradientLayer(nextManifest.nodes, (layer) =>
       applyFieldGradientLayerParamsToShaderUniforms(material, layer, fieldGradientBindings)
     )
+  );
+  attachFieldGradientLayerUpdater(material, (layer) =>
+    applyFieldGradientLayerParamsToShaderUniforms(material, layer, fieldGradientBindings)
   );
   attachSpotUpdater(material, (nextManifest) =>
     forEachSpotLayer(nextManifest.nodes, (layer) =>
       applySpotLayerParamsToShaderUniforms(material, layer, spotBindings)
     )
   );
+  attachSpotLayerUpdater(material, (layer) =>
+    applySpotLayerParamsToShaderUniforms(material, layer, spotBindings)
+  );
   attachCompositionUpdater(material, (nextManifest) =>
     applyCompositionParamsToShaderUniforms(material, compositionBindings, nextManifest)
+  );
+  attachLayerCompositionUpdater(material, (node) =>
+    applyLayerCompositionToShaderUniforms(material, compositionBindings, node)
   );
   attachImagePlacementUpdater(material, (layerId, placement) =>
     applyImageLayerPlacementToShaderUniforms(material, imageBindings, layerId, placement)
@@ -2720,6 +2840,24 @@ function createMaterialTopologyKey(
   });
 }
 
+function findManifestNodeById(nodes: SkyboxManifestNode[], nodeId: string): SkyboxManifestNode | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) {
+      return node;
+    }
+
+    if (node.type === "group") {
+      const childNode = findManifestNodeById(node.children, nodeId);
+
+      if (childNode) {
+        return childNode;
+      }
+    }
+  }
+
+  return null;
+}
+
 export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #bakeOptions: SkyboxBakeOptions = {};
   #editorImageState: SkyboxEditorImageState = { ...DEFAULT_EDITOR_IMAGE_STATE };
@@ -2776,8 +2914,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       this.#imageTextures.delete(layerId);
     }
 
-    this.#materialTopologyKey = null;
-    this.setManifest(this.#manifest);
+    this.material.userData.applyImageTextures?.(this.#imageTextures);
 
     return this;
   }
@@ -2791,6 +2928,12 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       }
     });
 
+    this.material.userData.applyImageTextures?.(this.#imageTextures);
+
+    return this;
+  }
+
+  refreshImageTextureBindings() {
     this.#materialTopologyKey = null;
     this.setManifest(this.#manifest);
 
@@ -2891,8 +3034,80 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   }
 
   setImageLayerPlacement(layerId: string, placement: SkyboxImagePlacement | null) {
+    return this.updateImageLayerPlacement(layerId, placement);
+  }
+
+  updateImageLayerPlacement(layerId: string, placement: SkyboxImagePlacement | null) {
+    const node = findManifestNodeById(this.#manifest.nodes, layerId);
+
+    if (node?.type === "image") {
+      node.params = {
+        ...node.params,
+        placement,
+      };
+    }
+
     this.#imagePlacementOverrides.set(layerId, placement);
     this.material.userData.applyImageLayerPlacement?.(layerId, placement);
+
+    return this;
+  }
+
+  updateLayerComposition(layerId: string, composition: LayerCompositionUpdate) {
+    const node = findManifestNodeById(this.#manifest.nodes, layerId);
+
+    if (!node) {
+      return this;
+    }
+
+    if (composition.blendMode !== undefined) {
+      node.blendMode = composition.blendMode;
+    }
+
+    if (composition.opacity !== undefined) {
+      node.opacity = composition.opacity;
+    }
+
+    this.material.userData.applyLayerComposition?.(node);
+
+    return this;
+  }
+
+  updateGradientLayer(layerId: string, params: SkyboxGradientParams) {
+    const node = findManifestNodeById(this.#manifest.nodes, layerId);
+
+    if (node?.type !== "gradient") {
+      return this;
+    }
+
+    node.params = params;
+    this.material.userData.applyGradientLayerParam?.(node);
+
+    return this;
+  }
+
+  updateFieldGradientLayer(layerId: string, params: SkyboxFieldGradientParams) {
+    const node = findManifestNodeById(this.#manifest.nodes, layerId);
+
+    if (node?.type !== "field-gradient") {
+      return this;
+    }
+
+    node.params = params;
+    this.material.userData.applyFieldGradientLayerParam?.(node);
+
+    return this;
+  }
+
+  updateSpotLayer(layerId: string, params: SkyboxSpotParams) {
+    const node = findManifestNodeById(this.#manifest.nodes, layerId);
+
+    if (node?.type !== "spot") {
+      return this;
+    }
+
+    node.params = params;
+    this.material.userData.applySpotLayerParam?.(node);
 
     return this;
   }
