@@ -295,6 +295,143 @@ describe("runtime evaluator", () => {
     skybox.dispose();
   });
 
+  it("keeps opacity changes on the live material uniform path", () => {
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "gradient",
+          name: "Gradient",
+          opacity: 100,
+          params: {
+            mode: "linear",
+            rotation: 0,
+            stops: [
+              { color: "#000000", location: 0, opacity: 100 },
+              { color: "#ffffff", location: 100, opacity: 100 },
+            ],
+          },
+          type: "gradient",
+        },
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(manifest)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    expect(material.fragmentShader).toContain("compositionNode0Opacity");
+    expect(material.uniforms.compositionNode0Opacity.value).toBeCloseTo(1);
+
+    skybox.setManifest({
+      ...manifest,
+      nodes: [{ ...manifest.nodes[0], opacity: 25 }],
+    });
+
+    expect(skybox.material).toBe(material);
+    expect(material.uniforms.compositionNode0Opacity.value).toBeCloseTo(0.25);
+    skybox.dispose();
+  });
+
+  it("keeps blend mode changes on the live material uniform path", () => {
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "gradient",
+          name: "Gradient",
+          opacity: 100,
+          params: {
+            mode: "linear",
+            rotation: 0,
+            stops: [
+              { color: "#000000", location: 0, opacity: 100 },
+              { color: "#ffffff", location: 100, opacity: 100 },
+            ],
+          },
+          type: "gradient",
+        },
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(manifest)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    expect(material.fragmentShader).toContain("compositionNode0BlendMode");
+    expect(material.uniforms.compositionNode0BlendMode.value).toBe(0);
+
+    skybox.setManifest({
+      ...manifest,
+      nodes: [{ ...manifest.nodes[0], blendMode: "screen" }],
+    });
+
+    expect(skybox.material).toBe(material);
+    expect(material.uniforms.compositionNode0BlendMode.value).toBe(5);
+    skybox.dispose();
+  });
+
+  it("still rebuilds live material topology when gradient stop count changes", () => {
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "gradient",
+          name: "Gradient",
+          opacity: 100,
+          params: {
+            mode: "linear",
+            rotation: 0,
+            stops: [
+              { color: "#000000", location: 0, opacity: 100 },
+              { color: "#ffffff", location: 100, opacity: 100 },
+            ],
+          },
+          type: "gradient",
+        },
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(manifest)
+      .load();
+    const material = skybox.material;
+
+    skybox.setManifest({
+      ...manifest,
+      nodes: [
+        {
+          ...manifest.nodes[0],
+          params: {
+            ...(manifest.nodes[0] as Extract<SkyboxManifestV2["nodes"][number], { type: "gradient" }>).params,
+            stops: [
+              { color: "#000000", location: 0, opacity: 100 },
+              { color: "#888888", location: 50, opacity: 100 },
+              { color: "#ffffff", location: 100, opacity: 100 },
+            ],
+          },
+        } as Extract<SkyboxManifestV2["nodes"][number], { type: "gradient" }>,
+      ],
+    });
+
+    expect(skybox.material).not.toBe(material);
+    skybox.dispose();
+  });
+
   it("round-trips image placement position as yaw and elevation", () => {
     const placement = createAngularDecalPlacement({
       angularHeight: 0.25,

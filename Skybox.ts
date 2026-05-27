@@ -24,6 +24,7 @@ import type {
   SkyboxBakeOptions,
   SkyboxFieldGradientParams,
   SkyboxGradientParams,
+  SkyboxLayerBlendMode,
   SkyboxManifest,
   SkyboxManifestLayer,
   SkyboxManifestNode,
@@ -60,6 +61,11 @@ type SpotLayerShaderBinding = {
   layer: Extract<SkyboxManifestLayer, { type: "spot" }>;
   parameterPrefix: string;
   stopCount: number;
+};
+type CompositionNodeShaderBinding = {
+  index: number;
+  node: SkyboxManifestNode;
+  parameterPrefix: string;
 };
 type GradientUniformNodes = {
   axis: ReturnType<typeof uniform>;
@@ -114,6 +120,11 @@ type SpotUniformNodes = {
     midpoint: ReturnType<typeof uniform>;
     t: ReturnType<typeof uniform>;
   }>;
+};
+type CompositionUniformNodes = {
+  blendMode: ReturnType<typeof uniform>;
+  nodeId: string;
+  opacity: ReturnType<typeof uniform>;
 };
 type ImageEditorUniformNodes = {
   active: ReturnType<typeof uniform>;
@@ -353,6 +364,43 @@ function fieldGradientModeValue(mode: SkyboxFieldGradientParams["mode"]) {
 
 function spotColorModeValue(mode: SkyboxSpotParams["colorMode"]) {
   return mode === "gradient" ? 1 : 0;
+}
+
+function blendModeValue(mode: SkyboxLayerBlendMode) {
+  switch (mode) {
+    case "darken":
+      return 1;
+    case "multiply":
+      return 2;
+    case "color-burn":
+      return 3;
+    case "lighten":
+      return 4;
+    case "screen":
+      return 5;
+    case "color-dodge":
+      return 6;
+    case "overlay":
+      return 7;
+    case "soft-light":
+      return 8;
+    case "hard-light":
+      return 9;
+    case "difference":
+      return 10;
+    case "exclusion":
+      return 11;
+    case "normal":
+    default:
+      return 0;
+  }
+}
+
+function compositionNodeValues(node: SkyboxManifestNode) {
+  return {
+    blendMode: blendModeValue(node.blendMode),
+    opacity: clamp(node.opacity / 100),
+  };
 }
 
 function directionVectorFromPoint(x: number, y: number) {
@@ -786,6 +834,97 @@ function applySpotLayerParamsToShaderUniforms(
   });
 }
 
+function createCompositionUniformNodes(bindings: CompositionNodeShaderBinding[]) {
+  return bindings.map((binding): CompositionUniformNodes => {
+    const values = compositionNodeValues(binding.node);
+
+    return {
+      blendMode: uniform(values.blendMode),
+      nodeId: binding.node.id,
+      opacity: uniform(values.opacity),
+    };
+  });
+}
+
+function findCompositionNode(nodes: SkyboxManifestNode[], nodeId: string): SkyboxManifestNode | null {
+  for (const node of nodes) {
+    if (!node.enabled) {
+      continue;
+    }
+
+    if (node.id === nodeId) {
+      return node;
+    }
+
+    if (node.type === "group") {
+      const childNode = findCompositionNode(node.children, nodeId);
+
+      if (childNode) {
+        return childNode;
+      }
+    }
+  }
+
+  return null;
+}
+
+function applyCompositionParamsToUniformNodes(
+  uniforms: CompositionUniformNodes[],
+  manifest: SkyboxManifestV2
+) {
+  uniforms.forEach((compositionUniforms) => {
+    const node = findCompositionNode(manifest.nodes, compositionUniforms.nodeId);
+
+    if (!node) {
+      return;
+    }
+
+    const values = compositionNodeValues(node);
+
+    (compositionUniforms.opacity as any).value = values.opacity;
+    (compositionUniforms.blendMode as any).value = values.blendMode;
+  });
+}
+
+function compositionShaderUniforms(bindings: CompositionNodeShaderBinding[]) {
+  return Object.fromEntries(
+    bindings.flatMap((binding) => {
+      const values = compositionNodeValues(binding.node);
+
+      return [
+        [`${binding.parameterPrefix}Opacity`, { value: values.opacity }],
+        [`${binding.parameterPrefix}BlendMode`, { value: values.blendMode }],
+      ];
+    })
+  );
+}
+
+function applyCompositionParamsToShaderUniforms(
+  material: THREE.ShaderMaterial,
+  bindings: CompositionNodeShaderBinding[],
+  manifest: SkyboxManifestV2
+) {
+  bindings.forEach((binding) => {
+    const node = findCompositionNode(manifest.nodes, binding.node.id);
+
+    if (!node) {
+      return;
+    }
+
+    const values = compositionNodeValues(node);
+    const opacityUniform = material.uniforms[`${binding.parameterPrefix}Opacity`];
+    const blendModeUniform = material.uniforms[`${binding.parameterPrefix}BlendMode`];
+
+    if (opacityUniform) {
+      opacityUniform.value = values.opacity;
+    }
+
+    if (blendModeUniform) {
+      blendModeUniform.value = values.blendMode;
+    }
+  });
+}
+
 function forEachGradientLayer(
   nodes: SkyboxManifestNode[],
   callback: (layer: Extract<SkyboxManifestLayer, { type: "gradient" }>) => void
@@ -865,6 +1004,13 @@ function attachSpotUpdater(
   updater: (manifest: SkyboxManifestV2) => void
 ) {
   material.userData.applySpotLayerParams = updater;
+}
+
+function attachCompositionUpdater(
+  material: RuntimeMaterial,
+  updater: (manifest: SkyboxManifestV2) => void
+) {
+  material.userData.applyCompositionParams = updater;
 }
 
 function resolveGeometryOptions(options?: SkyboxGeometryOptions): SkyboxGeometryOptions {
@@ -1093,6 +1239,30 @@ function collectSpotLayerBindings(nodes: SkyboxManifestNode[]) {
   return bindings;
 }
 
+function collectCompositionNodeBindings(nodes: SkyboxManifestNode[]) {
+  const bindings: CompositionNodeShaderBinding[] = [];
+
+  function collect(nextNodes: SkyboxManifestNode[]) {
+    getRenderableNodes(nextNodes).forEach((node) => {
+      const index = bindings.length;
+
+      bindings.push({
+        index,
+        node,
+        parameterPrefix: `compositionNode${index}`,
+      });
+
+      if (node.type === "group") {
+        collect(node.children);
+      }
+    });
+  }
+
+  collect(nodes);
+
+  return bindings;
+}
+
 function createGradientBindingMap(bindings: GradientLayerShaderBinding[]) {
   return new Map(bindings.map((binding) => [binding.layer.id, binding]));
 }
@@ -1107,6 +1277,10 @@ function createImageBindingMap(bindings: ImageLayerShaderBinding[]) {
 
 function createSpotBindingMap(bindings: SpotLayerShaderBinding[]) {
   return new Map(bindings.map((binding) => [binding.layer.id, binding]));
+}
+
+function createCompositionBindingMap(bindings: CompositionNodeShaderBinding[]) {
+  return new Map(bindings.map((binding) => [binding.node.id, binding]));
 }
 
 function imageVec3Literal(value: [number, number, number], language: ShaderLanguage) {
@@ -1553,9 +1727,9 @@ function selectExpression(condition: string, whenTrue: string, whenFalse: string
     : `((${condition}) ? ${whenTrue} : ${whenFalse})`;
 }
 
-function blendExpression(node: SkyboxManifestNode, language: ShaderLanguage) {
+function blendColorExpression(mode: SkyboxLayerBlendMode, language: ShaderLanguage) {
   if (language === "glsl") {
-    switch (node.blendMode) {
+    switch (mode) {
       case "darken":
         return "min(composedColor, effectColor.rgb)";
       case "multiply":
@@ -1590,7 +1764,7 @@ function blendExpression(node: SkyboxManifestNode, language: ShaderLanguage) {
   const source = "effectColor.rgb";
   const backdrop = "composedColor";
 
-  switch (node.blendMode) {
+  switch (mode) {
     case "darken":
       return `min(${backdrop}, ${source})`;
     case "multiply":
@@ -1654,8 +1828,8 @@ function blendExpression(node: SkyboxManifestNode, language: ShaderLanguage) {
   }
 }
 
-function blendSetupExpression(node: SkyboxManifestNode, language: ShaderLanguage) {
-  if (language === "glsl" || node.blendMode !== "soft-light") {
+function blendSoftLightSetupExpression(language: ShaderLanguage) {
+  if (language === "glsl") {
     return "";
   }
 
@@ -1670,6 +1844,39 @@ function blendSetupExpression(node: SkyboxManifestNode, language: ShaderLanguage
   )};`;
 }
 
+function blendModeCondition(blendModeRef: string, mode: SkyboxLayerBlendMode) {
+  const value = blendModeValue(mode);
+
+  return `${blendModeRef} >= ${numberLiteral(value - 0.5)} && ${blendModeRef} < ${numberLiteral(value + 0.5)}`;
+}
+
+function blendAssignmentBlock(blendModeRef: string, language: ShaderLanguage) {
+  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
+  const blendModes: SkyboxLayerBlendMode[] = [
+    "darken",
+    "multiply",
+    "color-burn",
+    "lighten",
+    "screen",
+    "color-dodge",
+    "overlay",
+    "soft-light",
+    "hard-light",
+    "difference",
+    "exclusion",
+  ];
+  const branches = blendModes
+    .map((mode, index) => `${index === 0 ? "if" : "else if"} (${blendModeCondition(blendModeRef, mode)}) {
+          blendedColor = ${blendColorExpression(mode, language)};
+        }`)
+    .join("\n");
+
+  return `${blendSoftLightSetupExpression(language)}
+        ${mutableDeclaration("blendedColor", vec3Type, "effectColor.rgb", language)}
+        ${branches}
+        blendedColor = clamp(blendedColor, ${vec3Type}(0.0), ${vec3Type}(1.0));`;
+}
+
 function composeNodesExpression(
   nodes: SkyboxManifestNode[],
   language: ShaderLanguage,
@@ -1677,6 +1884,7 @@ function composeNodesExpression(
   fieldGradientBindings: Map<string, FieldGradientLayerShaderBinding>,
   imageBindings: Map<string, ImageLayerShaderBinding>,
   spotBindings: Map<string, SpotLayerShaderBinding>,
+  compositionBindings: Map<string, CompositionNodeShaderBinding>,
   depth = 0
 ): string {
   const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
@@ -1699,6 +1907,13 @@ function composeNodesExpression(
               spotBindings
             );
       const groupColorName = `groupColor${depth}_${index}`;
+      const compositionBinding = compositionBindings.get(node.id);
+      const opacityRef = compositionBinding
+        ? `${compositionBinding.parameterPrefix}Opacity`
+        : numberLiteral(node.opacity / 100);
+      const blendModeRef = compositionBinding
+        ? `${compositionBinding.parameterPrefix}BlendMode`
+        : numberLiteral(blendModeValue(node.blendMode));
       const groupBlock =
         node.type === "group"
           ? `${mutableDeclaration(groupColorName, vec3Type, `${vec3Type}(0.0)`, language)}
@@ -1712,6 +1927,7 @@ function composeNodesExpression(
             fieldGradientBindings,
             imageBindings,
             spotBindings,
+            compositionBindings,
             depth + 1
           )}
           ${groupColorName} = composedColor;
@@ -1723,14 +1939,8 @@ function composeNodesExpression(
         ${groupBlock}
         ${mutableDeclaration("effectColor", vec4Type, `${vec4Type}(0.0)`, language)}
         ${sourceExpression}
-        ${language === "wgsl" ? "let" : "float"} sourceAlpha = clamp(effectColor.a * ${numberLiteral(
-        node.opacity / 100
-      )}, 0.0, 1.0);
-        ${blendSetupExpression(node, language)}
-        ${language === "wgsl" ? "let" : "vec3"} blendedColor = clamp(${blendExpression(
-        node,
-        language
-      )}, ${vec3Type}(0.0), ${vec3Type}(1.0));
+        ${language === "wgsl" ? "let" : "float"} sourceAlpha = clamp(effectColor.a * ${opacityRef}, 0.0, 1.0);
+        ${blendAssignmentBlock(blendModeRef, language)}
         composedColor = clamp(
           blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha),
           ${vec3Type}(0.0),
@@ -1746,19 +1956,22 @@ function createSkyboxFunction(
   gradientBindings: GradientLayerShaderBinding[],
   fieldGradientBindings: FieldGradientLayerShaderBinding[],
   imageBindings: ImageLayerShaderBinding[],
-  spotBindings: SpotLayerShaderBinding[]
+  spotBindings: SpotLayerShaderBinding[],
+  compositionBindings: CompositionNodeShaderBinding[]
 ) {
   const gradientBindingMap = createGradientBindingMap(gradientBindings);
   const fieldGradientBindingMap = createFieldGradientBindingMap(fieldGradientBindings);
   const imageBindingMap = createImageBindingMap(imageBindings);
   const spotBindingMap = createSpotBindingMap(spotBindings);
+  const compositionBindingMap = createCompositionBindingMap(compositionBindings);
   const layerBlocks = composeNodesExpression(
     manifest.nodes,
     "wgsl",
     gradientBindingMap,
     fieldGradientBindingMap,
     imageBindingMap,
-    spotBindingMap
+    spotBindingMap,
+    compositionBindingMap
   );
   const gradientParameters = gradientBindings
     .flatMap((binding) => [
@@ -1795,6 +2008,14 @@ function createSkyboxFunction(
   const imageParameters = imageBindings
     .map((binding) => `,
       ${binding.parameterName}: vec4<f32>`)
+    .join("");
+  const compositionParameters = compositionBindings
+    .flatMap((binding) => [
+      `,
+      ${binding.parameterPrefix}Opacity: f32`,
+      `,
+      ${binding.parameterPrefix}BlendMode: f32`,
+    ])
     .join("");
   const spotParameters = spotBindings
     .flatMap((binding) => [
@@ -1849,7 +2070,7 @@ function createSkyboxFunction(
 
   return wgslFn(`
     fn skyboxStudioSample(
-      direction: vec3<f32>${gradientParameters}${fieldGradientParameters}${imageParameters}${spotParameters}
+      direction: vec3<f32>${gradientParameters}${fieldGradientParameters}${imageParameters}${spotParameters}${compositionParameters}
     ) -> vec4<f32> {
       var composedColor = vec3<f32>(0.0);
       ${layerBlocks}
@@ -1908,16 +2129,19 @@ function createWebGpuMaterial(
   const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
   const imageBindings = collectImageLayerBindings(manifest.nodes);
   const spotBindings = collectSpotLayerBindings(manifest.nodes);
+  const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
   const skyboxSample = createSkyboxFunction(
     manifest,
     gradientBindings,
     fieldGradientBindings,
     imageBindings,
-    spotBindings
+    spotBindings,
+    compositionBindings
   );
   const gradientUniforms = createGradientUniformNodes(gradientBindings);
   const fieldGradientUniforms = createFieldGradientUniformNodes(fieldGradientBindings);
   const spotUniforms = createSpotUniformNodes(spotBindings);
+  const compositionUniforms = createCompositionUniformNodes(compositionBindings);
   const imageEditorUniforms = editorPresentationEnabled
     ? createImageEditorUniformNodes(imageBindings, editorImageState)
     : null;
@@ -2006,6 +2230,16 @@ function createWebGpuMaterial(
       })
     ),
     ...imageSampleNodes.sampleNodes,
+    ...Object.fromEntries(
+      compositionBindings.flatMap((binding) => {
+        const compositionUniform = compositionUniforms[binding.index];
+
+        return [
+          [`${binding.parameterPrefix}Opacity`, compositionUniform.opacity],
+          [`${binding.parameterPrefix}BlendMode`, compositionUniform.blendMode],
+        ];
+      })
+    ),
   }) as any;
   if (imageEditorUniforms) {
     imageBindings.forEach((binding) => {
@@ -2043,6 +2277,9 @@ function createWebGpuMaterial(
     forEachSpotLayer(nextManifest.nodes, (layer) =>
       applySpotLayerParamsToUniformNodes(spotUniforms, layer)
     )
+  );
+  attachCompositionUpdater(material, (nextManifest) =>
+    applyCompositionParamsToUniformNodes(compositionUniforms, nextManifest)
   );
   attachImagePlacementUpdater(material, (layerId, placement) =>
     applyImageLayerPlacementToUniformNodes(imagePlacementUniforms, layerId, placement)
@@ -2091,23 +2328,27 @@ function createWebGlMaterial(
   const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
   const imageBindings = collectImageLayerBindings(manifest.nodes);
   const spotBindings = collectSpotLayerBindings(manifest.nodes);
+  const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
   const gradientBindingMap = createGradientBindingMap(gradientBindings);
   const fieldGradientBindingMap = createFieldGradientBindingMap(fieldGradientBindings);
   const imageBindingMap = createImageBindingMap(imageBindings);
   const spotBindingMap = createSpotBindingMap(spotBindings);
+  const compositionBindingMap = createCompositionBindingMap(compositionBindings);
   const layerBlocks = composeNodesExpression(
     manifest.nodes,
     "glsl",
     gradientBindingMap,
     fieldGradientBindingMap,
     imageBindingMap,
-    spotBindingMap
+    spotBindingMap,
+    compositionBindingMap
   );
   const material = new THREE.ShaderMaterial({
     uniforms: {
       ...gradientShaderUniforms(gradientBindings),
       ...fieldGradientShaderUniforms(fieldGradientBindings),
       ...spotShaderUniforms(spotBindings),
+      ...compositionShaderUniforms(compositionBindings),
       ...(editorPresentationEnabled ? imageEditorShaderUniforms(imageBindings, editorImageState) : {}),
       ...imagePlacementShaderUniforms(imageBindings),
       ...imageTextureUniforms(imageBindings, imageTextures),
@@ -2178,6 +2419,10 @@ function createWebGlMaterial(
           : ""
       }`
         )
+        .join("\n")}
+      ${compositionBindings
+        .map((binding) => `uniform float ${binding.parameterPrefix}Opacity;
+      uniform float ${binding.parameterPrefix}BlendMode;`)
         .join("\n")}
       varying vec3 vDirection;
       ${glslImageSampleInfoFunctions(imageBindings)}
@@ -2304,6 +2549,9 @@ function createWebGlMaterial(
       applySpotLayerParamsToShaderUniforms(material, layer, spotBindings)
     )
   );
+  attachCompositionUpdater(material, (nextManifest) =>
+    applyCompositionParamsToShaderUniforms(material, compositionBindings, nextManifest)
+  );
   attachImagePlacementUpdater(material, (layerId, placement) =>
     applyImageLayerPlacementToShaderUniforms(material, imageBindings, layerId, placement)
   );
@@ -2418,22 +2666,18 @@ function createMaterialTopologyKey(
   const nodeKey = (node: SkyboxManifestNode): unknown => {
     if (node.type === "group") {
       return {
-        blendMode: node.blendMode,
         children: node.children.map(nodeKey),
         enabled: node.enabled,
         id: node.id,
-        opacity: node.opacity,
         type: node.type,
       };
     }
 
     if (node.type === "gradient") {
       return {
-        blendMode: node.blendMode,
         enabled: node.enabled,
         id: node.id,
         mode: node.params.mode,
-        opacity: node.opacity,
         stopCount: node.params.stops.length,
         type: node.type,
       };
@@ -2441,13 +2685,11 @@ function createMaterialTopologyKey(
 
     if (node.type === "image") {
       return {
-        blendMode: node.blendMode,
         enabled: node.enabled,
         hasPlacement: Boolean(node.params.placement),
         hasSrc: Boolean(node.params.src),
         height: node.params.height,
         id: node.id,
-        opacity: node.opacity,
         type: node.type,
         width: node.params.width,
       };
@@ -2455,10 +2697,8 @@ function createMaterialTopologyKey(
 
     if (node.type === "spot") {
       return {
-        blendMode: node.blendMode,
         enabled: node.enabled,
         id: node.id,
-        opacity: node.opacity,
         stopCount: node.params.stops.length,
         type: node.type,
       };
@@ -2466,10 +2706,8 @@ function createMaterialTopologyKey(
 
     return {
       anchorCount: node.params.anchors.length,
-      blendMode: node.blendMode,
       enabled: node.enabled,
       id: node.id,
-      opacity: node.opacity,
       type: node.type,
     };
   };
@@ -2604,6 +2842,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   }
 
   private applyLiveManifestUniformUpdates() {
+    this.material.userData.applyCompositionParams?.(this.#manifest);
     this.material.userData.applyGradientLayerParams?.(this.#manifest);
     this.material.userData.applyFieldGradientLayerParams?.(this.#manifest);
     this.material.userData.applySpotLayerParams?.(this.#manifest);

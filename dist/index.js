@@ -96,53 +96,53 @@ var C = [
 	1,
 	0
 ], D = 89.9;
-function ee(e, t, n) {
+function O(e, t, n) {
 	return Math.min(n, Math.max(t, e));
 }
-function O(e) {
+function k(e) {
 	return e * Math.PI / 180;
 }
-function te(e) {
+function ee(e) {
 	return e * 180 / Math.PI;
 }
-function ne(e) {
+function te(e) {
 	return ((e + 180) % 360 + 360) % 360 - 180;
 }
-function k(e) {
+function A(e) {
 	return (Math.round(e) % 360 + 360) % 360;
 }
-function A(e, t) {
+function j(e, t) {
 	return e[0] * t[0] + e[1] * t[1] + e[2] * t[2];
 }
-function re(e, t) {
+function ne(e, t) {
 	return [
 		e[0] - t[0],
 		e[1] - t[1],
 		e[2] - t[2]
 	];
 }
-function j(e, t) {
+function M(e, t) {
 	return [
 		e[0] * t,
 		e[1] * t,
 		e[2] * t
 	];
 }
-function ie(e, t) {
+function re(e, t) {
 	return [
 		e[0] + t[0],
 		e[1] + t[1],
 		e[2] + t[2]
 	];
 }
-function ae(e, t) {
+function ie(e, t) {
 	return [
 		e[1] * t[2] - e[2] * t[1],
 		e[2] * t[0] - e[0] * t[2],
 		e[0] * t[1] - e[1] * t[0]
 	];
 }
-function M(e, t = w) {
+function N(e, t = w) {
 	if (Array.isArray(e) && e.length === 3 && e.every((e) => typeof e == "number" && Number.isFinite(e))) {
 		let t = Math.hypot(e[0], e[1], e[2]);
 		if (t > 1e-6) return [
@@ -153,27 +153,27 @@ function M(e, t = w) {
 	}
 	return t;
 }
-function oe(e, t, n) {
-	let r = O(n), i = Math.cos(r), a = Math.sin(r), o = M(t);
-	return M(ie(ie(j(e, i), j(ae(o, e), a)), j(o, A(o, e) * (1 - i))), e);
+function ae(e, t, n) {
+	let r = k(n), i = Math.cos(r), a = Math.sin(r), o = N(t);
+	return N(re(re(M(e, i), M(ie(o, e), a)), M(o, j(o, e) * (1 - i))), e);
 }
-function se(e, t = C, n = 0) {
-	let r = M(e), i = re(M(t, C), j(r, A(M(t, C), r)));
+function oe(e, t = C, n = 0) {
+	let r = N(e), i = ne(N(t, C), M(r, j(N(t, C), r)));
 	if (Math.hypot(i[0], i[1], i[2]) < 1e-6) {
 		let e = Math.abs(r[1]) > .98 ? [
 			0,
 			0,
 			1
 		] : C;
-		i = re(e, j(r, A(e, r)));
+		i = ne(e, M(r, j(e, r)));
 	}
-	return i = M(i, E), {
-		tangentX: oe(M(ae(r, i), T), r, n),
-		tangentY: oe(i, r, n)
+	return i = N(i, E), {
+		tangentX: ae(N(ie(r, i), T), r, n),
+		tangentY: ae(i, r, n)
 	};
 }
-function ce({ angularHeight: e, angularWidth: t, baseAngularHeight: n, baseAngularWidth: r, centerDirection: i, rotation: a = 0, upDirection: o = C }) {
-	let s = M(i), c = k(a), { tangentX: l, tangentY: u } = se(s, o, c), d = Math.max(1e-4, e), f = Math.max(1e-4, t);
+function P({ angularHeight: e, angularWidth: t, baseAngularHeight: n, baseAngularWidth: r, centerDirection: i, rotation: a = 0, upDirection: o = C }) {
+	let s = N(i), c = A(a), { tangentX: l, tangentY: u } = oe(s, o, c), d = Math.max(1e-4, e), f = Math.max(1e-4, t);
 	return {
 		angularHeight: d,
 		angularWidth: f,
@@ -186,9 +186,9 @@ function ce({ angularHeight: e, angularWidth: t, baseAngularHeight: n, baseAngul
 		tangentY: u
 	};
 }
-function N(e) {
-	let t = e, n = M(t?.centerDirection ?? t?.normal ?? t?.center, w), r = Array.isArray(t?.center) ? Math.max(1e-4, Math.hypot(t.center[0], t.center[1], t.center[2])) : 1, i = typeof t?.angularWidth == "number" ? t.angularWidth : 2 * Math.atan(Math.max(1e-4, t?.width ?? .4) / (2 * r)), a = typeof t?.angularHeight == "number" ? t.angularHeight : 2 * Math.atan(Math.max(1e-4, t?.height ?? .3) / (2 * r));
-	return ce({
+function F(e) {
+	let t = e, n = N(t?.centerDirection ?? t?.normal ?? t?.center, w), r = Array.isArray(t?.center) ? Math.max(1e-4, Math.hypot(t.center[0], t.center[1], t.center[2])) : 1, i = typeof t?.angularWidth == "number" ? t.angularWidth : 2 * Math.atan(Math.max(1e-4, t?.width ?? .4) / (2 * r)), a = typeof t?.angularHeight == "number" ? t.angularHeight : 2 * Math.atan(Math.max(1e-4, t?.height ?? .3) / (2 * r));
+	return P({
 		angularHeight: a,
 		angularWidth: i,
 		baseAngularHeight: typeof t?.baseAngularHeight == "number" ? t.baseAngularHeight : a,
@@ -197,54 +197,54 @@ function N(e) {
 		rotation: typeof t?.rotation == "number" ? t.rotation : 0
 	});
 }
-function le(e) {
-	let t = M(e.centerDirection);
+function se(e) {
+	let t = N(e.centerDirection);
 	return {
-		x: ne(te(Math.atan2(t[0], -t[2]))),
-		y: te(Math.asin(ee(t[1], -1, 1)))
+		x: te(ee(Math.atan2(t[0], -t[2]))),
+		y: ee(Math.asin(O(t[1], -1, 1)))
 	};
 }
-function ue(e) {
-	let t = O(e.x), n = O(ee(e.y, -89.9, D)), r = Math.cos(n);
-	return M([
+function ce(e) {
+	let t = k(e.x), n = k(O(e.y, -89.9, D)), r = Math.cos(n);
+	return N([
 		Math.sin(t) * r,
 		Math.sin(n),
 		-Math.cos(t) * r
 	]);
 }
-function de(e, t, n) {
-	let r = N(e);
-	return ce({
+function le(e, t, n) {
+	let r = F(e);
+	return P({
 		angularHeight: r.angularHeight,
 		angularWidth: r.angularWidth,
 		baseAngularHeight: r.baseAngularHeight,
 		baseAngularWidth: r.baseAngularWidth,
-		centerDirection: ue(t),
+		centerDirection: ce(t),
 		rotation: r.rotation,
 		upDirection: n?.upDirection
 	});
 }
-function fe(e) {
-	let t = N(e);
+function ue(e) {
+	let t = F(e);
 	return {
 		x: t.angularWidth / t.baseAngularWidth,
 		y: t.angularHeight / t.baseAngularHeight
 	};
 }
-function pe(e, t) {
-	let n = N(e);
+function de(e, t) {
+	let n = F(e);
 	return {
 		...n,
 		angularHeight: Math.max(1e-4, n.baseAngularHeight * Math.max(1e-4, t.y)),
 		angularWidth: Math.max(1e-4, n.baseAngularWidth * Math.max(1e-4, t.x))
 	};
 }
-function me(e) {
-	return N(e).rotation;
+function fe(e) {
+	return F(e).rotation;
 }
-function he(e, t) {
-	let n = N(e);
-	return ce({
+function pe(e, t) {
+	let n = F(e);
+	return P({
 		angularHeight: n.angularHeight,
 		angularWidth: n.angularWidth,
 		baseAngularHeight: n.baseAngularHeight,
@@ -253,10 +253,10 @@ function he(e, t) {
 		rotation: t
 	});
 }
-function ge(e, t) {
-	let n = N(t), r = M(e), i = A(r, n.centerDirection);
+function me(e, t) {
+	let n = F(t), r = N(e), i = j(r, n.centerDirection);
 	if (i <= 0) return null;
-	let a = A(r, n.tangentX) / i, o = A(r, n.tangentY) / i, s = Math.tan(n.angularWidth / 2), c = Math.tan(n.angularHeight / 2);
+	let a = j(r, n.tangentX) / i, o = j(r, n.tangentY) / i, s = Math.tan(n.angularWidth / 2), c = Math.tan(n.angularHeight / 2);
 	return s <= 0 || c <= 0 || a < -s || a > s || o < -c || o > c ? null : {
 		u: a / (2 * s) + .5,
 		v: .5 - o / (2 * c)
@@ -264,20 +264,20 @@ function ge(e, t) {
 }
 //#endregion
 //#region spot-transform.ts
-var _e = Math.PI / 12;
-function P(e, t, n) {
+var he = Math.PI / 12;
+function I(e, t, n) {
 	return Math.min(n, Math.max(t, e));
 }
-function ve(e) {
+function ge(e) {
 	return e * 180 / Math.PI;
 }
-function ye(e) {
+function _e(e) {
 	return ((e + 180) % 360 + 360) % 360 - 180;
 }
-function be() {
+function ve() {
 	return {
-		angularRadius: _e,
-		baseAngularRadius: _e,
+		angularRadius: he,
+		baseAngularRadius: he,
 		brightness: 1,
 		centerDirection: [
 			0,
@@ -315,77 +315,77 @@ function be() {
 		}]
 	};
 }
-function F(e) {
-	let t = e, n = be(), r = Math.max(1e-4, typeof t?.baseAngularRadius == "number" ? t.baseAngularRadius : n.baseAngularRadius);
+function L(e) {
+	let t = e, n = ve(), r = Math.max(1e-4, typeof t?.baseAngularRadius == "number" ? t.baseAngularRadius : n.baseAngularRadius);
 	return {
 		angularRadius: Math.max(1e-4, typeof t?.angularRadius == "number" ? t.angularRadius : r),
 		baseAngularRadius: r,
 		brightness: Math.max(0, typeof t?.brightness == "number" ? t.brightness : n.brightness),
-		centerDirection: M(t?.centerDirection, n.centerDirection),
+		centerDirection: N(t?.centerDirection, n.centerDirection),
 		colorMode: t?.colorMode === "gradient" ? "gradient" : "light",
-		coreRadius: P(typeof t?.coreRadius == "number" ? t.coreRadius : n.coreRadius, .01, .7),
-		coreSoftness: P(typeof t?.coreSoftness == "number" ? t.coreSoftness : n.coreSoftness, .4, 6),
-		dispersion: P(typeof t?.dispersion == "number" ? t.dispersion : n.dispersion, 0, 1),
-		dogSpread: P(typeof t?.dogSpread == "number" ? t.dogSpread : n.dogSpread, .015, .18),
-		dogStrength: P(typeof t?.dogStrength == "number" ? t.dogStrength : n.dogStrength, 0, 1.8),
-		dogStretch: P(typeof t?.dogStretch == "number" ? t.dogStretch : n.dogStretch, 0, .55),
-		glareSize: P(typeof t?.glareSize == "number" ? t.glareSize : n.glareSize, .03, 1.1),
-		glareStrength: P(typeof t?.glareStrength == "number" ? t.glareStrength : n.glareStrength, 0, 1.4),
-		glow: P(typeof t?.glow == "number" ? t.glow : n.glow, 0, 1),
-		glowSize: P(typeof t?.glowSize == "number" ? t.glowSize : n.glowSize, .05, 1.4),
-		glowStrength: P(typeof t?.glowStrength == "number" ? t.glowStrength : n.glowStrength, 0, 1),
-		halo: P(typeof t?.halo == "number" ? t.halo : n.halo, 0, 1),
-		haloInnerWidth: P(typeof t?.haloInnerWidth == "number" ? t.haloInnerWidth : n.haloInnerWidth, .003, .09),
-		haloOuterWidth: P(typeof t?.haloOuterWidth == "number" ? t.haloOuterWidth : n.haloOuterWidth, .01, .24),
-		haloRadius: P(typeof t?.haloRadius == "number" ? t.haloRadius : n.haloRadius, .04, 1),
-		haloStrength: P(typeof t?.haloStrength == "number" ? t.haloStrength : n.haloStrength, 0, 1.4),
+		coreRadius: I(typeof t?.coreRadius == "number" ? t.coreRadius : n.coreRadius, .01, .7),
+		coreSoftness: I(typeof t?.coreSoftness == "number" ? t.coreSoftness : n.coreSoftness, .4, 6),
+		dispersion: I(typeof t?.dispersion == "number" ? t.dispersion : n.dispersion, 0, 1),
+		dogSpread: I(typeof t?.dogSpread == "number" ? t.dogSpread : n.dogSpread, .015, .18),
+		dogStrength: I(typeof t?.dogStrength == "number" ? t.dogStrength : n.dogStrength, 0, 1.8),
+		dogStretch: I(typeof t?.dogStretch == "number" ? t.dogStretch : n.dogStretch, 0, .55),
+		glareSize: I(typeof t?.glareSize == "number" ? t.glareSize : n.glareSize, .03, 1.1),
+		glareStrength: I(typeof t?.glareStrength == "number" ? t.glareStrength : n.glareStrength, 0, 1.4),
+		glow: I(typeof t?.glow == "number" ? t.glow : n.glow, 0, 1),
+		glowSize: I(typeof t?.glowSize == "number" ? t.glowSize : n.glowSize, .05, 1.4),
+		glowStrength: I(typeof t?.glowStrength == "number" ? t.glowStrength : n.glowStrength, 0, 1),
+		halo: I(typeof t?.halo == "number" ? t.halo : n.halo, 0, 1),
+		haloInnerWidth: I(typeof t?.haloInnerWidth == "number" ? t.haloInnerWidth : n.haloInnerWidth, .003, .09),
+		haloOuterWidth: I(typeof t?.haloOuterWidth == "number" ? t.haloOuterWidth : n.haloOuterWidth, .01, .24),
+		haloRadius: I(typeof t?.haloRadius == "number" ? t.haloRadius : n.haloRadius, .04, 1),
+		haloStrength: I(typeof t?.haloStrength == "number" ? t.haloStrength : n.haloStrength, 0, 1.4),
 		lightColor: typeof t?.lightColor == "string" ? t.lightColor : n.lightColor,
 		stops: (t?.stops?.length ? t.stops : n.stops).map((e) => ({
 			color: e.color,
-			location: P(e.location, 0, 100),
-			midpoint: P(e.midpoint ?? 50, 1, 99),
-			opacity: P(e.opacity, 0, 100)
+			location: I(e.location, 0, 100),
+			midpoint: I(e.midpoint ?? 50, 1, 99),
+			opacity: I(e.opacity, 0, 100)
 		}))
 	};
 }
-function xe(e) {
-	let t = M(e.centerDirection);
+function ye(e) {
+	let t = N(e.centerDirection);
 	return {
-		x: ye(ve(Math.atan2(t[0], -t[2]))),
-		y: ve(Math.asin(P(t[1], -1, 1)))
+		x: _e(ge(Math.atan2(t[0], -t[2]))),
+		y: ge(Math.asin(I(t[1], -1, 1)))
 	};
 }
-function Se(e, t) {
+function be(e, t) {
 	return {
-		...F(e),
-		centerDirection: ue({
+		...L(e),
+		centerDirection: ce({
 			x: t.x,
-			y: P(t.y, -D, D)
+			y: I(t.y, -D, D)
 		})
 	};
 }
-function Ce(e) {
-	let t = F(e);
+function xe(e) {
+	let t = L(e);
 	return t.angularRadius / t.baseAngularRadius;
 }
-function we(e, t) {
-	let n = F(e);
+function Se(e, t) {
+	let n = L(e);
 	return {
 		...n,
 		angularRadius: Math.max(1e-4, n.baseAngularRadius * Math.max(1e-4, t))
 	};
 }
-function Te(e, t) {
-	let n = F(t), r = M(e), i = M(n.centerDirection), a = r[0] * i[0] + r[1] * i[1] + r[2] * i[2];
-	return Math.acos(P(a, -1, 1)) <= n.angularRadius;
+function Ce(e, t) {
+	let n = L(t), r = N(e), i = N(n.centerDirection), a = r[0] * i[0] + r[1] * i[1] + r[2] * i[2];
+	return Math.acos(I(a, -1, 1)) <= n.angularRadius;
 }
 //#endregion
 //#region evaluator.ts
-var I = Math.PI * 2;
-function L(e, t, n) {
+var R = Math.PI * 2;
+function z(e, t, n) {
 	return e + (t - e) * n;
 }
-function Ee(e) {
+function we(e) {
 	return e.map((e) => ({
 		alpha: d(e.opacity / 100),
 		color: m(e.color),
@@ -393,10 +393,10 @@ function Ee(e) {
 		t: d(e.location / 100)
 	})).sort((e, t) => e.t - t.t);
 }
-function De(e, t) {
+function Te(e, t) {
 	return e <= t ? e / Math.max(t * 2, 1e-5) : .5 + (e - t) / Math.max((1 - t) * 2, 1e-5);
 }
-function Oe(e, t) {
+function Ee(e, t) {
 	if (e.length === 0) return [
 		0,
 		0,
@@ -409,17 +409,17 @@ function Oe(e, t) {
 	for (let t = 0; t < e.length - 1; t += 1) {
 		let r = e[t], i = e[t + 1];
 		if (n < r.t || n > i.t) continue;
-		let a = i.t - r.t, o = De(a <= 0 ? 0 : (n - r.t) / a, r.midpoint);
+		let a = i.t - r.t, o = Te(a <= 0 ? 0 : (n - r.t) / a, r.midpoint);
 		return [
-			L(r.color[0], i.color[0], o),
-			L(r.color[1], i.color[1], o),
-			L(r.color[2], i.color[2], o),
-			L(r.alpha, i.alpha, o)
+			z(r.color[0], i.color[0], o),
+			z(r.color[1], i.color[1], o),
+			z(r.color[2], i.color[2], o),
+			z(r.alpha, i.alpha, o)
 		];
 	}
 	return [...i.color, i.alpha];
 }
-function ke(e) {
+function De(e) {
 	let t = e * Math.PI / 180;
 	return [
 		Math.sin(t),
@@ -427,97 +427,97 @@ function ke(e) {
 		0
 	];
 }
-function Ae(e, t) {
-	let n = ke(t.rotation), r = e[0] * n[0] + e[1] * n[1] + e[2] * n[2];
-	return Oe(Ee(t.stops), r * .5 + .5);
+function Oe(e, t) {
+	let n = De(t.rotation), r = e[0] * n[0] + e[1] * n[1] + e[2] * n[2];
+	return Ee(we(t.stops), r * .5 + .5);
 }
-function R(e, t, n) {
+function B(e, t, n) {
 	let r = d((n - e) / Math.max(t - e, 1e-5));
 	return r * r * (3 - 2 * r);
 }
-function z(e) {
+function V(e) {
 	return e * e;
 }
-function je(e) {
+function ke(e) {
 	let t = d(e), n = [
 		1,
 		.12,
 		.05
 	];
-	return n = B(n, [
+	return n = H(n, [
 		1,
 		.55,
 		.1
-	], R(0, .28, t)), n = B(n, [
+	], B(0, .28, t)), n = H(n, [
 		1,
 		.93,
 		.6
-	], R(.22, .45, t)), n = B(n, [
+	], B(.22, .45, t)), n = H(n, [
 		1,
 		1,
 		1
-	], R(.42, .6, t)), n = B(n, [
+	], B(.42, .6, t)), n = H(n, [
 		.55,
 		.8,
 		1
-	], R(.62, .85, t)), n = B(n, [
+	], B(.62, .85, t)), n = H(n, [
 		.35,
 		.5,
 		1
-	], R(.85, 1, t)), n;
+	], B(.85, 1, t)), n;
 }
-function B(e, t, n) {
+function H(e, t, n) {
 	return [
-		L(e[0], t[0], n),
-		L(e[1], t[1], n),
-		L(e[2], t[2], n)
+		z(e[0], t[0], n),
+		z(e[1], t[1], n),
+		z(e[2], t[2], n)
 	];
 }
-function Me(e, t) {
+function Ae(e, t) {
 	return [
 		e[0] * t[0],
 		e[1] * t[1],
 		e[2] * t[2]
 	];
 }
-function V(e, t) {
+function U(e, t) {
 	return [
 		e[0] * t,
 		e[1] * t,
 		e[2] * t
 	];
 }
-function H(e, t) {
+function W(e, t) {
 	return [
 		e[0] + t[0],
 		e[1] + t[1],
 		e[2] + t[2]
 	];
 }
-function Ne(e, t) {
-	return B(t, Me(e, B([
+function je(e, t) {
+	return H(t, Ae(e, H([
 		1,
 		1,
 		1
 	], t, .82)), .82);
 }
-function Pe(e, t) {
-	let n = (e - .5) * I, r = (.5 - t) * Math.PI, i = Math.cos(r);
+function Me(e, t) {
+	let n = (e - .5) * R, r = (.5 - t) * Math.PI, i = Math.cos(r);
 	return [
 		i * Math.cos(n),
 		Math.sin(r),
 		i * Math.sin(n)
 	];
 }
-function Fe(e, t) {
-	let n = (e - .5) * I, r = (t - .5) * Math.PI, i = Math.cos(r);
+function Ne(e, t) {
+	let n = (e - .5) * R, r = (t - .5) * Math.PI, i = Math.cos(r);
 	return [
 		i * Math.cos(n),
 		Math.sin(r),
 		i * Math.sin(n)
 	];
 }
-function U(e) {
+function G(e) {
 	let t = Math.hypot(e[0], e[1], e[2]);
 	return t <= 0 ? [
 		0,
@@ -529,54 +529,54 @@ function U(e) {
 		e[2] / t
 	];
 }
-function W(e, t) {
+function K(e, t) {
 	return e[0] * t[0] + e[1] * t[1] + e[2] * t[2];
 }
-function Ie(e, t) {
+function Pe(e, t) {
 	return [
 		e[1] * t[2] - e[2] * t[1],
 		e[2] * t[0] - e[0] * t[2],
 		e[0] * t[1] - e[1] * t[0]
 	];
 }
-function Le(e, t, n) {
-	let r = U(e), i = U(t), a = U(Ie([
+function Fe(e, t, n) {
+	let r = G(e), i = G(t), a = G(Pe([
 		0,
 		1,
 		0
-	], i)), o = U(Ie(i, a)), s = Math.max(W(r, i), 1e-6), c = W(r, a) / s / Math.max(n, 1e-4), l = W(r, o) / s / Math.max(n, 1e-4);
+	], i)), o = G(Pe(i, a)), s = Math.max(K(r, i), 1e-6), c = K(r, a) / s / Math.max(n, 1e-4), l = K(r, o) / s / Math.max(n, 1e-4);
 	return {
 		x: c,
 		y: l,
 		d: Math.hypot(c, l)
 	};
 }
-function Re(e, t, n) {
+function Ie(e, t, n) {
 	if (t <= 0) return e;
 	let r = Math.max(1e-4, n), i = [
-		Math.sin((e[1] * r + .23) * I) * Math.cos((e[2] * r + .41) * I),
-		Math.cos((e[2] * r + .17) * I) * Math.sin((e[0] * r + .37) * I),
-		Math.sin((e[0] * r - .31) * I) * Math.cos((e[1] * r + .29) * I)
+		Math.sin((e[1] * r + .23) * R) * Math.cos((e[2] * r + .41) * R),
+		Math.cos((e[2] * r + .17) * R) * Math.sin((e[0] * r + .37) * R),
+		Math.sin((e[0] * r - .31) * R) * Math.cos((e[1] * r + .29) * R)
 	];
-	return U([
+	return G([
 		e[0] + i[0] * t,
 		e[1] + i[1] * t,
 		e[2] + i[2] * t
 	]);
 }
-function ze(e, t) {
+function Le(e, t) {
 	return 1 - d(e[0] * t[0] + e[1] * t[1] + e[2] * t[2], -1, 1);
 }
-function Be(e, t) {
+function Re(e, t) {
 	if (t.anchors.length === 0) return [
 		0,
 		0,
 		0,
 		0
 	];
-	let n = Re(e, d(t.amplitude, 0, .6), Math.max(1e-4, t.frequency)), r = 0, i = 0, a = 0, o = 0;
+	let n = Ie(e, d(t.amplitude, 0, .6), Math.max(1e-4, t.frequency)), r = 0, i = 0, a = 0, o = 0;
 	return t.anchors.forEach((e) => {
-		let s = ze(n, Pe(e.x, e.y)), c = t.mode === "gaussian" ? Math.exp(-(s * s) / (2 * (.46 / t.power) ** 2)) : 1 / (s + 5e-4) ** t.power, l = m(e.color);
+		let s = Le(n, Me(e.x, e.y)), c = t.mode === "gaussian" ? Math.exp(-(s * s) / (2 * (.46 / t.power) ** 2)) : 1 / (s + 5e-4) ** t.power, l = m(e.color);
 		r += l[0] * c, i += l[1] * c, a += l[2] * c, o += c;
 	}), o <= 0 ? [
 		0,
@@ -590,15 +590,15 @@ function Be(e, t) {
 		1
 	];
 }
-function Ve(e, t, n) {
+function ze(e, t, n) {
 	return [
-		L(e[0], t[0], n),
-		L(e[1], t[1], n),
-		L(e[2], t[2], n),
-		L(e[3], t[3], n)
+		z(e[0], t[0], n),
+		z(e[1], t[1], n),
+		z(e[2], t[2], n),
+		z(e[3], t[3], n)
 	];
 }
-function G(e, t, n) {
+function q(e, t, n) {
 	let r = Math.min(e.width - 1, Math.max(0, t)), i = (Math.min(e.height - 1, Math.max(0, n)) * e.width + r) * 4, a = e.pixels?.[i] ?? 0, o = e.pixels?.[i + 1] ?? 0, s = e.pixels?.[i + 2] ?? 0, c = e.pixels?.[i + 3] ?? 255;
 	return [
 		f(a / 255),
@@ -607,7 +607,7 @@ function G(e, t, n) {
 		c / 255
 	];
 }
-function He(e, t) {
+function Be(e, t) {
 	let n = t.placement;
 	if (!n || !t.pixels || t.width <= 0 || t.height <= 0) return [
 		0,
@@ -615,7 +615,7 @@ function He(e, t) {
 		0,
 		0
 	];
-	let r = ge(e, n);
+	let r = me(e, n);
 	if (!r) return [
 		0,
 		0,
@@ -630,61 +630,61 @@ function He(e, t) {
 		0
 	];
 	let o = i * (t.width - 1), s = a * (t.height - 1), c = Math.floor(o), l = Math.floor(s), u = c + 1, d = l + 1, f = o - c, p = s - l;
-	return Ve(Ve(G(t, c, l), G(t, u, l), f), Ve(G(t, c, d), G(t, u, d), f), p);
+	return ze(ze(q(t, c, l), q(t, u, l), f), ze(q(t, c, d), q(t, u, d), f), p);
 }
-function Ue(e, t) {
-	let n = F(t), r = U(e), i = U(n.centerDirection), a = W(r, i), o = Math.acos(d(a, -1, 1)), s = Math.max(n.angularRadius, 1e-4), c = o / s;
+function Ve(e, t) {
+	let n = L(t), r = G(e), i = G(n.centerDirection), a = K(r, i), o = Math.acos(d(a, -1, 1)), s = Math.max(n.angularRadius, 1e-4), c = o / s;
 	if (n.colorMode === "gradient") return c > 1 ? [
 		0,
 		0,
 		0,
 		0
-	] : Oe(Ee(n.stops), c);
-	let l = Le(e, i, s), u = l.d, f = m(n.lightColor), p = n.brightness, h = d(1 - u / n.coreRadius) ** +n.coreSoftness, g = d(1 - u / n.glowSize) ** 2 * n.glowStrength, _ = d(1 - u / n.glareSize) ** 1.15 * n.glareStrength, v = (h + g + _) * p, y = V(f, v);
-	y = H(y, [
+	] : Ee(we(n.stops), c);
+	let l = Fe(e, i, s), u = l.d, f = m(n.lightColor), p = n.brightness, h = d(1 - u / n.coreRadius) ** +n.coreSoftness, g = d(1 - u / n.glowSize) ** 2 * n.glowStrength, _ = d(1 - u / n.glareSize) ** 1.15 * n.glareStrength, v = (h + g + _) * p, y = U(f, v);
+	y = W(y, [
 		Math.max(v - 1, 0),
 		Math.max(v - 1, 0),
 		Math.max(v - 1, 0)
 	]);
-	let b = Math.max(n.haloInnerWidth, 1e-4), x = Math.max(n.haloOuterWidth, 1e-4), S = u - n.haloRadius, C = Math.exp(-z(S / (S < 0 ? b : x))), w = Ne(B([
+	let b = Math.max(n.haloInnerWidth, 1e-4), x = Math.max(n.haloOuterWidth, 1e-4), S = u - n.haloRadius, C = Math.exp(-V(S / (S < 0 ? b : x))), w = je(H([
 		1,
 		1,
 		1
-	], je(d((u - (n.haloRadius - b)) / (b + x))), n.dispersion), f), T = C * n.haloStrength * p;
-	y = H(y, V(w, T)), y = H(y, V([
+	], ke(d((u - (n.haloRadius - b)) / (b + x))), n.dispersion), f), T = C * n.haloStrength * p;
+	y = W(y, U(w, T)), y = W(y, U([
 		1,
 		1,
 		1
 	], Math.max(T - 1.2, 0) * .22));
-	let E = Math.abs(l.y), D = Math.abs(l.x), ee = Math.exp(-z((D - n.haloRadius) / Math.max(n.dogSpread, 1e-4))) * Math.exp(-z(E / Math.max(n.dogSpread * .72, 1e-4))), O = R(n.haloRadius, n.haloRadius + Math.max(n.dogStretch, 1e-4), D) * (1 - R(n.haloRadius + Math.max(n.dogStretch, 1e-4), n.haloRadius + Math.max(n.dogStretch * 2.2, 1e-4), D)) * Math.exp(-z(E / Math.max(n.dogSpread * .9, 1e-4))), te = Ne(B([
+	let E = Math.abs(l.y), D = Math.abs(l.x), O = Math.exp(-V((D - n.haloRadius) / Math.max(n.dogSpread, 1e-4))) * Math.exp(-V(E / Math.max(n.dogSpread * .72, 1e-4))), k = B(n.haloRadius, n.haloRadius + Math.max(n.dogStretch, 1e-4), D) * (1 - B(n.haloRadius + Math.max(n.dogStretch, 1e-4), n.haloRadius + Math.max(n.dogStretch * 2.2, 1e-4), D)) * Math.exp(-V(E / Math.max(n.dogSpread * .9, 1e-4))), ee = je(H([
 		1,
 		1,
 		1
-	], je(d((D - (n.haloRadius - n.dogSpread * 1.4)) / Math.max(n.dogSpread * 3.5, 1e-4))), n.dispersion), f), ne = (ee + O * .28) * n.dogStrength * p;
-	y = H(y, V(te, ne)), y = H(y, V([
+	], ke(d((D - (n.haloRadius - n.dogSpread * 1.4)) / Math.max(n.dogSpread * 3.5, 1e-4))), n.dispersion), f), te = (O + k * .28) * n.dogStrength * p;
+	y = W(y, U(ee, te)), y = W(y, U([
 		1,
 		1,
 		1
-	], Math.max(ne - 1.1, 0) * .18));
-	let k = d(Math.max(y[0], y[1], y[2]));
-	return k <= 1e-5 ? [
+	], Math.max(te - 1.1, 0) * .18));
+	let A = d(Math.max(y[0], y[1], y[2]));
+	return A <= 1e-5 ? [
 		0,
 		0,
 		0,
 		0
 	] : [
-		y[0] / k,
-		y[1] / k,
-		y[2] / k,
-		k
+		y[0] / A,
+		y[1] / A,
+		y[2] / A,
+		A
 	];
 }
-function We(e, t) {
-	return t.type === "gradient" ? Ae(e, t.params) : t.type === "field-gradient" ? Be(e, t.params) : t.type === "spot" ? Ue(e, t.params) : He(e, t.params);
+function He(e, t) {
+	return t.type === "gradient" ? Oe(e, t.params) : t.type === "field-gradient" ? Re(e, t.params) : t.type === "spot" ? Ve(e, t.params) : Be(e, t.params);
 }
-function Ge(e, t) {
+function Ue(e, t) {
 	return t.filter((e) => e.enabled).reverse().reduce((t, n) => {
-		let r = n.type === "group" ? [...Ge(e, n.children), 1] : We(e, n), i = d(r[3] * (n.opacity / 100));
+		let r = n.type === "group" ? [...Ue(e, n.children), 1] : He(e, n), i = d(r[3] * (n.opacity / 100));
 		return y(t, [
 			r[0],
 			r[1],
@@ -696,22 +696,22 @@ function Ge(e, t) {
 		0
 	]);
 }
-function Ke(e, t) {
+function We(e, t) {
 	for (let n of e) if (n.type === "group") {
 		if (n.id === t) return n;
-		let e = Ke(n.children, t);
+		let e = We(n.children, t);
 		if (e) return e;
 	}
 	return null;
 }
-function qe(e, t, n = {}) {
-	let r = S(e), i = n.targetGroupId ? Ke(r.nodes, n.targetGroupId) : null;
-	return Ge(t, n.targetGroupId ? i ? [i] : [] : r.nodes);
+function Ge(e, t, n = {}) {
+	let r = S(e), i = n.targetGroupId ? We(r.nodes, n.targetGroupId) : null;
+	return Ue(t, n.targetGroupId ? i ? [i] : [] : r.nodes);
 }
 //#endregion
 //#region bake.ts
-var Je = 1024, Ye = "0.1.0", Xe = /* @__PURE__ */ new Map();
-function Ze(e = {}) {
+var Ke = 1024, qe = "0.1.0", Je = /* @__PURE__ */ new Map();
+function Ye(e = {}) {
 	let t = Math.max(.1, e.dpr ?? 1), n = Math.max(1, Math.floor((e.width ?? 1024) * t)), r = Math.max(1, Math.floor((e.height ?? n / 2) * t));
 	return {
 		cache: e.cache ?? !0,
@@ -721,20 +721,20 @@ function Ze(e = {}) {
 		width: n
 	};
 }
-function Qe(e, t) {
+function Xe(e, t) {
 	return b(JSON.stringify({
 		manifest: e,
 		options: t,
-		runtimeVersion: Ye
+		runtimeVersion: qe
 	}));
 }
-function $e() {
-	Xe.clear();
+function Ze() {
+	Je.clear();
 }
-function et(e, t = {}) {
-	let n = Ze(t), r = n.cache ? Qe(e, n) : null;
+function Qe(e, t = {}) {
+	let n = Ye(t), r = n.cache ? Xe(e, n) : null;
 	if (r) {
-		let e = Xe.get(r);
+		let e = Je.get(r);
 		if (e) return {
 			...e,
 			data: new Uint8ClampedArray(e.data)
@@ -744,7 +744,7 @@ function et(e, t = {}) {
 	for (let t = 0; t < i; t += 1) {
 		let n = (t + .5) / i;
 		for (let r = 0; r < o; r += 1) {
-			let [i, c, l] = h(qe(e, Fe((r + .5) / o, n), { targetGroupId: a })), u = (t * o + r) * 4;
+			let [i, c, l] = h(Ge(e, Ne((r + .5) / o, n), { targetGroupId: a })), u = (t * o + r) * 4;
 			s[u] = i, s[u + 1] = c, s[u + 2] = l, s[u + 3] = 255;
 		}
 	}
@@ -753,14 +753,14 @@ function et(e, t = {}) {
 		height: i,
 		width: o
 	};
-	return r && Xe.set(r, {
+	return r && Je.set(r, {
 		...c,
 		data: new Uint8ClampedArray(s)
 	}), c;
 }
 //#endregion
 //#region Skybox.ts
-var tt = {
+var $e = {
 	composition: {
 		mode: "alpha-over",
 		order: "bottom-to-top"
@@ -768,56 +768,56 @@ var tt = {
 	geometry: x,
 	nodes: [],
 	version: 2
-}, nt = .18, rt = .75, it = 1.75, at = 1e-4, ot = .01, st = {
+}, et = .18, tt = .75, nt = 1.75, rt = 1e-4, it = .01, at = {
 	hoveredImageLayerId: null,
 	selectedImageLayerId: null
-}, ct = new e.DataTexture(new Uint8Array([
+}, ot = new e.DataTexture(new Uint8Array([
 	0,
 	0,
 	0,
 	0
 ]), 1, 1, e.RGBAFormat);
-ct.colorSpace = e.SRGBColorSpace, ct.needsUpdate = !0;
-function lt(e, t) {
+ot.colorSpace = e.SRGBColorSpace, ot.needsUpdate = !0;
+function st(e, t) {
 	return +(t === e);
+}
+function ct(e, t) {
+	return +(t === e);
+}
+function lt(e, t) {
+	return Math.max(st(e, t.hoveredImageLayerId), ct(e, t.selectedImageLayerId));
 }
 function ut(e, t) {
-	return +(t === e);
-}
-function K(e, t) {
-	return Math.max(lt(e, t.hoveredImageLayerId), ut(e, t.selectedImageLayerId));
-}
-function dt(e, t) {
 	return e.map((e) => ({
-		active: c(K(e.layer.id, t)),
+		active: c(lt(e.layer.id, t)),
 		layerId: e.layer.id
 	}));
 }
-function ft(e, t) {
+function dt(e, t) {
 	e.forEach((e) => {
-		e.active.value = K(e.layerId, t);
+		e.active.value = lt(e.layerId, t);
 	});
 }
-function pt(e, t) {
-	return Object.fromEntries(e.map((e) => [`imageActive${e.index}`, { value: K(e.layer.id, t) }]));
+function ft(e, t) {
+	return Object.fromEntries(e.map((e) => [`imageActive${e.index}`, { value: lt(e.layer.id, t) }]));
 }
-function mt(e, t, n) {
+function pt(e, t, n) {
 	t.forEach((t) => {
 		let r = `imageActive${t.index}`;
-		e.uniforms[r] && (e.uniforms[r].value = K(t.layer.id, n));
+		e.uniforms[r] && (e.uniforms[r].value = lt(t.layer.id, n));
 	});
 }
-function ht(e, t) {
+function mt(e, t) {
 	e.userData.applyEditorImageState = t;
 }
-function q(t) {
+function ht(t) {
 	if (!t) return {
 		centerDirection: new e.Vector3(0, 0, -1),
 		halfSize: new e.Vector2(0, 0),
 		tangentX: new e.Vector3(1, 0, 0),
 		tangentY: new e.Vector3(0, 1, 0)
 	};
-	let n = N(t);
+	let n = F(t);
 	return {
 		centerDirection: new e.Vector3(...n.centerDirection),
 		halfSize: new e.Vector2(Math.max(0, Math.tan(n.angularWidth / 2)), Math.max(0, Math.tan(n.angularHeight / 2))),
@@ -827,7 +827,7 @@ function q(t) {
 }
 function gt(e) {
 	return e.map((e) => {
-		let t = q(e.layer.params.placement);
+		let t = ht(e.layer.params.placement);
 		return {
 			centerDirection: c(t.centerDirection),
 			halfSize: c(t.halfSize),
@@ -840,12 +840,12 @@ function gt(e) {
 function _t(e, t, n) {
 	let r = e.find((e) => e.layerId === t);
 	if (!r) return;
-	let i = q(n);
+	let i = ht(n);
 	r.centerDirection.value.copy(i.centerDirection), r.tangentX.value.copy(i.tangentX), r.tangentY.value.copy(i.tangentY), r.halfSize.value.copy(i.halfSize);
 }
 function vt(e) {
 	return Object.fromEntries(e.flatMap((e) => {
-		let t = q(e.layer.params.placement);
+		let t = ht(e.layer.params.placement);
 		return [
 			[`imageCenterDirection${e.index}`, { value: t.centerDirection }],
 			[`imageTangentX${e.index}`, { value: t.tangentX }],
@@ -857,7 +857,7 @@ function vt(e) {
 function yt(e, t, n, r) {
 	let i = t.find((e) => e.layer.id === n);
 	if (!i) return;
-	let a = q(r);
+	let a = ht(r);
 	e.uniforms[`imageCenterDirection${i.index}`]?.value.copy(a.centerDirection), e.uniforms[`imageTangentX${i.index}`]?.value.copy(a.tangentX), e.uniforms[`imageTangentY${i.index}`]?.value.copy(a.tangentY), e.uniforms[`imageHalfSize${i.index}`]?.value.copy(a.halfSize);
 }
 function bt(e, t) {
@@ -885,7 +885,29 @@ function St(e) {
 function Ct(e) {
 	return +(e === "gradient");
 }
-function wt(t, n) {
+function wt(e) {
+	switch (e) {
+		case "darken": return 1;
+		case "multiply": return 2;
+		case "color-burn": return 3;
+		case "lighten": return 4;
+		case "screen": return 5;
+		case "color-dodge": return 6;
+		case "overlay": return 7;
+		case "soft-light": return 8;
+		case "hard-light": return 9;
+		case "difference": return 10;
+		case "exclusion": return 11;
+		default: return 0;
+	}
+}
+function Tt(e) {
+	return {
+		blendMode: wt(e.blendMode),
+		opacity: d(e.opacity / 100)
+	};
+}
+function Et(t, n) {
 	let r = (d(t) - .5) * Math.PI * 2, i = (.5 - d(n)) * Math.PI, a = Math.cos(i);
 	return new e.Vector3(a * Math.cos(r), Math.sin(i), a * Math.sin(r)).normalize();
 }
@@ -893,7 +915,7 @@ function X(t) {
 	let [n, r, i] = m(t);
 	return new e.Vector3(n, r, i);
 }
-function Tt(e) {
+function Dt(e) {
 	return e.map((e) => {
 		let t = J(e.layer.params);
 		return {
@@ -915,7 +937,7 @@ function Tt(e) {
 		};
 	});
 }
-function Et(e, t) {
+function Ot(e, t) {
 	let n = e.find((e) => e.layerId === t.id);
 	if (!n) return;
 	let r = J(t.params);
@@ -929,7 +951,7 @@ function Et(e, t) {
 		e.color.value.copy(Y(n)), e.midpoint.value = n.midpoint, e.t.value = n.t;
 	});
 }
-function Dt(e) {
+function kt(e) {
 	return Object.fromEntries(e.flatMap((e) => {
 		let t = J(e.layer.params);
 		return [[`${e.parameterPrefix}Axis`, { value: xt(e.layer.params.rotation) }], ...Array.from({ length: e.stopCount }, (n, r) => {
@@ -947,7 +969,7 @@ function Dt(e) {
 		}).flat()];
 	}));
 }
-function Ot(e, t, n) {
+function At(e, t, n) {
 	let r = n.find((e) => e.layer.id === t.id);
 	if (!r) return;
 	let i = J(t.params);
@@ -961,7 +983,7 @@ function Ot(e, t, n) {
 		e.uniforms[`${r.parameterPrefix}StopColor${n}`]?.value.copy(Y(a)), e.uniforms[`${r.parameterPrefix}StopT${n}`] && (e.uniforms[`${r.parameterPrefix}StopT${n}`].value = a.t), e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`] && (e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`].value = a.midpoint);
 	});
 }
-function kt(e) {
+function jt(e) {
 	return e.map((e) => ({
 		amplitude: c(d(e.layer.params.amplitude, 0, .6)),
 		anchors: Array.from({ length: e.anchorCount }, (t, n) => {
@@ -972,7 +994,7 @@ function kt(e) {
 			};
 			return {
 				color: c(X(r.color)),
-				direction: c(wt(r.x, r.y))
+				direction: c(Et(r.x, r.y))
 			};
 		}),
 		frequency: c(Math.max(1e-4, e.layer.params.frequency)),
@@ -981,7 +1003,7 @@ function kt(e) {
 		power: c(Math.max(1e-4, e.layer.params.power))
 	}));
 }
-function At(e, t) {
+function Mt(e, t) {
 	let n = e.find((e) => e.layerId === t.id);
 	n && (n.amplitude.value = d(t.params.amplitude, 0, .6), n.frequency.value = Math.max(1e-4, t.params.frequency), n.mode.value = St(t.params.mode), n.power.value = Math.max(1e-4, t.params.power), n.anchors.forEach((e, n) => {
 		let r = t.params.anchors[n] ?? {
@@ -989,10 +1011,10 @@ function At(e, t) {
 			x: .5,
 			y: .5
 		};
-		e.color.value.copy(X(r.color)), e.direction.value.copy(wt(r.x, r.y));
+		e.color.value.copy(X(r.color)), e.direction.value.copy(Et(r.x, r.y));
 	}));
 }
-function jt(e) {
+function Nt(e) {
 	return Object.fromEntries(e.flatMap((e) => [
 		[`${e.parameterPrefix}Amplitude`, { value: d(e.layer.params.amplitude, 0, .6) }],
 		[`${e.parameterPrefix}Frequency`, { value: Math.max(1e-4, e.layer.params.frequency) }],
@@ -1004,11 +1026,11 @@ function jt(e) {
 				x: .5,
 				y: .5
 			};
-			return [[`${e.parameterPrefix}AnchorDirection${n}`, { value: wt(r.x, r.y) }], [`${e.parameterPrefix}AnchorColor${n}`, { value: X(r.color) }]];
+			return [[`${e.parameterPrefix}AnchorDirection${n}`, { value: Et(r.x, r.y) }], [`${e.parameterPrefix}AnchorColor${n}`, { value: X(r.color) }]];
 		}).flat()
 	]));
 }
-function Mt(e, t, n) {
+function Pt(e, t, n) {
 	let r = n.find((e) => e.layer.id === t.id);
 	r && (e.uniforms[`${r.parameterPrefix}Amplitude`] && (e.uniforms[`${r.parameterPrefix}Amplitude`].value = d(t.params.amplitude, 0, .6)), e.uniforms[`${r.parameterPrefix}Frequency`] && (e.uniforms[`${r.parameterPrefix}Frequency`].value = Math.max(1e-4, t.params.frequency)), e.uniforms[`${r.parameterPrefix}Mode`] && (e.uniforms[`${r.parameterPrefix}Mode`].value = St(t.params.mode)), e.uniforms[`${r.parameterPrefix}Power`] && (e.uniforms[`${r.parameterPrefix}Power`].value = Math.max(1e-4, t.params.power)), Array.from({ length: r.anchorCount }, (n, i) => {
 		let a = t.params.anchors[i] ?? {
@@ -1016,11 +1038,11 @@ function Mt(e, t, n) {
 			x: .5,
 			y: .5
 		};
-		e.uniforms[`${r.parameterPrefix}AnchorDirection${i}`]?.value.copy(wt(a.x, a.y)), e.uniforms[`${r.parameterPrefix}AnchorColor${i}`]?.value.copy(X(a.color));
+		e.uniforms[`${r.parameterPrefix}AnchorDirection${i}`]?.value.copy(Et(a.x, a.y)), e.uniforms[`${r.parameterPrefix}AnchorColor${i}`]?.value.copy(X(a.color));
 	}));
 }
-function Nt(t) {
-	let n = F(t);
+function Ft(t) {
+	let n = L(t);
 	return {
 		brightness: Math.max(0, n.brightness),
 		centerDirection: new e.Vector3(...n.centerDirection).normalize(),
@@ -1044,9 +1066,9 @@ function Nt(t) {
 		stops: J(n)
 	};
 }
-function Pt(e) {
+function It(e) {
 	return e.map((e) => {
-		let t = Nt(e.layer.params);
+		let t = Ft(e.layer.params);
 		return {
 			brightness: c(t.brightness),
 			centerDirection: c(t.centerDirection),
@@ -1084,10 +1106,10 @@ function Pt(e) {
 		};
 	});
 }
-function Ft(e, t) {
+function Lt(e, t) {
 	let n = e.find((e) => e.layerId === t.id);
 	if (!n) return;
-	let r = Nt(t.params);
+	let r = Ft(t.params);
 	n.brightness.value = r.brightness, n.centerDirection.value.copy(r.centerDirection), n.coreRadius.value = r.coreRadius, n.coreSoftness.value = r.coreSoftness, n.dispersion.value = r.dispersion, n.dogSpread.value = r.dogSpread, n.dogStrength.value = r.dogStrength, n.dogStretch.value = r.dogStretch, n.glareSize.value = r.glareSize, n.glareStrength.value = r.glareStrength, n.glowSize.value = r.glowSize, n.glowStrength.value = r.glowStrength, n.haloInnerWidth.value = r.haloInnerWidth, n.haloOuterWidth.value = r.haloOuterWidth, n.haloRadius.value = r.haloRadius, n.haloStrength.value = r.haloStrength, n.lightColor.value.copy(r.lightColor), n.mode.value = r.mode, n.radius.value = r.radius, n.stops.forEach((e, t) => {
 		let n = r.stops[t] ?? {
 			color: "#000000",
@@ -1098,9 +1120,9 @@ function Ft(e, t) {
 		e.color.value.copy(Y(n)), e.midpoint.value = n.midpoint, e.t.value = n.t;
 	});
 }
-function It(e) {
+function Rt(e) {
 	return Object.fromEntries(e.flatMap((e) => {
-		let t = Nt(e.layer.params);
+		let t = Ft(e.layer.params);
 		return [
 			[`${e.parameterPrefix}CenterDirection`, { value: t.centerDirection }],
 			[`${e.parameterPrefix}Radius`, { value: t.radius }],
@@ -1137,10 +1159,10 @@ function It(e) {
 		];
 	}));
 }
-function Lt(e, t, n) {
+function zt(e, t, n) {
 	let r = n.find((e) => e.layer.id === t.id);
 	if (!r) return;
-	let i = Nt(t.params);
+	let i = Ft(t.params);
 	e.uniforms[`${r.parameterPrefix}CenterDirection`]?.value.copy(i.centerDirection), e.uniforms[`${r.parameterPrefix}Radius`] && (e.uniforms[`${r.parameterPrefix}Radius`].value = i.radius), e.uniforms[`${r.parameterPrefix}Mode`] && (e.uniforms[`${r.parameterPrefix}Mode`].value = i.mode), e.uniforms[`${r.parameterPrefix}LightColor`]?.value.copy(i.lightColor), e.uniforms[`${r.parameterPrefix}Brightness`] && (e.uniforms[`${r.parameterPrefix}Brightness`].value = i.brightness), [
 		["CoreRadius", i.coreRadius],
 		["CoreSoftness", i.coreSoftness],
@@ -1168,55 +1190,100 @@ function Lt(e, t, n) {
 		e.uniforms[`${r.parameterPrefix}StopColor${n}`]?.value.copy(Y(a)), e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`] && (e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`].value = a.midpoint), e.uniforms[`${r.parameterPrefix}StopT${n}`] && (e.uniforms[`${r.parameterPrefix}StopT${n}`].value = a.t);
 	});
 }
-function Rt(e, t) {
+function Bt(e) {
+	return e.map((e) => {
+		let t = Tt(e.node);
+		return {
+			blendMode: c(t.blendMode),
+			nodeId: e.node.id,
+			opacity: c(t.opacity)
+		};
+	});
+}
+function Vt(e, t) {
+	for (let n of e) if (n.enabled) {
+		if (n.id === t) return n;
+		if (n.type === "group") {
+			let e = Vt(n.children, t);
+			if (e) return e;
+		}
+	}
+	return null;
+}
+function Ht(e, t) {
+	e.forEach((e) => {
+		let n = Vt(t.nodes, e.nodeId);
+		if (!n) return;
+		let r = Tt(n);
+		e.opacity.value = r.opacity, e.blendMode.value = r.blendMode;
+	});
+}
+function Ut(e) {
+	return Object.fromEntries(e.flatMap((e) => {
+		let t = Tt(e.node);
+		return [[`${e.parameterPrefix}Opacity`, { value: t.opacity }], [`${e.parameterPrefix}BlendMode`, { value: t.blendMode }]];
+	}));
+}
+function Wt(e, t, n) {
+	t.forEach((t) => {
+		let r = Vt(n.nodes, t.node.id);
+		if (!r) return;
+		let i = Tt(r), a = e.uniforms[`${t.parameterPrefix}Opacity`], o = e.uniforms[`${t.parameterPrefix}BlendMode`];
+		a && (a.value = i.opacity), o && (o.value = i.blendMode);
+	});
+}
+function Gt(e, t) {
 	e.forEach((e) => {
 		if (e.enabled) {
 			if (e.type === "group") {
-				Rt(e.children, t);
+				Gt(e.children, t);
 				return;
 			}
 			e.type === "gradient" && t(e);
 		}
 	});
 }
-function zt(e, t) {
+function Kt(e, t) {
 	e.forEach((e) => {
 		if (e.enabled) {
 			if (e.type === "group") {
-				zt(e.children, t);
+				Kt(e.children, t);
 				return;
 			}
 			e.type === "field-gradient" && t(e);
 		}
 	});
 }
-function Bt(e, t) {
+function qt(e, t) {
 	e.forEach((e) => {
 		if (e.enabled) {
 			if (e.type === "group") {
-				Bt(e.children, t);
+				qt(e.children, t);
 				return;
 			}
 			e.type === "spot" && t(e);
 		}
 	});
 }
-function Vt(e, t) {
+function Jt(e, t) {
 	e.userData.applyGradientLayerParams = t;
 }
-function Ht(e, t) {
+function Yt(e, t) {
 	e.userData.applyFieldGradientLayerParams = t;
 }
-function Ut(e, t) {
+function Xt(e, t) {
 	e.userData.applySpotLayerParams = t;
 }
-function Wt(e) {
+function Zt(e, t) {
+	e.userData.applyCompositionParams = t;
+}
+function Qt(e) {
 	return e ?? x;
 }
-function Gt(t = x) {
-	return Wt(t).type === "sphere" ? new e.SphereGeometry(1, 64, 32) : new e.BoxGeometry(1, 1, 1);
+function $t(t = x) {
+	return Qt(t).type === "sphere" ? new e.SphereGeometry(1, 64, 32) : new e.BoxGeometry(1, 1, 1);
 }
-function Kt(t = 1, n = 25, r = 25) {
+function en(t = 1, n = 25, r = 25) {
 	let i = [], a = (e, n) => {
 		i.push(t * Math.sin(n) * Math.cos(e), t * Math.cos(n), t * Math.sin(n) * Math.sin(e));
 	};
@@ -1236,24 +1303,24 @@ function Kt(t = 1, n = 25, r = 25) {
 	}
 	return new e.BufferGeometry().setAttribute("position", new e.Float32BufferAttribute(i, 3));
 }
-function qt(t = x) {
-	if (Wt(t).type === "sphere") return Kt();
+function tn(t = x) {
+	if (Qt(t).type === "sphere") return en();
 	let n = new e.BoxGeometry(1, 1, 1), r = new e.EdgesGeometry(n);
 	return n.dispose(), r;
 }
 function Z(e) {
 	return Number.isFinite(e) ? e.toFixed(8) : "0.0";
 }
-function Jt(e, t) {
+function nn(e, t) {
 	return t === "wgsl" ? `vec3<f32>(${Z(e)})` : `vec3(${Z(e)})`;
 }
 function Q(e, t, n, r) {
 	return r === "wgsl" ? `var ${e}: ${t} = ${n};` : `${t} ${e} = ${n};`;
 }
-function Yt(e) {
+function rn(e) {
 	return e.filter((e) => e.enabled).reverse();
 }
-function Xt(e) {
+function an(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -1276,7 +1343,7 @@ function Xt(e) {
 	}
 	return n(e), t;
 }
-function Zt(e) {
+function on(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -1299,7 +1366,7 @@ function Zt(e) {
 	}
 	return n(e), t;
 }
-function Qt(e) {
+function sn(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -1321,7 +1388,7 @@ function Qt(e) {
 	}
 	return n(e), t;
 }
-function $t(e) {
+function cn(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -1344,19 +1411,36 @@ function $t(e) {
 	}
 	return n(e), t;
 }
-function en(e) {
+function ln(e) {
+	let t = [];
+	function n(e) {
+		rn(e).forEach((e) => {
+			let r = t.length;
+			t.push({
+				index: r,
+				node: e,
+				parameterPrefix: `compositionNode${r}`
+			}), e.type === "group" && n(e.children);
+		});
+	}
+	return n(e), t;
+}
+function un(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function tn(e) {
+function dn(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function nn(e) {
+function fn(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function rn(e) {
+function pn(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function an(e, t, n) {
+function mn(e) {
+	return new Map(e.map((e) => [e.node.id, e]));
+}
+function hn(e, t, n) {
 	let { width: r, height: i } = e.layer.params, a = t === "wgsl" ? "vec4<f32>" : "vec4", o = t === "wgsl" ? "let" : "float", s = t === "wgsl" ? "let" : "float";
 	return r <= 0 || i <= 0 ? `return ${a}(0.0, 0.0, 0.0, 0.0);` : `
       ${t === "wgsl" ? "let" : "vec3"} imageDirection = normalize(direction);
@@ -1367,8 +1451,8 @@ function an(e, t, n) {
       ${o} imageU = projectedX / max(${n.halfSize}.x * 2.0, 0.000001) + 0.5;
       ${o} imageV = 0.5 - projectedY / max(${n.halfSize}.y * 2.0, 0.000001);
       ${o} imageEdgeDistance = min(min(imageU, 1.0 - imageU), min(imageV, 1.0 - imageV));
-      ${o} imageEdgeWidth = clamp(fwidth(imageEdgeDistance), 0.000001, ${Z(ot)});
-      ${o} imageHardInside = step(${Z(at)}, imageDenom) *
+      ${o} imageEdgeWidth = clamp(fwidth(imageEdgeDistance), 0.000001, ${Z(it)});
+      ${o} imageHardInside = step(${Z(rt)}, imageDenom) *
         step(0.0, ${n.halfSize}.x) *
         step(0.0, ${n.halfSize}.y);
       ${o} imageNearRect = step(-imageEdgeWidth, imageEdgeDistance);
@@ -1378,7 +1462,7 @@ function an(e, t, n) {
       return ${a}(imageU, imageV, imageValid, 0.0);
     `;
 }
-function on(e, t, n) {
+function gn(e, t, n) {
 	let r = t.get(e.id);
 	return r ? n === "wgsl" ? `effectColor = ${r.parameterName};` : `{
     vec4 imageSampleInfo = skyboxStudioImageSampleInfo${r.index}(direction);
@@ -1386,7 +1470,7 @@ function on(e, t, n) {
     effectColor = vec4(imageSampleColor.rgb, imageSampleColor.a * imageSampleInfo.z);
   }` : `effectColor = ${n === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
 }
-function sn(e) {
+function _n(e) {
 	return u(`
     fn skyboxStudioImageSampleInfo${e.index}(
       direction: vec3<f32>,
@@ -1395,7 +1479,7 @@ function sn(e) {
       imageTangentY: vec3<f32>,
       imageHalfSize: vec2<f32>
     ) -> vec4<f32> {
-      ${an(e, "wgsl", {
+      ${hn(e, "wgsl", {
 		centerDirection: "imageCenterDirection",
 		halfSize: "imageHalfSize",
 		tangentX: "imageTangentX",
@@ -1404,7 +1488,7 @@ function sn(e) {
     }
   `);
 }
-var cn = u("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> vec4<f32> {\n    return vec4<f32>(color.rgb, color.a * valid);\n  }\n"), ln = u(`
+var vn = u("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> vec4<f32> {\n    return vec4<f32>(color.rgb, color.a * valid);\n  }\n"), yn = u(`
   fn skyboxStudioApplyImageEditorRectOverlay(
     color: vec4<f32>,
     uv: vec2<f32>,
@@ -1414,15 +1498,15 @@ var cn = u("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> v
     let activeAmount = clamp(activeValue, 0.0, 1.0);
     let rectCoverage = valid * activeAmount;
     let edgeDistance = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-    let edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${Z(ot)});
+    let edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${Z(it)});
     let bounds = rectCoverage * (
       1.0 - smoothstep(
-        edgeWidth * ${Z(rt)},
-        edgeWidth * ${Z(it)},
+        edgeWidth * ${Z(tt)},
+        edgeWidth * ${Z(nt)},
         edgeDistance
       )
     );
-    let rectAlpha = rectCoverage * ${Z(nt)};
+    let rectAlpha = rectCoverage * ${Z(et)};
     let overlayAlpha = max(rectAlpha, bounds);
     return vec4<f32>(
       mix(color.rgb, vec3<f32>(1.0, 0.0, 0.0), overlayAlpha),
@@ -1430,10 +1514,10 @@ var cn = u("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> v
     );
   }
 `);
-function un(e) {
+function bn(e) {
 	return e.map((e) => `
         vec4 skyboxStudioImageSampleInfo${e.index}(vec3 direction) {
-          ${an(e, "glsl", {
+          ${hn(e, "glsl", {
 		centerDirection: `imageCenterDirection${e.index}`,
 		halfSize: `imageHalfSize${e.index}`,
 		tangentX: `imageTangentX${e.index}`,
@@ -1442,40 +1526,40 @@ function un(e) {
         }
       `).join("\n");
 }
-function dn(e) {
+function xn(e) {
 	return e.map((e) => `
         {
           vec4 imageEditorInfo = skyboxStudioImageSampleInfo${e.index}(direction);
           float activeAmount = clamp(imageActive${e.index}, 0.0, 1.0);
           float rectCoverage = imageEditorInfo.z * activeAmount;
           float edgeDistance = min(min(imageEditorInfo.x, 1.0 - imageEditorInfo.x), min(imageEditorInfo.y, 1.0 - imageEditorInfo.y));
-          float edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${Z(ot)});
+          float edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${Z(it)});
           float bounds = rectCoverage * (
             1.0 - smoothstep(
-              edgeWidth * ${Z(rt)},
-              edgeWidth * ${Z(it)},
+              edgeWidth * ${Z(tt)},
+              edgeWidth * ${Z(nt)},
               edgeDistance
             )
           );
-          float rectAlpha = rectCoverage * ${Z(nt)};
+          float rectAlpha = rectCoverage * ${Z(et)};
           float overlayAlpha = max(rectAlpha, bounds);
           composedColor = mix(composedColor, vec3(1.0, 0.0, 0.0), overlayAlpha);
         }
       `).join("\n");
 }
-function fn(e, t) {
-	return e.get(t.id) ?? ct;
+function Sn(e, t) {
+	return e.get(t.id) ?? ot;
 }
-function pn(e, t) {
-	return Object.fromEntries(e.map((e) => [`imageTexture${e.index}`, { value: fn(t, e.layer) }]));
+function Cn(e, t) {
+	return Object.fromEntries(e.map((e) => [`imageTexture${e.index}`, { value: Sn(t, e.layer) }]));
 }
-function mn(e, t, n) {
+function wn(e, t, n) {
 	t.forEach((t) => {
 		let r = `imageTexture${t.index}`;
-		e.uniforms[r] && (e.uniforms[r].value = fn(n, t.layer));
+		e.uniforms[r] && (e.uniforms[r].value = Sn(n, t.layer));
 	});
 }
-function hn(e, t) {
+function Tn(e, t) {
 	let n = t === "wgsl" ? "vec4<f32>" : "vec4", r = t === "wgsl" ? "let" : "float";
 	if (e.stopCount === 0) return `effectColor = ${n}(0.0, 0.0, 0.0, 0.0);`;
 	let i = Array.from({ length: Math.max(0, e.stopCount - 1) }, (n, i) => {
@@ -1496,7 +1580,7 @@ function hn(e, t) {
     }
   }`;
 }
-function gn(e, t) {
+function En(e, t) {
 	let n = t === "wgsl" ? "vec4<f32>" : "vec4", r = t === "wgsl" ? "vec3<f32>" : "vec3", i = t === "wgsl" ? "let" : "float";
 	if (e.anchorCount === 0) return `effectColor = ${n}(0.0, 0.0, 0.0, 0.0);`;
 	let a = Array.from({ length: e.anchorCount }, (n, r) => `{
@@ -1530,7 +1614,7 @@ function gn(e, t) {
     }
   }`;
 }
-function _n(e, t) {
+function Dn(e, t) {
 	let n = t === "wgsl" ? "let" : "float", r = Array.from({ length: Math.max(0, e.stopCount - 1) }, (r, i) => {
 		let a = `${e.parameterPrefix}StopT${i}`, o = `${e.parameterPrefix}StopT${i + 1}`, s = `spotLocalT${i}`, c = `spotSegmentMidpoint${i}`, l = `spotMidpointT${i}`, u = `${e.parameterPrefix}StopMidpoint${i}`, d = `${s} / max(${c} * 2.0, 0.00001)`, f = `0.5 + (${s} - ${c}) / max((1.0 - ${c}) * 2.0, 0.00001)`, p = t === "wgsl" ? `select(${f}, ${d}, ${s} <= ${c})` : `(${s} <= ${c} ? ${d} : ${f})`, m = t === "wgsl" ? ": f32" : "";
 		return `${i === 0 ? "if" : "else if"} (spotT <= ${o}) {
@@ -1547,8 +1631,8 @@ function _n(e, t) {
       }
     }`;
 }
-function vn(e, t) {
-	let n = t === "wgsl" ? "vec4<f32>" : "vec4", r = t === "wgsl" ? "vec3<f32>" : "vec3", i = t === "wgsl" ? "let" : "float", a = `${e.parameterPrefix}Mode > 0.5`, o = _n(e, t);
+function On(e, t) {
+	let n = t === "wgsl" ? "vec4<f32>" : "vec4", r = t === "wgsl" ? "vec3<f32>" : "vec3", i = t === "wgsl" ? "let" : "float", a = `${e.parameterPrefix}Mode > 0.5`, o = Dn(e, t);
 	return `{
     ${t === "wgsl" ? "let" : "vec3"} spotCenter = normalize(${e.parameterPrefix}CenterDirection);
     ${i} spotDot = clamp(dot(normalize(direction), spotCenter), -1.0, 1.0);
@@ -1612,26 +1696,26 @@ function vn(e, t) {
     }
   }`;
 }
-function yn(e, t, n, r, i, a) {
+function kn(e, t, n, r, i, a) {
 	if (e.type === "gradient") {
 		let r = n.get(e.id);
-		return r ? hn(r, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+		return r ? Tn(r, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
 	}
 	if (e.type === "field-gradient") {
 		let n = r.get(e.id);
-		return n ? gn(n, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+		return n ? En(n, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
 	}
 	if (e.type === "spot") {
 		let n = a.get(e.id);
-		return n ? vn(n, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+		return n ? On(n, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
 	}
-	return on(e, i, t);
+	return gn(e, i, t);
 }
 function $(e, t, n, r) {
 	return r === "wgsl" ? `select(${n}, ${t}, ${e})` : `((${e}) ? ${t} : ${n})`;
 }
-function bn(e, t) {
-	if (t === "glsl") switch (e.blendMode) {
+function An(e, t) {
+	if (t === "glsl") switch (e) {
 		case "darken": return "min(composedColor, effectColor.rgb)";
 		case "multiply": return "composedColor * effectColor.rgb";
 		case "color-burn": return "blendColorBurn(composedColor, effectColor.rgb)";
@@ -1645,8 +1729,8 @@ function bn(e, t) {
 		case "exclusion": return "composedColor + effectColor.rgb - 2.0 * composedColor * effectColor.rgb";
 		default: return "effectColor.rgb";
 	}
-	let n = Jt(1, t), r = Jt(.5, t), i = Jt(0, t), a = "effectColor.rgb", o = "composedColor";
-	switch (e.blendMode) {
+	let n = nn(1, t), r = nn(.5, t), i = nn(0, t), a = "effectColor.rgb", o = "composedColor";
+	switch (e) {
 		case "darken": return `min(${o}, ${a})`;
 		case "multiply": return `${o} * ${a}`;
 		case "color-burn": return $(`${o} == ${n}`, n, $(`${a} == ${i}`, i, `${n} - min(${n}, (${n} - ${o}) / ${a})`, t), t);
@@ -1661,42 +1745,63 @@ function bn(e, t) {
 		default: return a;
 	}
 }
-function xn(e, t) {
-	if (t === "glsl" || e.blendMode !== "soft-light") return "";
-	let n = t === "wgsl" ? "vec3<f32>" : "vec3";
-	return `${t === "wgsl" ? "let" : "vec3"} softLightD = ${$(`composedColor <= ${n}(0.25)`, `((16.0 * composedColor - ${n}(12.0)) * composedColor + ${n}(4.0)) * composedColor`, "sqrt(composedColor)", t)};`;
+function jn(e) {
+	if (e === "glsl") return "";
+	let t = e === "wgsl" ? "vec3<f32>" : "vec3";
+	return `${e === "wgsl" ? "let" : "vec3"} softLightD = ${$(`composedColor <= ${t}(0.25)`, `((16.0 * composedColor - ${t}(12.0)) * composedColor + ${t}(4.0)) * composedColor`, "sqrt(composedColor)", e)};`;
 }
-function Sn(e, t, n, r, i, a, o = 0) {
-	let s = t === "wgsl" ? "vec3<f32>" : "vec3", c = t === "wgsl" ? "vec4<f32>" : "vec4";
-	return Yt(e).map((e, l) => {
-		let u = e.type === "group" ? `effectColor = ${c}(${`groupColor${o}_${l}`}, 1.0);` : yn(e, t, n, r, i, a), d = `groupColor${o}_${l}`;
+function Mn(e, t) {
+	let n = wt(t);
+	return `${e} >= ${Z(n - .5)} && ${e} < ${Z(n + .5)}`;
+}
+function Nn(e, t) {
+	let n = t === "wgsl" ? "vec3<f32>" : "vec3", r = [
+		"darken",
+		"multiply",
+		"color-burn",
+		"lighten",
+		"screen",
+		"color-dodge",
+		"overlay",
+		"soft-light",
+		"hard-light",
+		"difference",
+		"exclusion"
+	].map((n, r) => `${r === 0 ? "if" : "else if"} (${Mn(e, n)}) {
+          blendedColor = ${An(n, t)};
+        }`).join("\n");
+	return `${jn(t)}
+        ${Q("blendedColor", n, "effectColor.rgb", t)}
+        ${r}
+        blendedColor = clamp(blendedColor, ${n}(0.0), ${n}(1.0));`;
+}
+function Pn(e, t, n, r, i, a, o, s = 0) {
+	let c = t === "wgsl" ? "vec3<f32>" : "vec3", l = t === "wgsl" ? "vec4<f32>" : "vec4";
+	return rn(e).map((e, u) => {
+		let d = e.type === "group" ? `effectColor = ${l}(${`groupColor${s}_${u}`}, 1.0);` : kn(e, t, n, r, i, a), f = `groupColor${s}_${u}`, p = o.get(e.id), m = p ? `${p.parameterPrefix}Opacity` : Z(e.opacity / 100), h = p ? `${p.parameterPrefix}BlendMode` : Z(wt(e.blendMode));
 		return `{
-        ${e.type === "group" ? `${Q(d, s, `${s}(0.0)`, t)}
+        ${e.type === "group" ? `${Q(f, c, `${c}(0.0)`, t)}
         {
-          ${Q("previousComposedColor", s, "composedColor", t)}
-          composedColor = ${s}(0.0);
-          ${Sn(e.children, t, n, r, i, a, o + 1)}
-          ${d} = composedColor;
+          ${Q("previousComposedColor", c, "composedColor", t)}
+          composedColor = ${c}(0.0);
+          ${Pn(e.children, t, n, r, i, a, o, s + 1)}
+          ${f} = composedColor;
           composedColor = previousComposedColor;
         }` : ""}
-        ${Q("effectColor", c, `${c}(0.0)`, t)}
-        ${u}
-        ${t === "wgsl" ? "let" : "float"} sourceAlpha = clamp(effectColor.a * ${Z(e.opacity / 100)}, 0.0, 1.0);
-        ${xn(e, t)}
-        ${t === "wgsl" ? "let" : "vec3"} blendedColor = clamp(${bn(e, t)}, ${s}(0.0), ${s}(1.0));
+        ${Q("effectColor", l, `${l}(0.0)`, t)}
+        ${d}
+        ${t === "wgsl" ? "let" : "float"} sourceAlpha = clamp(effectColor.a * ${m}, 0.0, 1.0);
+        ${Nn(h, t)}
         composedColor = clamp(
           blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha),
-          ${s}(0.0),
-          ${s}(1.0)
+          ${c}(0.0),
+          ${c}(1.0)
         );
       }`;
 	}).join("\n");
 }
-function Cn(e, t, n, r, i) {
-	let a = en(t), o = tn(n), s = nn(r), c = rn(i), l = Sn(e.nodes, "wgsl", a, o, s, c);
-	return u(`
-    fn skyboxStudioSample(
-      direction: vec3<f32>${t.flatMap((e) => [`,
+function Fn(e, t, n, r, i, a) {
+	let o = un(t), s = dn(n), c = fn(r), l = pn(i), d = mn(a), f = Pn(e.nodes, "wgsl", o, s, c, l, d), p = t.flatMap((e) => [`,
       ${e.parameterPrefix}Axis: vec3<f32>`, ...Array.from({ length: e.stopCount }, (t, n) => [
 		`,
       ${e.parameterPrefix}StopColor${n}: vec4<f32>`,
@@ -1704,7 +1809,7 @@ function Cn(e, t, n, r, i) {
       ${e.parameterPrefix}StopMidpoint${n}: f32`,
 		`,
       ${e.parameterPrefix}StopT${n}: f32`
-	]).flat()]).join("")}${n.flatMap((e) => [
+	]).flat()]).join(""), m = n.flatMap((e) => [
 		`,
       ${e.parameterPrefix}Amplitude: f32`,
 		`,
@@ -1716,8 +1821,13 @@ function Cn(e, t, n, r, i) {
 		...Array.from({ length: e.anchorCount }, (t, n) => [`,
       ${e.parameterPrefix}AnchorDirection${n}: vec3<f32>`, `,
       ${e.parameterPrefix}AnchorColor${n}: vec3<f32>`]).flat()
-	]).join("")}${r.map((e) => `,
-      ${e.parameterName}: vec4<f32>`).join("")}${i.flatMap((e) => [
+	]).join(""), h = r.map((e) => `,
+      ${e.parameterName}: vec4<f32>`).join(""), g = a.flatMap((e) => [`,
+      ${e.parameterPrefix}Opacity: f32`, `,
+      ${e.parameterPrefix}BlendMode: f32`]).join("");
+	return u(`
+    fn skyboxStudioSample(
+      direction: vec3<f32>${p}${m}${h}${i.flatMap((e) => [
 		`,
       ${e.parameterPrefix}CenterDirection: vec3<f32>`,
 		`,
@@ -1764,27 +1874,27 @@ function Cn(e, t, n, r, i) {
 			`,
       ${e.parameterPrefix}StopT${n}: f32`
 		]).flat()
-	]).join("")}
+	]).join("")}${g}
     ) -> vec4<f32> {
       var composedColor = vec3<f32>(0.0);
-      ${l}
+      ${f}
       return vec4<f32>(composedColor, 1.0);
     }
   `);
 }
-function wn(e, t, n, r) {
+function In(e, t, n, r) {
 	let i = /* @__PURE__ */ new Map();
 	return {
 		sampleData: i,
 		sampleNodes: Object.fromEntries(e.map((e) => {
-			let a = r[e.index], o = sn(e)({
+			let a = r[e.index], o = _n(e)({
 				direction: t,
 				imageCenterDirection: a.centerDirection,
 				imageHalfSize: a.halfSize,
 				imageTangentX: a.tangentX,
 				imageTangentY: a.tangentY
-			}), c = l(o.x, o.y), u = cn({
-				color: s(fn(n, e.layer), c),
+			}), c = l(o.x, o.y), u = vn({
+				color: s(Sn(n, e.layer), c),
 				valid: o.z
 			});
 			return i.set(e.layer.id, {
@@ -1794,16 +1904,16 @@ function wn(e, t, n, r) {
 		}))
 	};
 }
-function Tn(s, c, u, d) {
-	let f = new t(), p = Xt(s.nodes), m = Zt(s.nodes), h = Qt(s.nodes), g = $t(s.nodes), _ = Cn(s, p, m, h, g), v = Tt(p), y = kt(m), b = Pt(g), x = d ? dt(h, c) : null, S = gt(h), C = n(() => {
+function Ln(s, c, u, d) {
+	let f = new t(), p = an(s.nodes), m = on(s.nodes), h = sn(s.nodes), g = cn(s.nodes), _ = ln(s.nodes), v = Fn(s, p, m, h, g, _), y = Dt(p), b = jt(m), x = It(g), S = Bt(_), C = d ? ut(h, c) : null, w = gt(h), T = n(() => {
 		let e = i;
 		return e.z.assign(e.w), e;
 	})();
-	f.side = e.BackSide, f.depthTest = !1, f.depthWrite = !1, f.vertexNode = C;
-	let w = a(o.sub(r)), T = wn(h, w, u, S), E = _({
-		direction: w,
+	f.side = e.BackSide, f.depthTest = !1, f.depthWrite = !1, f.vertexNode = T;
+	let E = a(o.sub(r)), D = In(h, E, u, w), O = v({
+		direction: E,
 		...Object.fromEntries(p.flatMap((e) => {
-			let t = v[e.index];
+			let t = y[e.index];
 			return [[`${e.parameterPrefix}Axis`, t.axis], ...Array.from({ length: e.stopCount }, (n, r) => [
 				[`${e.parameterPrefix}StopColor${r}`, t.stops[r].color],
 				[`${e.parameterPrefix}StopMidpoint${r}`, t.stops[r].midpoint],
@@ -1811,7 +1921,7 @@ function Tn(s, c, u, d) {
 			]).flat()];
 		})),
 		...Object.fromEntries(m.flatMap((e) => {
-			let t = y[e.index];
+			let t = b[e.index];
 			return [
 				[`${e.parameterPrefix}Amplitude`, t.amplitude],
 				[`${e.parameterPrefix}Frequency`, t.frequency],
@@ -1821,7 +1931,7 @@ function Tn(s, c, u, d) {
 			];
 		})),
 		...Object.fromEntries(g.flatMap((e) => {
-			let t = b[e.index];
+			let t = x[e.index];
 			return [
 				[`${e.parameterPrefix}CenterDirection`, t.centerDirection],
 				[`${e.parameterPrefix}Radius`, t.radius],
@@ -1849,35 +1959,40 @@ function Tn(s, c, u, d) {
 				]).flat()
 			];
 		})),
-		...T.sampleNodes
+		...D.sampleNodes,
+		...Object.fromEntries(_.flatMap((e) => {
+			let t = S[e.index];
+			return [[`${e.parameterPrefix}Opacity`, t.opacity], [`${e.parameterPrefix}BlendMode`, t.blendMode]];
+		}))
 	});
-	return x && h.forEach((e) => {
-		let t = T.sampleData.get(e.layer.id)?.sampleInfo;
-		t && (E = ln({
-			color: E,
-			activeValue: x[e.index].active,
+	return C && h.forEach((e) => {
+		let t = D.sampleData.get(e.layer.id)?.sampleInfo;
+		t && (O = yn({
+			color: O,
+			activeValue: C[e.index].active,
 			uv: l(t.x, t.y),
 			valid: t.z
 		}));
-	}), f.colorNode = E, x && ht(f, (e) => ft(x, e)), Vt(f, (e) => Rt(e.nodes, (e) => Et(v, e))), Ht(f, (e) => zt(e.nodes, (e) => At(y, e))), Ut(f, (e) => Bt(e.nodes, (e) => Ft(b, e))), bt(f, (e, t) => _t(S, e, t)), f;
+	}), f.colorNode = O, C && mt(f, (e) => dt(C, e)), Jt(f, (e) => Gt(e.nodes, (e) => Ot(y, e))), Yt(f, (e) => Kt(e.nodes, (e) => Mt(b, e))), Xt(f, (e) => qt(e.nodes, (e) => Lt(x, e))), Zt(f, (e) => Ht(S, e)), bt(f, (e, t) => _t(w, e, t)), f;
 }
-var En = u("\n  fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let longitude = atan2(normalizedDirection.z, normalizedDirection.x);\n    let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n    return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);\n  }\n");
-function Dn(c) {
+var Rn = u("\n  fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let longitude = atan2(normalizedDirection.z, normalizedDirection.x);\n    let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n    return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);\n  }\n");
+function zn(c) {
 	let l = new t(), u = n(() => {
 		let e = i;
 		return e.z.assign(e.w), e;
 	})(), d = a(o.sub(r));
-	return l.side = e.BackSide, l.depthTest = !1, l.depthWrite = !1, l.vertexNode = u, l.colorNode = s(c, En({ direction: d })), l;
+	return l.side = e.BackSide, l.depthTest = !1, l.depthWrite = !1, l.vertexNode = u, l.colorNode = s(c, Rn({ direction: d })), l;
 }
-function On(t, n, r, i) {
-	let a = Xt(t.nodes), o = Zt(t.nodes), s = Qt(t.nodes), c = $t(t.nodes), l = en(a), u = tn(o), d = nn(s), f = rn(c), p = Sn(t.nodes, "glsl", l, u, d, f), m = new e.ShaderMaterial({
+function Bn(t, n, r, i) {
+	let a = an(t.nodes), o = on(t.nodes), s = sn(t.nodes), c = cn(t.nodes), l = ln(t.nodes), u = un(a), d = dn(o), f = fn(s), p = pn(c), m = mn(l), h = Pn(t.nodes, "glsl", u, d, f, p, m), g = new e.ShaderMaterial({
 		uniforms: {
-			...Dt(a),
-			...jt(o),
-			...It(c),
-			...i ? pt(s, n) : {},
+			...kt(a),
+			...Nt(o),
+			...Rt(c),
+			...Ut(l),
+			...i ? ft(s, n) : {},
 			...vt(s),
-			...pn(s, r)
+			...Cn(s, r)
 		},
 		depthTest: !1,
 		depthWrite: !1,
@@ -1923,8 +2038,10 @@ function On(t, n, r, i) {
       uniform vec3 imageTangentY${e.index};
       uniform vec2 imageHalfSize${e.index};${i ? `
       uniform float imageActive${e.index};` : ""}`).join("\n")}
+      ${l.map((e) => `uniform float ${e.parameterPrefix}Opacity;
+      uniform float ${e.parameterPrefix}BlendMode;`).join("\n")}
       varying vec3 vDirection;
-      ${un(s)}
+      ${bn(s)}
 
       float softLightDChannel(float backdrop) {
         return backdrop <= 0.25
@@ -2017,29 +2134,29 @@ function On(t, n, r, i) {
       void main() {
         vec3 direction = normalize(vDirection);
         vec3 composedColor = vec3(0.0);
-        ${p}
-        ${i ? dn(s) : ""}
+        ${h}
+        ${i ? xn(s) : ""}
         gl_FragColor = vec4(composedColor, 1.0);
       }
     `
 	});
-	return s.length > 0 && (m.extensions.derivatives = !0), i && ht(m, (e) => mt(m, s, e)), Vt(m, (e) => Rt(e.nodes, (e) => Ot(m, e, a))), Ht(m, (e) => zt(e.nodes, (e) => Mt(m, e, o))), Ut(m, (e) => Bt(e.nodes, (e) => Lt(m, e, c))), bt(m, (e, t) => yt(m, s, e, t)), m.userData.applyImageTextures = (e) => mn(m, s, e), m;
+	return s.length > 0 && (g.extensions.derivatives = !0), i && mt(g, (e) => pt(g, s, e)), Jt(g, (e) => Gt(e.nodes, (e) => At(g, e, a))), Yt(g, (e) => Kt(e.nodes, (e) => Pt(g, e, o))), Xt(g, (e) => qt(e.nodes, (e) => zt(g, e, c))), Zt(g, (e) => Wt(g, l, e)), bt(g, (e, t) => yt(g, s, e, t)), g.userData.applyImageTextures = (e) => wn(g, s, e), g;
 }
-function kn(e, t) {
+function Vn(e, t) {
 	if (typeof document < "u") {
 		let n = document.createElement("canvas");
 		return n.width = e, n.height = t, n;
 	}
 	return new OffscreenCanvas(e, t);
 }
-function An(t, n = {}) {
-	let r = et(t, n), i = kn(r.width, r.height), a = i.getContext("2d");
+function Hn(t, n = {}) {
+	let r = Qe(t, n), i = Vn(r.width, r.height), a = i.getContext("2d");
 	if (!a || !("putImageData" in a)) throw Error("Skybox runtime: unable to create a 2D canvas context for baking.");
 	a.putImageData(new ImageData(r.data, r.width, r.height), 0, 0);
 	let o = new e.CanvasTexture(i);
 	return o.mapping = e.EquirectangularReflectionMapping, o.wrapS = e.RepeatWrapping, o.wrapT = e.ClampToEdgeWrapping, o.colorSpace = e.SRGBColorSpace, o.flipY = !1, o.needsUpdate = !0, o;
 }
-function jn(t) {
+function Un(t) {
 	return new e.ShaderMaterial({
 		depthTest: !1,
 		depthWrite: !1,
@@ -2049,54 +2166,44 @@ function jn(t) {
 		fragmentShader: "\n      precision highp float;\n      uniform sampler2D skyboxTexture;\n      varying vec3 vDirection;\n\n      const float PI = 3.141592653589793;\n\n      vec2 directionToEquirectUv(vec3 direction) {\n        vec3 normalizedDirection = normalize(direction);\n        float longitude = atan(normalizedDirection.z, normalizedDirection.x);\n        float latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n        return vec2(longitude / (2.0 * PI) + 0.5, latitude / PI + 0.5);\n      }\n\n      void main() {\n        vec3 direction = normalize(vDirection);\n        vec4 sampledColor = texture2D(skyboxTexture, directionToEquirectUv(direction));\n        gl_FragColor = vec4(sampledColor.rgb, sampledColor.a);\n      }\n    "
 	});
 }
-function Mn(e, t) {
-	return Nn(t) ? Dn(e) : jn(e);
+function Wn(e, t) {
+	return Gn(t) ? zn(e) : Un(e);
 }
-function Nn(e) {
+function Gn(e) {
 	return !!(e && "isWebGPURenderer" in e && e.isWebGPURenderer);
 }
-function Pn(e, t) {
-	return e === "auto" ? Nn(t) ? "live-webgpu" : "live-webgl" : e;
+function Kn(e, t) {
+	return e === "auto" ? Gn(t) ? "live-webgpu" : "live-webgl" : e;
 }
-function Fn(e, t, n) {
+function qn(e, t, n) {
 	let r = (e) => e.type === "group" ? {
-		blendMode: e.blendMode,
 		children: e.children.map(r),
 		enabled: e.enabled,
 		id: e.id,
-		opacity: e.opacity,
 		type: e.type
 	} : e.type === "gradient" ? {
-		blendMode: e.blendMode,
 		enabled: e.enabled,
 		id: e.id,
 		mode: e.params.mode,
-		opacity: e.opacity,
 		stopCount: e.params.stops.length,
 		type: e.type
 	} : e.type === "image" ? {
-		blendMode: e.blendMode,
 		enabled: e.enabled,
 		hasPlacement: !!e.params.placement,
 		hasSrc: !!e.params.src,
 		height: e.params.height,
 		id: e.id,
-		opacity: e.opacity,
 		type: e.type,
 		width: e.params.width
 	} : e.type === "spot" ? {
-		blendMode: e.blendMode,
 		enabled: e.enabled,
 		id: e.id,
-		opacity: e.opacity,
 		stopCount: e.params.stops.length,
 		type: e.type
 	} : {
 		anchorCount: e.params.anchors.length,
-		blendMode: e.blendMode,
 		enabled: e.enabled,
 		id: e.id,
-		opacity: e.opacity,
 		type: e.type
 	};
 	return JSON.stringify({
@@ -2106,20 +2213,20 @@ function Fn(e, t, n) {
 		renderMode: t
 	});
 }
-var In = class extends e.Mesh {
+var Jn = class extends e.Mesh {
 	#e = {};
-	#t = { ...st };
+	#t = { ...at };
 	#n = !1;
 	#r = x;
 	#i = /* @__PURE__ */ new Map();
 	#a = /* @__PURE__ */ new Map();
-	#o = tt;
+	#o = $e;
 	#s = null;
 	#c = null;
 	#l = "auto";
 	#u = null;
 	constructor() {
-		super(Gt(x), Tn(tt, st, /* @__PURE__ */ new Map(), !1)), this.frustumCulled = !1, this.renderOrder = -1;
+		super($t(x), Ln($e, at, /* @__PURE__ */ new Map(), !1)), this.frustumCulled = !1, this.renderOrder = -1;
 	}
 	fromManifest(e) {
 		return this.#o = S(e), this.applyGeometry(this.#o.geometry ?? x), this;
@@ -2154,10 +2261,10 @@ var In = class extends e.Mesh {
 		return e && (this.#u = e), this.setManifest(this.#o), this;
 	}
 	applyGeometry(e) {
-		let t = Wt(e);
+		let t = Qt(e);
 		if (this.#r.type === t.type && this.geometry) return;
 		let n = this.geometry;
-		this.#r = t, this.geometry = Gt(t), n.dispose();
+		this.#r = t, this.geometry = $t(t), n.dispose();
 	}
 	disposeOwnedTexture() {
 		this.#c?.dispose(), this.#c = null;
@@ -2169,7 +2276,7 @@ var In = class extends e.Mesh {
 		}), n.dispose(), this.disposeOwnedTexture(), this.#c = t;
 	}
 	applyLiveManifestUniformUpdates() {
-		this.material.userData.applyGradientLayerParams?.(this.#o), this.material.userData.applyFieldGradientLayerParams?.(this.#o), this.material.userData.applySpotLayerParams?.(this.#o), this.material.userData.applyImageTextures?.(this.#a), this.material.userData.applyEditorImageState?.(this.#t), this.#i.forEach((e, t) => {
+		this.material.userData.applyCompositionParams?.(this.#o), this.material.userData.applyGradientLayerParams?.(this.#o), this.material.userData.applyFieldGradientLayerParams?.(this.#o), this.material.userData.applySpotLayerParams?.(this.#o), this.material.userData.applyImageTextures?.(this.#a), this.material.userData.applyEditorImageState?.(this.#t), this.#i.forEach((e, t) => {
 			this.material.userData.applyImageLayerPlacement?.(t, e);
 		});
 	}
@@ -2192,25 +2299,25 @@ var In = class extends e.Mesh {
 	setManifest(e) {
 		let t = S(e);
 		this.#o = t, this.applyGeometry(this.#o.geometry ?? this.#r);
-		let n = Pn(this.#l, this.#u), r = Fn(this.#o, n, this.#n);
+		let n = Kn(this.#l, this.#u), r = qn(this.#o, n, this.#n);
 		if (this.#s === r && (n === "live-webgpu" || n === "live-webgl")) return this.applyLiveManifestUniformUpdates(), this;
-		if (n === "live-webgpu") this.replaceMaterial(Tn(this.#o, this.#t, this.#a, this.#n));
-		else if (n === "live-webgl") this.replaceMaterial(On(this.#o, this.#t, this.#a, this.#n));
+		if (n === "live-webgpu") this.replaceMaterial(Ln(this.#o, this.#t, this.#a, this.#n));
+		else if (n === "live-webgl") this.replaceMaterial(Bn(this.#o, this.#t, this.#a, this.#n));
 		else {
-			let e = An(this.#o, this.#e);
-			this.replaceMaterial(Mn(e, this.#u), e);
+			let e = Hn(this.#o, this.#e);
+			this.replaceMaterial(Wn(e, this.#u), e);
 		}
 		return this.#s = r, this;
 	}
 	setBakedTexture(e) {
-		return this.replaceMaterial(Mn(e, this.#u)), this.#s = null, this;
+		return this.replaceMaterial(Wn(e, this.#u)), this.#s = null, this;
 	}
 	invalidateBakeCache() {
-		return $e(), this;
+		return Ze(), this;
 	}
 	dispose() {
 		this.geometry.dispose(), this.material.dispose(), this.disposeOwnedTexture();
 	}
 };
 //#endregion
-export { Je as DEFAULT_BAKE_WIDTH, _e as DEFAULT_SPOT_BASE_ANGULAR_RADIUS, D as IMAGE_PLACEMENT_ELEVATION_LIMIT, In as Skybox, et as bakeSkyboxImageData, _ as blendChannel, d as clamp, v as compositeBlendChannel, y as compositeOver, ce as createAngularDecalPlacement, Qe as createBakeCacheKey, An as createBakedSkyboxTexture, be as createDefaultSpotParams, se as createImagePlacementTangents, Gt as createSkyboxGeometry, qt as createSkyboxWireGeometry, ue as directionFromPosition, Pe as equirectPointToDirection, Fe as equirectUvToDirection, qe as evaluateSkyboxDirection, $e as invalidateBakeCache, p as linearChannelToSrgb, h as linearRgbToSrgbBytes, S as migrateManifestToV2, N as normalizeImagePlacement, F as normalizeSpotParams, M as normalizeVector, m as parseHexColor, de as placementFromPosition, he as placementFromRotation, pe as placementFromScale, le as positionFromPlacement, xe as positionFromSpot, ge as projectDirectionToImageUv, Ce as radiusScaleFromSpot, Ze as resolveBakeOptions, me as rotationFromPlacement, fe as scaleFromPlacement, Te as spotContainsDirection, Se as spotFromPosition, we as spotFromRadiusScale, f as srgbChannelToLinear };
+export { Ke as DEFAULT_BAKE_WIDTH, he as DEFAULT_SPOT_BASE_ANGULAR_RADIUS, D as IMAGE_PLACEMENT_ELEVATION_LIMIT, Jn as Skybox, Qe as bakeSkyboxImageData, _ as blendChannel, d as clamp, v as compositeBlendChannel, y as compositeOver, P as createAngularDecalPlacement, Xe as createBakeCacheKey, Hn as createBakedSkyboxTexture, ve as createDefaultSpotParams, oe as createImagePlacementTangents, $t as createSkyboxGeometry, tn as createSkyboxWireGeometry, ce as directionFromPosition, Me as equirectPointToDirection, Ne as equirectUvToDirection, Ge as evaluateSkyboxDirection, Ze as invalidateBakeCache, p as linearChannelToSrgb, h as linearRgbToSrgbBytes, S as migrateManifestToV2, F as normalizeImagePlacement, L as normalizeSpotParams, N as normalizeVector, m as parseHexColor, le as placementFromPosition, pe as placementFromRotation, de as placementFromScale, se as positionFromPlacement, ye as positionFromSpot, me as projectDirectionToImageUv, xe as radiusScaleFromSpot, Ye as resolveBakeOptions, fe as rotationFromPlacement, ue as scaleFromPlacement, Ce as spotContainsDirection, be as spotFromPosition, Se as spotFromRadiusScale, f as srgbChannelToLinear };
