@@ -35,6 +35,13 @@ import type {
 import { DEFAULT_SKYBOX_GEOMETRY, migrateManifestToV2 } from "./manifest";
 import { normalizeImagePlacement } from "./image-placement-transform";
 import { normalizeSpotParams } from "./spot-transform";
+import type {
+  WebGpuCompositionRuntime,
+  WebGpuLayerAdapter,
+  WebGpuLayerAdapterRuntime,
+  WebGpuLayerSampleNodes,
+} from "./layer-addons";
+import { createBuiltInWebGpuLayerAdapters } from "./layer-addons";
 
 type SupportedRenderer = THREE.WebGLRenderer | { isWebGPURenderer?: boolean };
 type RuntimeMaterial = THREE.ShaderMaterial | NodeMaterial;
@@ -130,6 +137,10 @@ type ImageEditorUniformNodes = {
   active: ReturnType<typeof uniform>;
   layerId: string;
 };
+type SpotEditorUniformNodes = {
+  active: ReturnType<typeof uniform>;
+  layerId: string;
+};
 
 type ImageTextureMap = Record<string, THREE.Texture | null | undefined>;
 type HoveredImageLayerId = string | null;
@@ -142,9 +153,18 @@ type WebGpuImageSampleNodeData = {
   sampleNode: any;
   textureNode: any;
 };
+type BuiltInWebGpuLayerAdapter<
+  TType extends SkyboxManifestLayer["type"],
+  TBinding,
+  TUniforms,
+> = WebGpuLayerAdapter<Extract<SkyboxManifestLayer, { type: TType }>, TBinding, TUniforms>;
 export type SkyboxEditorImageState = {
   hoveredImageLayerId: string | null;
   selectedImageLayerId: string | null;
+};
+export type SkyboxEditorLayerState = {
+  hoveredLayerId: string | null;
+  selectedLayerId: string | null;
 };
 
 const DEFAULT_MANIFEST: SkyboxManifestV2 = {
@@ -159,9 +179,9 @@ const IMAGE_ACTIVE_BOUNDS_INNER_PIXELS = 0.75;
 const IMAGE_ACTIVE_BOUNDS_OUTER_PIXELS = 1.75;
 const IMAGE_PROJECTION_DENOM_EPSILON = 0.0001;
 const IMAGE_PROJECTION_MAX_EDGE_WIDTH = 0.01;
-const DEFAULT_EDITOR_IMAGE_STATE: SkyboxEditorImageState = {
-  hoveredImageLayerId: null,
-  selectedImageLayerId: null,
+const DEFAULT_EDITOR_LAYER_STATE: SkyboxEditorLayerState = {
+  hoveredLayerId: null,
+  selectedLayerId: null,
 };
 const EMPTY_IMAGE_TEXTURE = new THREE.DataTexture(
   new Uint8Array([0, 0, 0, 0]),
@@ -173,71 +193,102 @@ const EMPTY_IMAGE_TEXTURE = new THREE.DataTexture(
 EMPTY_IMAGE_TEXTURE.colorSpace = THREE.SRGBColorSpace;
 EMPTY_IMAGE_TEXTURE.needsUpdate = true;
 
-function imageHoverValue(layerId: string, hoveredImageLayerId: HoveredImageLayerId) {
-  return hoveredImageLayerId === layerId ? 1 : 0;
+function editorLayerHoverValue(layerId: string, hoveredLayerId: HoveredImageLayerId) {
+  return hoveredLayerId === layerId ? 1 : 0;
 }
 
-function imageSelectedValue(layerId: string, selectedImageLayerId: string | null) {
-  return selectedImageLayerId === layerId ? 1 : 0;
+function editorLayerSelectedValue(layerId: string, selectedLayerId: string | null) {
+  return selectedLayerId === layerId ? 1 : 0;
 }
 
-function imageActiveValue(layerId: string, editorImageState: SkyboxEditorImageState) {
+function editorLayerActiveValue(layerId: string, editorLayerState: SkyboxEditorLayerState) {
   return Math.max(
-    imageHoverValue(layerId, editorImageState.hoveredImageLayerId),
-    imageSelectedValue(layerId, editorImageState.selectedImageLayerId)
+    editorLayerHoverValue(layerId, editorLayerState.hoveredLayerId),
+    editorLayerSelectedValue(layerId, editorLayerState.selectedLayerId)
   );
 }
 
 function createImageEditorUniformNodes(
   bindings: ImageLayerShaderBinding[],
-  editorImageState: SkyboxEditorImageState
+  editorLayerState: SkyboxEditorLayerState
 ): ImageEditorUniformNodes[] {
   return bindings.map((binding) => ({
-    active: uniform(imageActiveValue(binding.layer.id, editorImageState)),
+    active: uniform(editorLayerActiveValue(binding.layer.id, editorLayerState)),
     layerId: binding.layer.id,
   }));
 }
 
-function applyEditorImageStateToUniformNodes(
+function createSpotEditorUniformNodes(
+  bindings: SpotLayerShaderBinding[],
+  editorLayerState: SkyboxEditorLayerState
+): SpotEditorUniformNodes[] {
+  return bindings.map((binding) => ({
+    active: uniform(editorLayerActiveValue(binding.layer.id, editorLayerState)),
+    layerId: binding.layer.id,
+  }));
+}
+
+function applyEditorLayerStateToUniformNodes(
   uniforms: ImageEditorUniformNodes[],
-  editorImageState: SkyboxEditorImageState
+  editorLayerState: SkyboxEditorLayerState
 ) {
   uniforms.forEach((editorUniform) => {
-    (editorUniform.active as any).value = imageActiveValue(editorUniform.layerId, editorImageState);
+    (editorUniform.active as any).value = editorLayerActiveValue(editorUniform.layerId, editorLayerState);
   });
 }
 
 function imageEditorShaderUniforms(
   bindings: ImageLayerShaderBinding[],
-  editorImageState: SkyboxEditorImageState
+  editorLayerState: SkyboxEditorLayerState
 ) {
   return Object.fromEntries(
     bindings.map((binding) => [
       `imageActive${binding.index}`,
-      { value: imageActiveValue(binding.layer.id, editorImageState) },
+      { value: editorLayerActiveValue(binding.layer.id, editorLayerState) },
     ])
   );
 }
 
-function applyEditorImageStateToShaderUniforms(
-  material: THREE.ShaderMaterial,
-  bindings: ImageLayerShaderBinding[],
-  editorImageState: SkyboxEditorImageState
+function spotEditorShaderUniforms(
+  bindings: SpotLayerShaderBinding[],
+  editorLayerState: SkyboxEditorLayerState
 ) {
-  bindings.forEach((binding) => {
+  return Object.fromEntries(
+    bindings.map((binding) => [
+      `spotActive${binding.index}`,
+      { value: editorLayerActiveValue(binding.layer.id, editorLayerState) },
+    ])
+  );
+}
+
+function applyEditorLayerStateToShaderUniforms(
+  material: THREE.ShaderMaterial,
+  imageBindings: ImageLayerShaderBinding[],
+  spotBindings: SpotLayerShaderBinding[],
+  editorLayerState: SkyboxEditorLayerState
+) {
+  imageBindings.forEach((binding) => {
     const activeUniformName = `imageActive${binding.index}`;
 
     if (material.uniforms[activeUniformName]) {
-      material.uniforms[activeUniformName].value = imageActiveValue(binding.layer.id, editorImageState);
+      material.uniforms[activeUniformName].value = editorLayerActiveValue(binding.layer.id, editorLayerState);
+    }
+  });
+
+  spotBindings.forEach((binding) => {
+    const activeUniformName = `spotActive${binding.index}`;
+
+    if (material.uniforms[activeUniformName]) {
+      material.uniforms[activeUniformName].value = editorLayerActiveValue(binding.layer.id, editorLayerState);
     }
   });
 }
 
-function attachEditorImageStateUpdater(
+function attachEditorLayerStateUpdater(
   material: RuntimeMaterial,
-  updater: (editorImageState: SkyboxEditorImageState) => void
+  updater: (editorLayerState: SkyboxEditorLayerState) => void
 ) {
-  material.userData.applyEditorImageState = updater;
+  material.userData.applyEditorLayerState = updater;
 }
 
 function imagePlacementShaderValues(
@@ -1478,6 +1529,32 @@ const webGpuImageEditorRectOverlayFunction = wgslFn(`
   }
 `);
 
+const webGpuSpotEditorRectInfoFunction = wgslFn(`
+  fn skyboxStudioSpotEditorRectInfo(
+    direction: vec3<f32>,
+    spotCenterDirection: vec3<f32>,
+    spotRadius: f32
+  ) -> vec4<f32> {
+    let spotDirection = normalize(direction);
+    let spotCenter = normalize(spotCenterDirection);
+    let spotTangentX = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), spotCenter));
+    let spotTangentY = normalize(cross(spotCenter, spotTangentX));
+    let spotDenom = dot(spotDirection, spotCenter);
+    let safeSpotDenom = max(spotDenom, 0.000001);
+    let spotLocalX = dot(spotDirection, spotTangentX) / safeSpotDenom / max(spotRadius, 0.0001);
+    let spotLocalY = dot(spotDirection, spotTangentY) / safeSpotDenom / max(spotRadius, 0.0001);
+    let spotU = spotLocalX * 0.5 + 0.5;
+    let spotV = 0.5 - spotLocalY * 0.5;
+    let spotEdgeDistance = min(min(spotU, 1.0 - spotU), min(spotV, 1.0 - spotV));
+    let spotEdgeWidth = clamp(fwidth(spotEdgeDistance), 0.000001, ${numberLiteral(IMAGE_PROJECTION_MAX_EDGE_WIDTH)});
+    let spotValid = step(${numberLiteral(IMAGE_PROJECTION_DENOM_EPSILON)}, spotDenom) *
+      step(-spotEdgeWidth, spotEdgeDistance) *
+      smoothstep(-spotEdgeWidth, spotEdgeWidth, spotEdgeDistance);
+
+    return vec4<f32>(spotU, spotV, spotValid, 0.0);
+  }
+`);
+
 function glslImageSampleInfoFunctions(bindings: ImageLayerShaderBinding[]) {
   return bindings
     .map(
@@ -1505,6 +1582,42 @@ function glslImageEditorRectOverlayExpression(bindings: ImageLayerShaderBinding[
           float rectCoverage = imageEditorInfo.z * activeAmount;
           float edgeDistance = min(min(imageEditorInfo.x, 1.0 - imageEditorInfo.x), min(imageEditorInfo.y, 1.0 - imageEditorInfo.y));
           float edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${numberLiteral(IMAGE_PROJECTION_MAX_EDGE_WIDTH)});
+          float bounds = rectCoverage * (
+            1.0 - smoothstep(
+              edgeWidth * ${numberLiteral(IMAGE_ACTIVE_BOUNDS_INNER_PIXELS)},
+              edgeWidth * ${numberLiteral(IMAGE_ACTIVE_BOUNDS_OUTER_PIXELS)},
+              edgeDistance
+            )
+          );
+          float rectAlpha = rectCoverage * ${numberLiteral(IMAGE_ACTIVE_RECT_ALPHA)};
+          float overlayAlpha = max(rectAlpha, bounds);
+          composedColor = mix(composedColor, vec3(1.0, 0.0, 0.0), overlayAlpha);
+        }
+      `
+    )
+    .join("\n");
+}
+
+function glslSpotEditorRectOverlayExpression(bindings: SpotLayerShaderBinding[]) {
+  return bindings
+    .map(
+      (binding) => `
+        {
+          vec3 spotEditorCenter = normalize(${binding.parameterPrefix}CenterDirection);
+          vec3 spotEditorTangentX = normalize(cross(vec3(0.0, 1.0, 0.0), spotEditorCenter));
+          vec3 spotEditorTangentY = normalize(cross(spotEditorCenter, spotEditorTangentX));
+          float spotEditorDenom = dot(direction, spotEditorCenter);
+          float safeSpotEditorDenom = max(spotEditorDenom, 0.000001);
+          float spotEditorLocalX = dot(direction, spotEditorTangentX) / safeSpotEditorDenom / max(${binding.parameterPrefix}Radius, 0.0001);
+          float spotEditorLocalY = dot(direction, spotEditorTangentY) / safeSpotEditorDenom / max(${binding.parameterPrefix}Radius, 0.0001);
+          vec2 spotEditorUv = vec2(spotEditorLocalX * 0.5 + 0.5, 0.5 - spotEditorLocalY * 0.5);
+          float activeAmount = clamp(spotActive${binding.index}, 0.0, 1.0);
+          float edgeDistance = min(min(spotEditorUv.x, 1.0 - spotEditorUv.x), min(spotEditorUv.y, 1.0 - spotEditorUv.y));
+          float edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${numberLiteral(IMAGE_PROJECTION_MAX_EDGE_WIDTH)});
+          float rectCoverage = step(${numberLiteral(IMAGE_PROJECTION_DENOM_EPSILON)}, spotEditorDenom) *
+            step(-edgeWidth, edgeDistance) *
+            smoothstep(-edgeWidth, edgeWidth, edgeDistance) *
+            activeAmount;
           float bounds = rectCoverage * (
             1.0 - smoothstep(
               edgeWidth * ${numberLiteral(IMAGE_ACTIVE_BOUNDS_INNER_PIXELS)},
@@ -1967,6 +2080,7 @@ function composeNodesExpression(
   imageBindings: Map<string, ImageLayerShaderBinding>,
   spotBindings: Map<string, SpotLayerShaderBinding>,
   compositionBindings: Map<string, CompositionNodeShaderBinding>,
+  webGpuRuntime?: WebGpuCompositionRuntime,
   depth = 0
 ): string {
   const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
@@ -1980,6 +2094,8 @@ function composeNodesExpression(
               const variableName = `groupColor${depth}_${index}`;
               return variableName;
             })()}, 1.0);`
+          : language === "wgsl" && webGpuRuntime
+            ? webGpuEffectExpression(node, webGpuRuntime)
           : effectExpression(
               node,
               language,
@@ -2010,6 +2126,7 @@ function composeNodesExpression(
             imageBindings,
             spotBindings,
             compositionBindings,
+            webGpuRuntime,
             depth + 1
           )}
           ${groupColorName} = composedColor;
@@ -2033,63 +2150,438 @@ function composeNodesExpression(
     .join("\n");
 }
 
+function zeroEffectExpression(language: ShaderLanguage) {
+  return `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+}
+
+function createBindingMapFromLayers<TBinding extends { layer: SkyboxManifestLayer }>(
+  bindings: TBinding[]
+) {
+  return new Map(bindings.map((binding) => [binding.layer.id, binding]));
+}
+
+function webGpuEffectExpression(
+  layer: SkyboxManifestLayer,
+  runtime: WebGpuCompositionRuntime
+) {
+  const adapterRuntime = runtime.adapters.get(layer.type);
+
+  if (!adapterRuntime) {
+    return zeroEffectExpression("wgsl");
+  }
+
+  return (adapterRuntime.adapter as WebGpuLayerAdapter<SkyboxManifestLayer, unknown, unknown>)
+    .createSampleExpression(layer, "wgsl", {
+      bindingsByLayerId: adapterRuntime.bindingsByLayerId,
+    });
+}
+
+type WebGpuImageLayerSampleNodes = WebGpuLayerSampleNodes & {
+  sampleData: Map<string, WebGpuImageSampleNodeData>;
+  sampleNodesByParameterName: Record<string, unknown>;
+};
+
+const gradientWebGpuAdapter: BuiltInWebGpuLayerAdapter<"gradient", GradientLayerShaderBinding, GradientUniformNodes> = {
+  collect: collectGradientLayerBindings,
+  createParameterDeclarations: (bindings) =>
+    bindings
+      .flatMap((binding) => [
+        `,
+      ${binding.parameterPrefix}Axis: vec3<f32>`,
+        ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
+          `,
+      ${binding.parameterPrefix}StopColor${stopIndex}: vec4<f32>`,
+          `,
+      ${binding.parameterPrefix}StopMidpoint${stopIndex}: f32`,
+          `,
+      ${binding.parameterPrefix}StopT${stopIndex}: f32`,
+        ]).flat(),
+      ])
+      .join(""),
+  createSampleExpression: (layer, language, context) => {
+    const binding = context.bindingsByLayerId.get(layer.id);
+
+    return binding ? gradientSampleExpression(binding, language) : zeroEffectExpression(language);
+  },
+  createSampleParameters: (bindings, uniforms) =>
+    Object.fromEntries(
+      bindings.flatMap((binding) => {
+        const gradientUniform = uniforms[binding.index];
+
+        return [
+          [`${binding.parameterPrefix}Axis`, gradientUniform.axis],
+          ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
+            [`${binding.parameterPrefix}StopColor${stopIndex}`, gradientUniform.stops[stopIndex].color],
+            [`${binding.parameterPrefix}StopMidpoint${stopIndex}`, gradientUniform.stops[stopIndex].midpoint],
+            [`${binding.parameterPrefix}StopT${stopIndex}`, gradientUniform.stops[stopIndex].t],
+          ]).flat(),
+        ];
+      })
+    ),
+  createUniforms: createGradientUniformNodes,
+  getTopologyKey: (layer) => ({
+    mode: layer.params.mode,
+    stopCount: layer.params.stops.length,
+  }),
+  type: "gradient",
+  updateUniforms: applyGradientLayerParamsToUniformNodes,
+};
+
+const fieldGradientWebGpuAdapter: BuiltInWebGpuLayerAdapter<
+  "field-gradient",
+  FieldGradientLayerShaderBinding,
+  FieldGradientUniformNodes
+> = {
+  collect: collectFieldGradientLayerBindings,
+  createParameterDeclarations: (bindings) =>
+    bindings
+      .flatMap((binding) => [
+        `,
+      ${binding.parameterPrefix}Amplitude: f32`,
+        `,
+      ${binding.parameterPrefix}Frequency: f32`,
+        `,
+      ${binding.parameterPrefix}Mode: f32`,
+        `,
+      ${binding.parameterPrefix}Power: f32`,
+        ...Array.from({ length: binding.anchorCount }, (_, anchorIndex) => [
+          `,
+      ${binding.parameterPrefix}AnchorDirection${anchorIndex}: vec3<f32>`,
+          `,
+      ${binding.parameterPrefix}AnchorColor${anchorIndex}: vec3<f32>`,
+        ]).flat(),
+      ])
+      .join(""),
+  createSampleExpression: (layer, language, context) => {
+    const binding = context.bindingsByLayerId.get(layer.id);
+
+    return binding ? fieldGradientSampleExpression(binding, language) : zeroEffectExpression(language);
+  },
+  createSampleParameters: (bindings, uniforms) =>
+    Object.fromEntries(
+      bindings.flatMap((binding) => {
+        const fieldGradientUniform = uniforms[binding.index];
+
+        return [
+          [`${binding.parameterPrefix}Amplitude`, fieldGradientUniform.amplitude],
+          [`${binding.parameterPrefix}Frequency`, fieldGradientUniform.frequency],
+          [`${binding.parameterPrefix}Mode`, fieldGradientUniform.mode],
+          [`${binding.parameterPrefix}Power`, fieldGradientUniform.power],
+          ...Array.from({ length: binding.anchorCount }, (_, anchorIndex) => [
+            [`${binding.parameterPrefix}AnchorDirection${anchorIndex}`, fieldGradientUniform.anchors[anchorIndex].direction],
+            [`${binding.parameterPrefix}AnchorColor${anchorIndex}`, fieldGradientUniform.anchors[anchorIndex].color],
+          ]).flat(),
+        ];
+      })
+    ),
+  createUniforms: createFieldGradientUniformNodes,
+  getTopologyKey: (layer) => ({
+    anchorCount: layer.params.anchors.length,
+  }),
+  type: "field-gradient",
+  updateUniforms: applyFieldGradientLayerParamsToUniformNodes,
+};
+
+const imageWebGpuAdapter: BuiltInWebGpuLayerAdapter<"image", ImageLayerShaderBinding, ImagePlacementUniformNodes> = {
+  collect: collectImageLayerBindings,
+  createParameterDeclarations: (bindings) =>
+    bindings
+      .map((binding) => `,
+      ${binding.parameterName}: vec4<f32>`)
+      .join(""),
+  createSampleExpression: (layer, language, context) => {
+    const binding = context.bindingsByLayerId.get(layer.id);
+
+    return binding ? `effectColor = ${binding.parameterName};` : zeroEffectExpression(language);
+  },
+  createSampleNodes: ({ bindings, direction, imageTextures, uniforms }) => {
+    const imageSamples = createWebGpuImageSampleNodes(
+      bindings,
+      direction,
+      imageTextures,
+      uniforms
+    );
+
+    return {
+      editorProjectionByLayerId: new Map(
+        Array.from(imageSamples.sampleData.entries()).map(([layerId, sample]) => [
+          layerId,
+          {
+            uv: vec2(sample.sampleInfo.x, sample.sampleInfo.y),
+            valid: sample.sampleInfo.z,
+          },
+        ])
+      ),
+      sampleData: imageSamples.sampleData,
+      sampleNodesByLayerId: Object.fromEntries(
+        bindings.map((binding) => [
+          binding.layer.id,
+          imageSamples.sampleNodes[binding.parameterName],
+        ])
+      ),
+      sampleNodesByParameterName: imageSamples.sampleNodes,
+      textureSlots: Object.fromEntries(
+        Array.from(imageSamples.sampleData.entries()).map(([layerId, sample]) => [
+          layerId,
+          sample.textureNode,
+        ])
+      ),
+    } satisfies WebGpuImageLayerSampleNodes;
+  },
+  createSampleParameters: (_bindings, _uniforms, samples) =>
+    (samples as WebGpuImageLayerSampleNodes | undefined)?.sampleNodesByParameterName ?? {},
+  createUniforms: createImagePlacementUniformNodes,
+  getTopologyKey: (layer) => ({
+    hasPlacement: Boolean(layer.params.placement),
+    hasSrc: Boolean(layer.params.src),
+    height: layer.params.height,
+    width: layer.params.width,
+  }),
+  type: "image",
+  updateUniforms: (uniforms, layer) =>
+    applyImageLayerPlacementToUniformNodes(uniforms, layer.id, layer.params.placement),
+};
+
+const spotWebGpuAdapter: BuiltInWebGpuLayerAdapter<"spot", SpotLayerShaderBinding, SpotUniformNodes> = {
+  collect: collectSpotLayerBindings,
+  createParameterDeclarations: (bindings) =>
+    bindings
+      .flatMap((binding) => [
+        `,
+      ${binding.parameterPrefix}CenterDirection: vec3<f32>`,
+        `,
+      ${binding.parameterPrefix}Radius: f32`,
+        `,
+      ${binding.parameterPrefix}Mode: f32`,
+        `,
+      ${binding.parameterPrefix}LightColor: vec3<f32>`,
+        `,
+      ${binding.parameterPrefix}Brightness: f32`,
+        `,
+      ${binding.parameterPrefix}CoreRadius: f32`,
+        `,
+      ${binding.parameterPrefix}CoreSoftness: f32`,
+        `,
+      ${binding.parameterPrefix}Dispersion: f32`,
+        `,
+      ${binding.parameterPrefix}DogSpread: f32`,
+        `,
+      ${binding.parameterPrefix}DogStrength: f32`,
+        `,
+      ${binding.parameterPrefix}DogStretch: f32`,
+        `,
+      ${binding.parameterPrefix}GlareSize: f32`,
+        `,
+      ${binding.parameterPrefix}GlareStrength: f32`,
+        `,
+      ${binding.parameterPrefix}GlowSize: f32`,
+        `,
+      ${binding.parameterPrefix}GlowStrength: f32`,
+        `,
+      ${binding.parameterPrefix}HaloInnerWidth: f32`,
+        `,
+      ${binding.parameterPrefix}HaloOuterWidth: f32`,
+        `,
+      ${binding.parameterPrefix}HaloRadius: f32`,
+        `,
+      ${binding.parameterPrefix}HaloStrength: f32`,
+        ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
+          `,
+      ${binding.parameterPrefix}StopColor${stopIndex}: vec4<f32>`,
+          `,
+      ${binding.parameterPrefix}StopMidpoint${stopIndex}: f32`,
+          `,
+      ${binding.parameterPrefix}StopT${stopIndex}: f32`,
+        ]).flat(),
+      ])
+      .join(""),
+  createSampleExpression: (layer, language, context) => {
+    const binding = context.bindingsByLayerId.get(layer.id);
+
+    return binding ? spotSampleExpression(binding, language) : zeroEffectExpression(language);
+  },
+  createSampleNodes: ({ bindings, direction, uniforms }) => ({
+    editorProjectionByLayerId: new Map(
+      bindings.map((binding) => {
+        const spotUniform = uniforms[binding.index];
+        const spotInfo = (webGpuSpotEditorRectInfoFunction as any)({
+          direction,
+          spotCenterDirection: spotUniform.centerDirection,
+          spotRadius: spotUniform.radius,
+        }) as any;
+
+        return [
+          binding.layer.id,
+          {
+            uv: vec2(spotInfo.x, spotInfo.y),
+            valid: spotInfo.z,
+          },
+        ];
+      })
+    ),
+  }),
+  createSampleParameters: (bindings, uniforms) =>
+    Object.fromEntries(
+      bindings.flatMap((binding) => {
+        const spotUniform = uniforms[binding.index];
+
+        return [
+          [`${binding.parameterPrefix}CenterDirection`, spotUniform.centerDirection],
+          [`${binding.parameterPrefix}Radius`, spotUniform.radius],
+          [`${binding.parameterPrefix}Mode`, spotUniform.mode],
+          [`${binding.parameterPrefix}LightColor`, spotUniform.lightColor],
+          [`${binding.parameterPrefix}Brightness`, spotUniform.brightness],
+          [`${binding.parameterPrefix}CoreRadius`, spotUniform.coreRadius],
+          [`${binding.parameterPrefix}CoreSoftness`, spotUniform.coreSoftness],
+          [`${binding.parameterPrefix}Dispersion`, spotUniform.dispersion],
+          [`${binding.parameterPrefix}DogSpread`, spotUniform.dogSpread],
+          [`${binding.parameterPrefix}DogStrength`, spotUniform.dogStrength],
+          [`${binding.parameterPrefix}DogStretch`, spotUniform.dogStretch],
+          [`${binding.parameterPrefix}GlareSize`, spotUniform.glareSize],
+          [`${binding.parameterPrefix}GlareStrength`, spotUniform.glareStrength],
+          [`${binding.parameterPrefix}GlowSize`, spotUniform.glowSize],
+          [`${binding.parameterPrefix}GlowStrength`, spotUniform.glowStrength],
+          [`${binding.parameterPrefix}HaloInnerWidth`, spotUniform.haloInnerWidth],
+          [`${binding.parameterPrefix}HaloOuterWidth`, spotUniform.haloOuterWidth],
+          [`${binding.parameterPrefix}HaloRadius`, spotUniform.haloRadius],
+          [`${binding.parameterPrefix}HaloStrength`, spotUniform.haloStrength],
+          ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
+            [`${binding.parameterPrefix}StopColor${stopIndex}`, spotUniform.stops[stopIndex].color],
+            [`${binding.parameterPrefix}StopMidpoint${stopIndex}`, spotUniform.stops[stopIndex].midpoint],
+            [`${binding.parameterPrefix}StopT${stopIndex}`, spotUniform.stops[stopIndex].t],
+          ]).flat(),
+        ];
+      })
+    ),
+  createUniforms: createSpotUniformNodes,
+  getTopologyKey: (layer) => ({
+    stopCount: layer.params.stops.length,
+  }),
+  type: "spot",
+  updateUniforms: applySpotLayerParamsToUniformNodes,
+};
+
+const WEBGPU_LAYER_ADAPTERS = createBuiltInWebGpuLayerAdapters([
+  gradientWebGpuAdapter,
+  fieldGradientWebGpuAdapter,
+  imageWebGpuAdapter,
+  spotWebGpuAdapter,
+]);
+
+function createWebGpuLayerRuntime(
+  manifest: SkyboxManifestV2,
+  direction: unknown,
+  imageTextures: Map<string, THREE.Texture>
+): WebGpuCompositionRuntime {
+  const adapters = new Map<string, WebGpuLayerAdapterRuntime>();
+  const editorProjectionByLayerId = new Map<string, { uv: unknown; valid: unknown }>();
+  const sampleParameters: Record<string, unknown> = {};
+  const textureSlotsByLayerId: Record<string, unknown> = {};
+
+  WEBGPU_LAYER_ADAPTERS.forEach((adapter) => {
+    const bindings = adapter.collect(manifest.nodes) as { layer: SkyboxManifestLayer }[];
+    const uniforms = (adapter as WebGpuLayerAdapter<SkyboxManifestLayer, typeof bindings[number], unknown>)
+      .createUniforms(bindings);
+    const samples = (adapter as WebGpuLayerAdapter<SkyboxManifestLayer, typeof bindings[number], unknown>)
+      .createSampleNodes?.({
+        bindings,
+        direction,
+        imageTextures,
+        uniforms,
+      });
+    const bindingRuntime: WebGpuLayerAdapterRuntime = {
+      adapter: adapter as WebGpuLayerAdapter,
+      bindings,
+      bindingsByLayerId: createBindingMapFromLayers(bindings),
+      samples,
+      uniforms,
+    };
+
+    if (samples?.editorProjectionByLayerId) {
+      samples.editorProjectionByLayerId.forEach((projection, layerId) => {
+        editorProjectionByLayerId.set(layerId, projection);
+      });
+    }
+
+    if (samples?.textureSlots) {
+      Object.assign(textureSlotsByLayerId, samples.textureSlots);
+    }
+
+    Object.assign(
+      sampleParameters,
+      (adapter as WebGpuLayerAdapter<SkyboxManifestLayer, typeof bindings[number], unknown>)
+        .createSampleParameters?.(bindings, uniforms, samples) ?? {}
+    );
+    adapters.set(adapter.type, bindingRuntime);
+  });
+
+  return {
+    adapters,
+    editorProjectionByLayerId,
+    sampleParameters,
+    textureSlotsByLayerId,
+  };
+}
+
+function getWebGpuAdapterRuntime<TType extends SkyboxManifestLayer["type"], TBinding, TUniforms>(
+  runtime: WebGpuCompositionRuntime,
+  type: TType
+) {
+  return runtime.adapters.get(type) as
+    | WebGpuLayerAdapterRuntime<Extract<SkyboxManifestLayer, { type: TType }>, TBinding, TUniforms>
+    | undefined;
+}
+
+function forEachRenderableLayer(
+  nodes: SkyboxManifestNode[],
+  callback: (layer: SkyboxManifestLayer) => void
+) {
+  nodes.forEach((node) => {
+    if (!node.enabled) {
+      return;
+    }
+
+    if (node.type === "group") {
+      forEachRenderableLayer(node.children, callback);
+      return;
+    }
+
+    callback(node);
+  });
+}
+
+function applyWebGpuLayerParamsToRuntime(
+  runtime: WebGpuCompositionRuntime,
+  layer: SkyboxManifestLayer
+) {
+  const adapterRuntime = runtime.adapters.get(layer.type);
+
+  if (!adapterRuntime) {
+    return;
+  }
+
+  (adapterRuntime.adapter as WebGpuLayerAdapter<SkyboxManifestLayer, unknown, unknown>)
+    .updateUniforms(adapterRuntime.uniforms, layer);
+}
+
 function createSkyboxFunction(
   manifest: SkyboxManifestV2,
-  gradientBindings: GradientLayerShaderBinding[],
-  fieldGradientBindings: FieldGradientLayerShaderBinding[],
-  imageBindings: ImageLayerShaderBinding[],
-  spotBindings: SpotLayerShaderBinding[],
+  layerRuntime: WebGpuCompositionRuntime,
   compositionBindings: CompositionNodeShaderBinding[]
 ) {
-  const gradientBindingMap = createGradientBindingMap(gradientBindings);
-  const fieldGradientBindingMap = createFieldGradientBindingMap(fieldGradientBindings);
-  const imageBindingMap = createImageBindingMap(imageBindings);
-  const spotBindingMap = createSpotBindingMap(spotBindings);
   const compositionBindingMap = createCompositionBindingMap(compositionBindings);
   const layerBlocks = composeNodesExpression(
     manifest.nodes,
     "wgsl",
-    gradientBindingMap,
-    fieldGradientBindingMap,
-    imageBindingMap,
-    spotBindingMap,
-    compositionBindingMap
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+    compositionBindingMap,
+    layerRuntime
   );
-  const gradientParameters = gradientBindings
-    .flatMap((binding) => [
-      `,
-      ${binding.parameterPrefix}Axis: vec3<f32>`,
-      ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
-        `,
-      ${binding.parameterPrefix}StopColor${stopIndex}: vec4<f32>`,
-        `,
-      ${binding.parameterPrefix}StopMidpoint${stopIndex}: f32`,
-        `,
-      ${binding.parameterPrefix}StopT${stopIndex}: f32`,
-      ]).flat(),
-    ])
-    .join("");
-  const fieldGradientParameters = fieldGradientBindings
-    .flatMap((binding) => [
-      `,
-      ${binding.parameterPrefix}Amplitude: f32`,
-      `,
-      ${binding.parameterPrefix}Frequency: f32`,
-      `,
-      ${binding.parameterPrefix}Mode: f32`,
-      `,
-      ${binding.parameterPrefix}Power: f32`,
-      ...Array.from({ length: binding.anchorCount }, (_, anchorIndex) => [
-        `,
-      ${binding.parameterPrefix}AnchorDirection${anchorIndex}: vec3<f32>`,
-        `,
-      ${binding.parameterPrefix}AnchorColor${anchorIndex}: vec3<f32>`,
-      ]).flat(),
-    ])
-    .join("");
-  const imageParameters = imageBindings
-    .map((binding) => `,
-      ${binding.parameterName}: vec4<f32>`)
+  const layerParameters = Array.from(layerRuntime.adapters.values())
+    .map((adapterRuntime) => adapterRuntime.adapter.createParameterDeclarations(adapterRuntime.bindings))
     .join("");
   const compositionParameters = compositionBindings
     .flatMap((binding) => [
@@ -2099,60 +2591,10 @@ function createSkyboxFunction(
       ${binding.parameterPrefix}BlendMode: f32`,
     ])
     .join("");
-  const spotParameters = spotBindings
-    .flatMap((binding) => [
-      `,
-      ${binding.parameterPrefix}CenterDirection: vec3<f32>`,
-      `,
-      ${binding.parameterPrefix}Radius: f32`,
-      `,
-      ${binding.parameterPrefix}Mode: f32`,
-      `,
-      ${binding.parameterPrefix}LightColor: vec3<f32>`,
-      `,
-      ${binding.parameterPrefix}Brightness: f32`,
-      `,
-      ${binding.parameterPrefix}CoreRadius: f32`,
-      `,
-      ${binding.parameterPrefix}CoreSoftness: f32`,
-      `,
-      ${binding.parameterPrefix}Dispersion: f32`,
-      `,
-      ${binding.parameterPrefix}DogSpread: f32`,
-      `,
-      ${binding.parameterPrefix}DogStrength: f32`,
-      `,
-      ${binding.parameterPrefix}DogStretch: f32`,
-      `,
-      ${binding.parameterPrefix}GlareSize: f32`,
-      `,
-      ${binding.parameterPrefix}GlareStrength: f32`,
-      `,
-      ${binding.parameterPrefix}GlowSize: f32`,
-      `,
-      ${binding.parameterPrefix}GlowStrength: f32`,
-      `,
-      ${binding.parameterPrefix}HaloInnerWidth: f32`,
-      `,
-      ${binding.parameterPrefix}HaloOuterWidth: f32`,
-      `,
-      ${binding.parameterPrefix}HaloRadius: f32`,
-      `,
-      ${binding.parameterPrefix}HaloStrength: f32`,
-      ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
-        `,
-      ${binding.parameterPrefix}StopColor${stopIndex}: vec4<f32>`,
-        `,
-      ${binding.parameterPrefix}StopMidpoint${stopIndex}: f32`,
-        `,
-      ${binding.parameterPrefix}StopT${stopIndex}: f32`,
-      ]).flat(),
-    ])
-    .join("");
 
   return wgslFn(`
     fn skyboxStudioSample(
-      direction: vec3<f32>${gradientParameters}${fieldGradientParameters}${imageParameters}${spotParameters}${compositionParameters}
+      direction: vec3<f32>${layerParameters}${compositionParameters}
     ) -> vec4<f32> {
       var composedColor = vec3<f32>(0.0);
       ${layerBlocks}
@@ -2208,32 +2650,13 @@ function createWebGpuImageSampleNodes(
 
 function createWebGpuMaterial(
   manifest: SkyboxManifestV2,
-  editorImageState: SkyboxEditorImageState,
+  editorLayerState: SkyboxEditorLayerState,
   imageTextures: Map<string, THREE.Texture>,
   editorPresentationEnabled: boolean
 ) {
   const material = new NodeMaterial();
-  const gradientBindings = collectGradientLayerBindings(manifest.nodes);
-  const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
-  const imageBindings = collectImageLayerBindings(manifest.nodes);
-  const spotBindings = collectSpotLayerBindings(manifest.nodes);
   const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
-  const skyboxSample = createSkyboxFunction(
-    manifest,
-    gradientBindings,
-    fieldGradientBindings,
-    imageBindings,
-    spotBindings,
-    compositionBindings
-  );
-  const gradientUniforms = createGradientUniformNodes(gradientBindings);
-  const fieldGradientUniforms = createFieldGradientUniformNodes(fieldGradientBindings);
-  const spotUniforms = createSpotUniformNodes(spotBindings);
   const compositionUniforms = createCompositionUniformNodes(compositionBindings);
-  const imageEditorUniforms = editorPresentationEnabled
-    ? createImageEditorUniformNodes(imageBindings, editorImageState)
-    : null;
-  const imagePlacementUniforms = createImagePlacementUniformNodes(imageBindings);
   const vertexNode = Fn(() => {
     const position = modelViewProjection as any;
 
@@ -2247,77 +2670,29 @@ function createWebGpuMaterial(
   material.depthWrite = false;
   material.vertexNode = vertexNode as any;
   const direction = normalize(positionWorld.sub(cameraPosition));
-  const imageSampleNodes = createWebGpuImageSampleNodes(
-    imageBindings,
-    direction,
-    imageTextures,
-    imagePlacementUniforms
+  const layerRuntime = createWebGpuLayerRuntime(manifest, direction, imageTextures);
+  const imageRuntime = getWebGpuAdapterRuntime<"image", ImageLayerShaderBinding, ImagePlacementUniformNodes>(
+    layerRuntime,
+    "image"
   );
+  const spotRuntime = getWebGpuAdapterRuntime<"spot", SpotLayerShaderBinding, SpotUniformNodes>(
+    layerRuntime,
+    "spot"
+  );
+  const imageBindings = imageRuntime?.bindings ?? [];
+  const spotBindings = spotRuntime?.bindings ?? [];
+  const imageUniforms = imageRuntime?.uniforms ?? [];
+  const imageSamples = imageRuntime?.samples as WebGpuImageLayerSampleNodes | undefined;
+  const skyboxSample = createSkyboxFunction(manifest, layerRuntime, compositionBindings);
+  const imageEditorUniforms = editorPresentationEnabled
+    ? createImageEditorUniformNodes(imageBindings, editorLayerState)
+    : null;
+  const spotEditorUniforms = editorPresentationEnabled
+    ? createSpotEditorUniformNodes(spotBindings, editorLayerState)
+    : null;
   let colorNode = skyboxSample({
     direction,
-    ...Object.fromEntries(
-      gradientBindings.flatMap((binding) => {
-        const gradientUniform = gradientUniforms[binding.index];
-
-        return [
-          [`${binding.parameterPrefix}Axis`, gradientUniform.axis],
-          ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
-            [`${binding.parameterPrefix}StopColor${stopIndex}`, gradientUniform.stops[stopIndex].color],
-            [`${binding.parameterPrefix}StopMidpoint${stopIndex}`, gradientUniform.stops[stopIndex].midpoint],
-            [`${binding.parameterPrefix}StopT${stopIndex}`, gradientUniform.stops[stopIndex].t],
-          ]).flat(),
-        ];
-      })
-    ),
-    ...Object.fromEntries(
-      fieldGradientBindings.flatMap((binding) => {
-        const fieldGradientUniform = fieldGradientUniforms[binding.index];
-
-        return [
-          [`${binding.parameterPrefix}Amplitude`, fieldGradientUniform.amplitude],
-          [`${binding.parameterPrefix}Frequency`, fieldGradientUniform.frequency],
-          [`${binding.parameterPrefix}Mode`, fieldGradientUniform.mode],
-          [`${binding.parameterPrefix}Power`, fieldGradientUniform.power],
-          ...Array.from({ length: binding.anchorCount }, (_, anchorIndex) => [
-            [`${binding.parameterPrefix}AnchorDirection${anchorIndex}`, fieldGradientUniform.anchors[anchorIndex].direction],
-            [`${binding.parameterPrefix}AnchorColor${anchorIndex}`, fieldGradientUniform.anchors[anchorIndex].color],
-          ]).flat(),
-        ];
-      })
-    ),
-    ...Object.fromEntries(
-      spotBindings.flatMap((binding) => {
-        const spotUniform = spotUniforms[binding.index];
-
-        return [
-          [`${binding.parameterPrefix}CenterDirection`, spotUniform.centerDirection],
-          [`${binding.parameterPrefix}Radius`, spotUniform.radius],
-          [`${binding.parameterPrefix}Mode`, spotUniform.mode],
-          [`${binding.parameterPrefix}LightColor`, spotUniform.lightColor],
-          [`${binding.parameterPrefix}Brightness`, spotUniform.brightness],
-          [`${binding.parameterPrefix}CoreRadius`, spotUniform.coreRadius],
-          [`${binding.parameterPrefix}CoreSoftness`, spotUniform.coreSoftness],
-          [`${binding.parameterPrefix}Dispersion`, spotUniform.dispersion],
-          [`${binding.parameterPrefix}DogSpread`, spotUniform.dogSpread],
-          [`${binding.parameterPrefix}DogStrength`, spotUniform.dogStrength],
-          [`${binding.parameterPrefix}DogStretch`, spotUniform.dogStretch],
-          [`${binding.parameterPrefix}GlareSize`, spotUniform.glareSize],
-          [`${binding.parameterPrefix}GlareStrength`, spotUniform.glareStrength],
-          [`${binding.parameterPrefix}GlowSize`, spotUniform.glowSize],
-          [`${binding.parameterPrefix}GlowStrength`, spotUniform.glowStrength],
-          [`${binding.parameterPrefix}HaloInnerWidth`, spotUniform.haloInnerWidth],
-          [`${binding.parameterPrefix}HaloOuterWidth`, spotUniform.haloOuterWidth],
-          [`${binding.parameterPrefix}HaloRadius`, spotUniform.haloRadius],
-          [`${binding.parameterPrefix}HaloStrength`, spotUniform.haloStrength],
-          ...Array.from({ length: binding.stopCount }, (_, stopIndex) => [
-            [`${binding.parameterPrefix}StopColor${stopIndex}`, spotUniform.stops[stopIndex].color],
-            [`${binding.parameterPrefix}StopMidpoint${stopIndex}`, spotUniform.stops[stopIndex].midpoint],
-            [`${binding.parameterPrefix}StopT${stopIndex}`, spotUniform.stops[stopIndex].t],
-          ]).flat(),
-        ];
-      })
-    ),
-    ...imageSampleNodes.sampleNodes,
+    ...layerRuntime.sampleParameters,
     ...Object.fromEntries(
       compositionBindings.flatMap((binding) => {
         const compositionUniform = compositionUniforms[binding.index];
@@ -2331,50 +2706,63 @@ function createWebGpuMaterial(
   }) as any;
   if (imageEditorUniforms) {
     imageBindings.forEach((binding) => {
-      const sampleInfo = imageSampleNodes.sampleData.get(binding.layer.id)?.sampleInfo;
+      const projection = layerRuntime.editorProjectionByLayerId.get(binding.layer.id);
 
-      if (!sampleInfo) {
+      if (!projection) {
         return;
       }
 
-      colorNode = webGpuImageEditorRectOverlayFunction({
+      colorNode = (webGpuImageEditorRectOverlayFunction as any)({
         color: colorNode,
         activeValue: imageEditorUniforms[binding.index].active,
-        uv: vec2(sampleInfo.x, sampleInfo.y),
-        valid: sampleInfo.z,
+        uv: projection.uv,
+        valid: projection.valid,
+      }) as any;
+    });
+  }
+  if (spotEditorUniforms) {
+    spotBindings.forEach((binding) => {
+      const projection = layerRuntime.editorProjectionByLayerId.get(binding.layer.id);
+
+      if (!projection) {
+        return;
+      }
+
+      colorNode = (webGpuImageEditorRectOverlayFunction as any)({
+        color: colorNode,
+        activeValue: spotEditorUniforms[binding.index].active,
+        uv: projection.uv,
+        valid: projection.valid,
       }) as any;
     });
   }
   material.colorNode = colorNode as any;
-  if (imageEditorUniforms) {
-    attachEditorImageStateUpdater(material, (nextEditorImageState) =>
-      applyEditorImageStateToUniformNodes(imageEditorUniforms, nextEditorImageState)
-    );
+  if (imageEditorUniforms || spotEditorUniforms) {
+    attachEditorLayerStateUpdater(material, (nextEditorLayerState) => {
+      if (imageEditorUniforms) {
+        applyEditorLayerStateToUniformNodes(imageEditorUniforms, nextEditorLayerState);
+      }
+
+      if (spotEditorUniforms) {
+        applyEditorLayerStateToUniformNodes(spotEditorUniforms, nextEditorLayerState);
+      }
+    });
   }
+  material.userData.webGpuLayerRuntime = layerRuntime;
+  material.userData.applyLayerParams = (layer: SkyboxManifestLayer) =>
+    applyWebGpuLayerParamsToRuntime(layerRuntime, layer);
   attachGradientUpdater(material, (nextManifest) =>
-    forEachGradientLayer(nextManifest.nodes, (layer) =>
-      applyGradientLayerParamsToUniformNodes(gradientUniforms, layer)
-    )
+    forEachRenderableLayer(nextManifest.nodes, material.userData.applyLayerParams)
   );
-  attachGradientLayerUpdater(material, (layer) =>
-    applyGradientLayerParamsToUniformNodes(gradientUniforms, layer)
-  );
+  attachGradientLayerUpdater(material, material.userData.applyLayerParams);
   attachFieldGradientUpdater(material, (nextManifest) =>
-    forEachFieldGradientLayer(nextManifest.nodes, (layer) =>
-      applyFieldGradientLayerParamsToUniformNodes(fieldGradientUniforms, layer)
-    )
+    forEachRenderableLayer(nextManifest.nodes, material.userData.applyLayerParams)
   );
-  attachFieldGradientLayerUpdater(material, (layer) =>
-    applyFieldGradientLayerParamsToUniformNodes(fieldGradientUniforms, layer)
-  );
+  attachFieldGradientLayerUpdater(material, material.userData.applyLayerParams);
   attachSpotUpdater(material, (nextManifest) =>
-    forEachSpotLayer(nextManifest.nodes, (layer) =>
-      applySpotLayerParamsToUniformNodes(spotUniforms, layer)
-    )
+    forEachRenderableLayer(nextManifest.nodes, material.userData.applyLayerParams)
   );
-  attachSpotLayerUpdater(material, (layer) =>
-    applySpotLayerParamsToUniformNodes(spotUniforms, layer)
-  );
+  attachSpotLayerUpdater(material, material.userData.applyLayerParams);
   attachCompositionUpdater(material, (nextManifest) =>
     applyCompositionParamsToUniformNodes(compositionUniforms, nextManifest)
   );
@@ -2382,16 +2770,11 @@ function createWebGpuMaterial(
     applyLayerCompositionToUniformNodes(compositionUniforms, node)
   );
   attachImagePlacementUpdater(material, (layerId, placement) =>
-    applyImageLayerPlacementToUniformNodes(imagePlacementUniforms, layerId, placement)
+    applyImageLayerPlacementToUniformNodes(imageUniforms, layerId, placement)
   );
   material.userData.applyImageTextures = (textures: Map<string, THREE.Texture>) =>
-    updateImageTextureNodes(imageSampleNodes.sampleData, textures);
-  material.userData.debugImageTextureSlots = Object.fromEntries(
-    Array.from(imageSampleNodes.sampleData.entries()).map(([layerId, sample]) => [
-      layerId,
-      sample.textureNode,
-    ])
-  );
+    updateImageTextureNodes(imageSamples?.sampleData ?? new Map(), textures);
+  material.userData.debugImageTextureSlots = layerRuntime.textureSlotsByLayerId;
 
   return material;
 }
@@ -2428,7 +2811,7 @@ function createWebGpuBakedMaterial(texture: THREE.Texture) {
 
 function createWebGlMaterial(
   manifest: SkyboxManifestV2,
-  editorImageState: SkyboxEditorImageState,
+  editorLayerState: SkyboxEditorLayerState,
   imageTextures: Map<string, THREE.Texture>,
   editorPresentationEnabled: boolean
 ) {
@@ -2457,7 +2840,8 @@ function createWebGlMaterial(
       ...fieldGradientShaderUniforms(fieldGradientBindings),
       ...spotShaderUniforms(spotBindings),
       ...compositionShaderUniforms(compositionBindings),
-      ...(editorPresentationEnabled ? imageEditorShaderUniforms(imageBindings, editorImageState) : {}),
+      ...(editorPresentationEnabled ? imageEditorShaderUniforms(imageBindings, editorLayerState) : {}),
+      ...(editorPresentationEnabled ? spotEditorShaderUniforms(spotBindings, editorLayerState) : {}),
       ...imagePlacementShaderUniforms(imageBindings),
       ...imageTextureUniforms(imageBindings, imageTextures),
     },
@@ -2510,6 +2894,7 @@ function createWebGlMaterial(
       uniform float ${binding.parameterPrefix}HaloOuterWidth;
       uniform float ${binding.parameterPrefix}HaloRadius;
       uniform float ${binding.parameterPrefix}HaloStrength;
+      ${editorPresentationEnabled ? `uniform float spotActive${binding.index};` : ""}
       ${Array.from({ length: binding.stopCount }, (_, stopIndex) => `uniform vec4 ${binding.parameterPrefix}StopColor${stopIndex};
       uniform float ${binding.parameterPrefix}StopMidpoint${stopIndex};
       uniform float ${binding.parameterPrefix}StopT${stopIndex};`).join("\n")}`)
@@ -2628,18 +3013,24 @@ function createWebGlMaterial(
         vec3 composedColor = vec3(0.0);
         ${layerBlocks}
         ${editorPresentationEnabled ? glslImageEditorRectOverlayExpression(imageBindings) : ""}
+        ${editorPresentationEnabled ? glslSpotEditorRectOverlayExpression(spotBindings) : ""}
         gl_FragColor = vec4(composedColor, 1.0);
       }
     `,
   });
 
-  if (imageBindings.length > 0) {
+  if (imageBindings.length > 0 || (editorPresentationEnabled && spotBindings.length > 0)) {
     (material.extensions as { derivatives?: boolean }).derivatives = true;
   }
 
   if (editorPresentationEnabled) {
-    attachEditorImageStateUpdater(material, (nextEditorImageState) =>
-      applyEditorImageStateToShaderUniforms(material, imageBindings, nextEditorImageState)
+    attachEditorLayerStateUpdater(material, (nextEditorLayerState) =>
+      applyEditorLayerStateToShaderUniforms(
+        material,
+        imageBindings,
+        spotBindings,
+        nextEditorLayerState
+      )
     );
   }
   attachGradientUpdater(material, (nextManifest) =>
@@ -2793,6 +3184,17 @@ function createMaterialTopologyKey(
       };
     }
 
+    if (renderMode === "live-webgpu") {
+      const adapter = WEBGPU_LAYER_ADAPTERS.find((nextAdapter) => nextAdapter.type === node.type);
+
+      return {
+        enabled: node.enabled,
+        id: node.id,
+        topology: adapter?.getTopologyKey(node as never) ?? null,
+        type: node.type,
+      };
+    }
+
     if (node.type === "gradient") {
       return {
         enabled: node.enabled,
@@ -2860,7 +3262,7 @@ function findManifestNodeById(nodes: SkyboxManifestNode[], nodeId: string): Skyb
 
 export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #bakeOptions: SkyboxBakeOptions = {};
-  #editorImageState: SkyboxEditorImageState = { ...DEFAULT_EDITOR_IMAGE_STATE };
+  #editorLayerState: SkyboxEditorLayerState = { ...DEFAULT_EDITOR_LAYER_STATE };
   #editorPresentationEnabled = false;
   #geometryOptions: SkyboxGeometryOptions = DEFAULT_SKYBOX_GEOMETRY;
   #imagePlacementOverrides = new Map<string, SkyboxImagePlacement | null>();
@@ -2874,7 +3276,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   constructor() {
     super(
       createSkyboxGeometry(DEFAULT_SKYBOX_GEOMETRY),
-      createWebGpuMaterial(DEFAULT_MANIFEST, DEFAULT_EDITOR_IMAGE_STATE, new Map(), false)
+      createWebGpuMaterial(DEFAULT_MANIFEST, DEFAULT_EDITOR_LAYER_STATE, new Map(), false)
     );
     this.frustumCulled = false;
     this.renderOrder = -1;
@@ -2975,7 +3377,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     const previousMaterial = this.material;
 
     this.material = nextMaterial;
-    nextMaterial.userData.applyEditorImageState?.(this.#editorImageState);
+    nextMaterial.userData.applyEditorLayerState?.(this.#editorLayerState);
     this.#imagePlacementOverrides.forEach((placement, layerId) => {
       nextMaterial.userData.applyImageLayerPlacement?.(layerId, placement);
     });
@@ -2986,11 +3388,15 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
 
   private applyLiveManifestUniformUpdates() {
     this.material.userData.applyCompositionParams?.(this.#manifest);
-    this.material.userData.applyGradientLayerParams?.(this.#manifest);
-    this.material.userData.applyFieldGradientLayerParams?.(this.#manifest);
-    this.material.userData.applySpotLayerParams?.(this.#manifest);
+    if (this.material.userData.applyLayerParams) {
+      forEachRenderableLayer(this.#manifest.nodes, this.material.userData.applyLayerParams);
+    } else {
+      this.material.userData.applyGradientLayerParams?.(this.#manifest);
+      this.material.userData.applyFieldGradientLayerParams?.(this.#manifest);
+      this.material.userData.applySpotLayerParams?.(this.#manifest);
+    }
     this.material.userData.applyImageTextures?.(this.#imageTextures);
-    this.material.userData.applyEditorImageState?.(this.#editorImageState);
+    this.material.userData.applyEditorLayerState?.(this.#editorLayerState);
     this.#imagePlacementOverrides.forEach((placement, layerId) => {
       this.material.userData.applyImageLayerPlacement?.(layerId, placement);
     });
@@ -3008,27 +3414,41 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     return this;
   }
 
-  setEditorImageState(state: Partial<SkyboxEditorImageState>) {
-    const nextEditorImageState = {
-      ...this.#editorImageState,
+  setEditorLayerState(state: Partial<SkyboxEditorLayerState>) {
+    const nextEditorLayerState = {
+      ...this.#editorLayerState,
       ...state,
     };
 
     if (
-      nextEditorImageState.hoveredImageLayerId === this.#editorImageState.hoveredImageLayerId &&
-      nextEditorImageState.selectedImageLayerId === this.#editorImageState.selectedImageLayerId
+      nextEditorLayerState.hoveredLayerId === this.#editorLayerState.hoveredLayerId &&
+      nextEditorLayerState.selectedLayerId === this.#editorLayerState.selectedLayerId
     ) {
       return this;
     }
 
-    this.#editorImageState = nextEditorImageState;
-    this.material.userData.applyEditorImageState?.(this.#editorImageState);
+    this.#editorLayerState = nextEditorLayerState;
+    this.material.userData.applyEditorLayerState?.(this.#editorLayerState);
 
     return this;
   }
 
+  setEditorImageState(state: Partial<SkyboxEditorImageState>) {
+    const nextState: Partial<SkyboxEditorLayerState> = {};
+
+    if (Object.prototype.hasOwnProperty.call(state, "hoveredImageLayerId")) {
+      nextState.hoveredLayerId = state.hoveredImageLayerId ?? null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(state, "selectedImageLayerId")) {
+      nextState.selectedLayerId = state.selectedImageLayerId ?? null;
+    }
+
+    return this.setEditorLayerState(nextState);
+  }
+
   setHoveredImageLayerId(layerId: string | null) {
-    this.setEditorImageState({ hoveredImageLayerId: layerId });
+    this.setEditorLayerState({ hoveredLayerId: layerId });
 
     return this;
   }
@@ -3134,14 +3554,14 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     if (renderMode === "live-webgpu") {
       this.replaceMaterial(createWebGpuMaterial(
         this.#manifest,
-        this.#editorImageState,
+        this.#editorLayerState,
         this.#imageTextures,
         this.#editorPresentationEnabled
       ));
     } else if (renderMode === "live-webgl") {
       this.replaceMaterial(createWebGlMaterial(
         this.#manifest,
-        this.#editorImageState,
+        this.#editorLayerState,
         this.#imageTextures,
         this.#editorPresentationEnabled
       ));

@@ -50,6 +50,23 @@ describe("runtime evaluator", () => {
     version: 2,
   });
 
+  const createSpotManifest = (): SkyboxManifestV2 => ({
+    composition: { mode: "alpha-over", order: "bottom-to-top" },
+    geometry: { type: "box" },
+    nodes: [
+      {
+        blendMode: "normal",
+        enabled: true,
+        id: "spot",
+        name: "Spot",
+        opacity: 100,
+        params: createDefaultSpotParams(),
+        type: "spot",
+      },
+    ],
+    version: 2,
+  });
+
   it("migrates v1 manifests into v2 nodes", () => {
     const manifest: SkyboxManifestV1 = {
       composition: { mode: "alpha-over", order: "bottom-to-top" },
@@ -595,6 +612,81 @@ describe("runtime evaluator", () => {
     skybox.dispose();
   });
 
+  it("builds WebGPU live materials through layer adapter runtimes", () => {
+    const image = createImageManifest().nodes[0] as Extract<
+      SkyboxManifestV2["nodes"][number],
+      { type: "image" }
+    >;
+    const manifest: SkyboxManifestV2 = {
+      composition: { mode: "alpha-over", order: "bottom-to-top" },
+      geometry: { type: "box" },
+      nodes: [
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "gradient",
+          name: "Gradient",
+          opacity: 100,
+          params: {
+            mode: "linear",
+            rotation: 0,
+            stops: [
+              { color: "#000000", location: 0, opacity: 100 },
+              { color: "#ffffff", location: 100, opacity: 100 },
+            ],
+          },
+          type: "gradient",
+        },
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "field",
+          name: "Field",
+          opacity: 100,
+          params: {
+            amplitude: 0.1,
+            anchors: [
+              { color: "#ff0000", x: 0.25, y: 0.25 },
+              { color: "#0000ff", x: 0.75, y: 0.75 },
+            ],
+            frequency: 1,
+            mode: "inverse-distance",
+            power: 2,
+          },
+          type: "field-gradient",
+        },
+        image,
+        {
+          blendMode: "normal",
+          enabled: true,
+          id: "spot",
+          name: "Spot",
+          opacity: 100,
+          params: createDefaultSpotParams(),
+          type: "spot",
+        },
+      ],
+      version: 2,
+    };
+    const skybox = new Skybox()
+      .setRenderer({ isWebGPURenderer: true })
+      .fromManifest(manifest)
+      .load();
+    const runtime = skybox.material.userData.webGpuLayerRuntime;
+
+    expect(runtime).toBeTruthy();
+    expect(runtime.adapters.get("gradient")?.bindings).toHaveLength(1);
+    expect(runtime.adapters.get("field-gradient")?.bindings).toHaveLength(1);
+    expect(runtime.adapters.get("image")?.bindings).toHaveLength(1);
+    expect(runtime.adapters.get("spot")?.bindings).toHaveLength(1);
+    expect(skybox.material.userData.applyLayerParams).toBeTypeOf("function");
+    expect(runtime.sampleParameters.gradientLayer0Axis).toBeTruthy();
+    expect(runtime.sampleParameters.fieldGradientLayer0Amplitude).toBeTruthy();
+    expect(runtime.sampleParameters.imageLayer0).toBeTruthy();
+    expect(runtime.sampleParameters.spotLayer0Radius).toBeTruthy();
+    skybox.dispose();
+  });
+
   it("refreshes WebGPU image texture bindings after concrete textures load", () => {
     const imageA = createImageManifest().nodes[0] as Extract<
       SkyboxManifestV2["nodes"][number],
@@ -888,11 +980,15 @@ describe("runtime evaluator", () => {
   it("omits editor image presentation shader code by default", () => {
     const skybox = new Skybox()
       .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(createImageManifest())
+      .fromManifest({
+        ...createImageManifest(),
+        nodes: [...createImageManifest().nodes, ...createSpotManifest().nodes],
+      })
       .load();
     const material = skybox.material as THREE.ShaderMaterial;
 
     expect(material.fragmentShader).not.toContain("imageActive0");
+    expect(material.fragmentShader).not.toContain("spotActive0");
     expect(material.fragmentShader).not.toContain("rectCoverage");
 
     skybox.dispose();
@@ -907,6 +1003,7 @@ describe("runtime evaluator", () => {
     const material = skybox.material as THREE.ShaderMaterial;
 
     expect(material.fragmentShader).toContain("imageActive0");
+    expect(material.fragmentShader).not.toContain("spotActive0");
     expect(material.fragmentShader).toContain("rectCoverage");
     expect(material.fragmentShader).toContain("rectAlpha");
     expect(material.fragmentShader).toContain("bounds");
@@ -918,6 +1015,21 @@ describe("runtime evaluator", () => {
     );
     expect(material.fragmentShader).not.toContain("imageSampleColor = skyboxStudioApplyImageEditorOverlay");
     expect(material.fragmentShader).not.toContain("selectionFill");
+
+    skybox.dispose();
+  });
+
+  it("includes editor spot presentation shader code only when enabled", () => {
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(createSpotManifest())
+      .setEditorPresentationEnabled(true)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    expect(material.fragmentShader).toContain("spotActive0");
+    expect(material.fragmentShader).toContain("spotEditorUv");
+    expect(material.fragmentShader).toContain("rectCoverage");
 
     skybox.dispose();
   });
@@ -936,6 +1048,24 @@ describe("runtime evaluator", () => {
 
     expect(skybox.material).toBe(material);
     expect(material.uniforms.imageActive0.value).toBe(1);
+
+    skybox.dispose();
+  });
+
+  it("updates editor layer state for spots without rebuilding the material", () => {
+    const skybox = new Skybox()
+      .setRenderer({} as THREE.WebGLRenderer)
+      .fromManifest(createSpotManifest())
+      .setEditorPresentationEnabled(true)
+      .load();
+    const material = skybox.material as THREE.ShaderMaterial;
+
+    skybox.setEditorLayerState({
+      selectedLayerId: "spot",
+    });
+
+    expect(skybox.material).toBe(material);
+    expect(material.uniforms.spotActive0.value).toBe(1);
 
     skybox.dispose();
   });

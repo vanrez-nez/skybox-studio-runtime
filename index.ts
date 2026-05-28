@@ -4,7 +4,7 @@ export {
   createSkyboxWireGeometry,
   Skybox,
 } from "./Skybox";
-export type { SkyboxEditorImageState } from "./Skybox";
+export type { SkyboxEditorImageState, SkyboxEditorLayerState } from "./Skybox";
 export {
   bakeSkyboxImageData,
   createBakeCacheKey,
@@ -52,6 +52,14 @@ export {
   spotFromRadiusScale,
 } from "./spot-transform";
 export { evaluateSkyboxDirection, equirectPointToDirection, equirectUvToDirection } from "./evaluator";
+export type {
+  WebGpuCompositionRuntime,
+  WebGpuLayerAdapter,
+  WebGpuLayerAdapterRuntime,
+  WebGpuLayerExpressionContext,
+  WebGpuLayerSampleContext,
+  WebGpuLayerSampleNodes,
+} from "./layer-addons";
 export type {
   SkyboxBakeOptions,
   SkyboxCompositionMode,
