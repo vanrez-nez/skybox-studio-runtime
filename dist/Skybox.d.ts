@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { NodeMaterial } from "three/webgpu";
-import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxLayerBlendMode, SkyboxManifest, SkyboxRenderMode, SkyboxSpotParams } from "./manifest";
+import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxLayerBlendMode, SkyboxManifest, SkyboxRenderMode, SkyboxSpotParams, SkyboxStarfieldParams } from "./manifest";
 type SupportedRenderer = THREE.WebGLRenderer | {
     isWebGPURenderer?: boolean;
 };
@@ -32,10 +32,16 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     setImageTexture(layerId: string, texture: THREE.Texture | null): this;
     setImageTextures(textures: ImageTextureMap): this;
     refreshImageTextureBindings(): this;
+    private refreshStarfieldTextureBindings;
     otherOverridingSetup(): this;
     load(renderer?: SupportedRenderer): this;
     private applyGeometry;
     private disposeOwnedTexture;
+    private clearStarfieldPatchOverlay;
+    private syncStarfieldPatchOverlay;
+    private disposeStarfieldTextures;
+    private syncStarfieldTextures;
+    private scheduleStarfieldTextureBake;
     private replaceMaterial;
     private applyLiveManifestUniformUpdates;
     setEditorPresentationEnabled(enabled: boolean): this;
@@ -48,6 +54,7 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     updateGradientLayer(layerId: string, params: SkyboxGradientParams): this;
     updateFieldGradientLayer(layerId: string, params: SkyboxFieldGradientParams): this;
     updateSpotLayer(layerId: string, params: SkyboxSpotParams): this;
+    updateStarfieldLayer(layerId: string, params: SkyboxStarfieldParams): this;
     setManifest(manifest: SkyboxManifest): this;
     setBakedTexture(texture: THREE.Texture): this;
     invalidateBakeCache(): this;

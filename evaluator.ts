@@ -15,10 +15,16 @@ import type {
   SkyboxManifestLayer,
   SkyboxManifestNode,
   SkyboxSpotParams,
+  SkyboxStarfieldParams,
 } from "./manifest";
 import { migrateManifestToV2 } from "./manifest";
 import { projectDirectionToImageUv } from "./image-placement-transform";
 import { normalizeSpotParams } from "./spot-transform";
+import {
+  sampleStarfieldLayer,
+  sourceUvFromDirection,
+  type StarfieldBakeData,
+} from "./starfield-static";
 
 const TWO_PI = Math.PI * 2;
 
@@ -27,6 +33,12 @@ type LinearStop = {
   color: Rgb;
   midpoint: number;
   t: number;
+};
+
+type EvaluateOptions = {
+  sampleHeight?: number;
+  starfieldBakes?: Map<string, StarfieldBakeData>;
+  targetGroupId?: string;
 };
 
 function mix(firstValue: number, secondValue: number, amount: number) {
@@ -291,6 +303,19 @@ function mixRgba(first: Rgba, second: Rgba, amount: number): Rgba {
   ];
 }
 
+function sampleStarfieldBakedPixel(bakedImage: StarfieldBakeData, x: number, y: number): Rgba {
+  const pixelX = ((x % bakedImage.width) + bakedImage.width) % bakedImage.width;
+  const pixelY = Math.min(bakedImage.height - 1, Math.max(0, y));
+  const index = (pixelY * bakedImage.width + pixelX) * 4;
+
+  return [
+    srgbChannelToLinear((bakedImage.data[index] ?? 0) / 255),
+    srgbChannelToLinear((bakedImage.data[index + 1] ?? 0) / 255),
+    srgbChannelToLinear((bakedImage.data[index + 2] ?? 0) / 255),
+    (bakedImage.data[index + 3] ?? 0) / 255,
+  ];
+}
+
 function sampleImagePixel(params: SkyboxImageParams, x: number, y: number): Rgba {
   const pixelX = Math.min(params.width - 1, Math.max(0, x));
   const pixelY = Math.min(params.height - 1, Math.max(0, y));
@@ -413,7 +438,42 @@ function sampleSpotLayer(direction: Rgb, params: SkyboxSpotParams): Rgba {
   return [color[0] / alpha, color[1] / alpha, color[2] / alpha, alpha];
 }
 
-function sampleLayer(direction: Rgb, layer: SkyboxManifestLayer): Rgba {
+function sampleStarfield(
+  layerId: string,
+  direction: Rgb,
+  params: SkyboxStarfieldParams,
+  options: Pick<EvaluateOptions, "sampleHeight" | "starfieldBakes"> = {}
+): Rgba {
+  const bakedImage = options.starfieldBakes?.get(layerId);
+
+  if (bakedImage) {
+    const uv = sourceUvFromDirection(direction);
+    const imageX = (((uv.u % 1) + 1) % 1) * bakedImage.width - 0.5;
+    const imageY = clamp(uv.v, 0, 1) * bakedImage.height - 0.5;
+    const x0 = Math.floor(imageX);
+    const y0 = Math.floor(imageY);
+    const x1 = x0 + 1;
+    const y1 = y0 + 1;
+    const tx = imageX - x0;
+    const ty = imageY - y0;
+    const top = mixRgba(
+      sampleStarfieldBakedPixel(bakedImage, x0, y0),
+      sampleStarfieldBakedPixel(bakedImage, x1, y0),
+      tx
+    );
+    const bottom = mixRgba(
+      sampleStarfieldBakedPixel(bakedImage, x0, y1),
+      sampleStarfieldBakedPixel(bakedImage, x1, y1),
+      tx
+    );
+
+    return mixRgba(top, bottom, ty);
+  }
+
+  return sampleStarfieldLayer(direction, params, { sampleHeight: options.sampleHeight });
+}
+
+function sampleLayer(direction: Rgb, layer: SkyboxManifestLayer, options: EvaluateOptions = {}): Rgba {
   if (layer.type === "gradient") {
     return sampleGradientLayer(direction, layer.params);
   }
@@ -426,18 +486,22 @@ function sampleLayer(direction: Rgb, layer: SkyboxManifestLayer): Rgba {
     return sampleSpotLayer(direction, layer.params);
   }
 
+  if (layer.type === "starfield") {
+    return sampleStarfield(layer.id, direction, layer.params, options);
+  }
+
   return sampleImageLayer(direction, layer.params);
 }
 
-export function composeNodes(direction: Rgb, nodes: SkyboxManifestNode[]): Rgb {
+export function composeNodes(direction: Rgb, nodes: SkyboxManifestNode[], options: EvaluateOptions = {}): Rgb {
   return nodes
     .filter((node) => node.enabled)
     .reverse()
     .reduce<Rgb>((backdrop, node) => {
       const source =
         node.type === "group"
-          ? ([...composeNodes(direction, node.children), 1] as Rgba)
-          : sampleLayer(direction, node);
+          ? ([...composeNodes(direction, node.children, options), 1] as Rgba)
+          : sampleLayer(direction, node, options);
       const alpha = clamp(source[3] * (node.opacity / 100));
 
       return compositeOver(backdrop, [source[0], source[1], source[2]], alpha, node.blendMode);
@@ -465,7 +529,7 @@ function findGroup(nodes: SkyboxManifestNode[], id: string): SkyboxManifestNode 
 export function evaluateSkyboxDirection(
   manifest: SkyboxManifest,
   direction: Rgb,
-  options: { targetGroupId?: string } = {}
+  options: EvaluateOptions = {}
 ) {
   const migratedManifest = migrateManifestToV2(manifest);
   const targetGroup = options.targetGroupId
@@ -477,5 +541,5 @@ export function evaluateSkyboxDirection(
       : []
     : migratedManifest.nodes;
 
-  return composeNodes(direction, nodes);
+  return composeNodes(direction, nodes, options);
 }

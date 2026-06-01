@@ -12,7 +12,8 @@ export {
   invalidateBakeCache,
   resolveBakeOptions,
 } from "./bake";
-export type { BakedSkyboxImageData, BakeCacheKeyOptions } from "./bake";
+export type { BakedSkyboxImageData, BakeCacheKeyOptions, SkyboxImageBakeOptions } from "./bake";
+export { createStarfieldGpuBakeService, StarfieldGpuBakeService } from "./starfield-gpu-bake";
 export {
   blendChannel,
   clamp,
@@ -51,6 +52,36 @@ export {
   spotFromPosition,
   spotFromRadiusScale,
 } from "./spot-transform";
+export {
+  bakeStarfieldImageData,
+  createStarCatalogForCoverage,
+  createStarCatalogForDescriptor,
+  createStarfieldBakeCacheKey,
+  createStarfieldPatchLayout,
+  DEFAULT_STARFIELD_CLIP,
+  DEFAULT_STARFIELD_NEBULA,
+  DEFAULT_STARFIELD_NEBULA_FIELD,
+  DEFAULT_STARFIELD_PARAMS,
+  DEFAULT_STARFIELD_QUALITY,
+  DEFAULT_STARFIELD_STARS,
+  getStarfieldQualityPreset,
+  normalizeStarfieldCoverage,
+  normalizeStarfieldQuality,
+  qFromV,
+  normalizeStarfieldParams,
+  sampleStarfieldLayer,
+  sourceDirectionFromUv,
+  sourceFoldEquirectUv,
+  sourceUvFromDirection,
+  STARFIELD_PREVIEW_BAKE_WIDTH,
+  STARFIELD_QUALITY_PRESETS,
+  starfieldFieldGradientToSourceField,
+  starfieldClipContainsDirection,
+  type StarfieldBakeData,
+  type StarfieldCoverage,
+  type StarfieldPatchDescriptor,
+  type StarfieldPatchLayout,
+} from "./starfield-static";
 export { evaluateSkyboxDirection, equirectPointToDirection, equirectUvToDirection } from "./evaluator";
 export type {
   WebGpuCompositionRuntime,
@@ -86,5 +117,11 @@ export type {
   SkyboxSpotColorMode,
   SkyboxSpotLayer,
   SkyboxSpotParams,
+  SkyboxStarfieldClipParams,
+  SkyboxStarfieldLayer,
+  SkyboxStarfieldNebulaParams,
+  SkyboxStarfieldParams,
+  SkyboxStarfieldQuality,
+  SkyboxStarfieldStarsParams,
 } from "./manifest";
 export { migrateManifestToV2 } from "./manifest";

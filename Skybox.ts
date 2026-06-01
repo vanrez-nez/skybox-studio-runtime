@@ -9,6 +9,7 @@ import {
   texture as textureNode,
   uniform,
   vec2,
+  vec4,
   wgslFn,
 } from "three/tsl";
 
@@ -31,10 +32,22 @@ import type {
   SkyboxManifestV2,
   SkyboxRenderMode,
   SkyboxSpotParams,
+  SkyboxStarfieldParams,
 } from "./manifest";
 import { DEFAULT_SKYBOX_GEOMETRY, migrateManifestToV2 } from "./manifest";
 import { normalizeImagePlacement } from "./image-placement-transform";
 import { normalizeSpotParams } from "./spot-transform";
+import {
+  createStarfieldBakeCacheKey,
+  STARFIELD_PREVIEW_BAKE_WIDTH,
+} from "./starfield-static";
+import {
+  createStarfieldPatchMeshGroup,
+  createStarfieldGpuBakeService,
+  disposeStarfieldPatchMeshGroup,
+  type StarfieldGpuPatchTextureSet,
+  type StarfieldGpuBakeService,
+} from "./starfield-gpu-bake";
 import type {
   WebGpuCompositionRuntime,
   WebGpuLayerAdapter,
@@ -68,6 +81,11 @@ type SpotLayerShaderBinding = {
   layer: Extract<SkyboxManifestLayer, { type: "spot" }>;
   parameterPrefix: string;
   stopCount: number;
+};
+type StarfieldLayerShaderBinding = {
+  index: number;
+  layer: Extract<SkyboxManifestLayer, { type: "starfield" }>;
+  parameterName: string;
 };
 type CompositionNodeShaderBinding = {
   index: number;
@@ -152,6 +170,10 @@ type WebGpuImageSampleNodeData = {
   sampleInfo: any;
   sampleNode: any;
   textureNode: any;
+};
+type WebGpuStarfieldSampleNodeData = {
+  sampleNode: any;
+  textureNodes: any[];
 };
 type BuiltInWebGpuLayerAdapter<
   TType extends SkyboxManifestLayer["type"],
@@ -1363,6 +1385,37 @@ function collectSpotLayerBindings(nodes: SkyboxManifestNode[]) {
   return bindings;
 }
 
+function collectStarfieldLayerBindings(nodes: SkyboxManifestNode[]) {
+  const bindings: StarfieldLayerShaderBinding[] = [];
+
+  function collect(nextNodes: SkyboxManifestNode[]) {
+    nextNodes.forEach((node) => {
+      if (!node.enabled) {
+        return;
+      }
+
+      if (node.type === "group") {
+        collect(node.children);
+        return;
+      }
+
+      if (node.type === "starfield") {
+        const index = bindings.length;
+
+        bindings.push({
+          index,
+          layer: node,
+          parameterName: `starfieldLayer${index}`,
+        });
+      }
+    });
+  }
+
+  collect(nodes);
+
+  return bindings;
+}
+
 function collectCompositionNodeBindings(nodes: SkyboxManifestNode[]) {
   const bindings: CompositionNodeShaderBinding[] = [];
 
@@ -1400,6 +1453,10 @@ function createImageBindingMap(bindings: ImageLayerShaderBinding[]) {
 }
 
 function createSpotBindingMap(bindings: SpotLayerShaderBinding[]) {
+  return new Map(bindings.map((binding) => [binding.layer.id, binding]));
+}
+
+function createStarfieldBindingMap(bindings: StarfieldLayerShaderBinding[]) {
   return new Map(bindings.map((binding) => [binding.layer.id, binding]));
 }
 
@@ -1475,6 +1532,48 @@ function imageSampleExpression(
     vec4 imageSampleColor = texture2D(imageTexture${binding.index}, imageSampleInfo.xy);
     effectColor = vec4(imageSampleColor.rgb, imageSampleColor.a * imageSampleInfo.z);
   }`;
+}
+
+function starfieldSampleExpression(
+  layer: Extract<SkyboxManifestLayer, { type: "starfield" }>,
+  starfieldBindings: Map<string, StarfieldLayerShaderBinding>,
+  language: ShaderLanguage
+) {
+  const binding = starfieldBindings.get(layer.id);
+  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
+
+  if (!binding) {
+    return `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
+  }
+
+  if (language === "wgsl") {
+    return `effectColor = ${binding.parameterName};`;
+  }
+
+  return `effectColor = texture2D(starfieldTexture${binding.index}, directionToSourceStarfieldUv(direction));`;
+}
+
+function glslDirectionToEquirectUvFunction() {
+  return `
+      const float SKYBOX_STUDIO_PI = 3.141592653589793;
+
+      vec2 directionToEquirectUv(vec3 direction) {
+        vec3 normalizedDirection = normalize(direction);
+        float longitude = atan(normalizedDirection.z, normalizedDirection.x);
+        float latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));
+
+        return vec2(longitude / (2.0 * SKYBOX_STUDIO_PI) + 0.5, latitude / SKYBOX_STUDIO_PI + 0.5);
+      }
+
+      vec2 directionToSourceStarfieldUv(vec3 direction) {
+        vec3 normalizedDirection = normalize(direction);
+        float theta = atan(normalizedDirection.x, normalizedDirection.z);
+        float u = fract(theta / (2.0 * SKYBOX_STUDIO_PI) + 0.5);
+        float v = acos(clamp(normalizedDirection.y, -1.0, 1.0)) / SKYBOX_STUDIO_PI;
+
+        return vec2(u, v);
+      }
+    `;
 }
 
 function webGpuImageSampleInfoFunction(binding: ImageLayerShaderBinding) {
@@ -1673,6 +1772,58 @@ function updateImageTextureNodes(
 ) {
   sampleData.forEach((sample, layerId) => {
     sample.textureNode.value = imageTextures.get(layerId) ?? EMPTY_IMAGE_TEXTURE;
+  });
+}
+
+function disposeStarfieldTexture(texture: THREE.Texture) {
+  if (texture.userData.starfieldRenderTarget) {
+    return;
+  }
+
+  texture.dispose();
+}
+
+function getStarfieldTexture(
+  starfieldTextures: Map<string, THREE.Texture>,
+  layer: Extract<SkyboxManifestLayer, { type: "starfield" }>
+) {
+  return starfieldTextures.get(layer.id) ?? EMPTY_IMAGE_TEXTURE;
+}
+
+function starfieldTextureUniforms(
+  bindings: StarfieldLayerShaderBinding[],
+  starfieldTextures: Map<string, THREE.Texture>
+) {
+  return Object.fromEntries(
+    bindings.map((binding) => [
+      `starfieldTexture${binding.index}`,
+      { value: getStarfieldTexture(starfieldTextures, binding.layer) },
+    ])
+  );
+}
+
+function updateStarfieldTextureUniforms(
+  material: THREE.ShaderMaterial,
+  bindings: StarfieldLayerShaderBinding[],
+  starfieldTextures: Map<string, THREE.Texture>
+) {
+  bindings.forEach((binding) => {
+    const uniformName = `starfieldTexture${binding.index}`;
+
+    if (material.uniforms[uniformName]) {
+      material.uniforms[uniformName].value = getStarfieldTexture(starfieldTextures, binding.layer);
+    }
+  });
+}
+
+function updateStarfieldTextureNodes(
+  sampleData: Map<string, WebGpuStarfieldSampleNodeData>,
+  _starfieldTextures: Map<string, THREE.Texture>
+) {
+  sampleData.forEach((sample) => {
+    sample.textureNodes.forEach((textureSlot) => {
+      textureSlot.value = textureSlot.value ?? EMPTY_IMAGE_TEXTURE;
+    });
   });
 }
 
@@ -1887,7 +2038,8 @@ function effectExpression(
   gradientBindings: Map<string, GradientLayerShaderBinding>,
   fieldGradientBindings: Map<string, FieldGradientLayerShaderBinding>,
   imageBindings: Map<string, ImageLayerShaderBinding>,
-  spotBindings: Map<string, SpotLayerShaderBinding>
+  spotBindings: Map<string, SpotLayerShaderBinding>,
+  starfieldBindings: Map<string, StarfieldLayerShaderBinding> = new Map()
 ) {
   if (layer.type === "gradient") {
     const binding = gradientBindings.get(layer.id);
@@ -1911,6 +2063,10 @@ function effectExpression(
     return binding
       ? spotSampleExpression(binding, language)
       : `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+  }
+
+  if (layer.type === "starfield") {
+    return starfieldSampleExpression(layer, starfieldBindings, language);
   }
 
   return imageSampleExpression(layer, imageBindings, language);
@@ -2079,6 +2235,7 @@ function composeNodesExpression(
   fieldGradientBindings: Map<string, FieldGradientLayerShaderBinding>,
   imageBindings: Map<string, ImageLayerShaderBinding>,
   spotBindings: Map<string, SpotLayerShaderBinding>,
+  starfieldBindings: Map<string, StarfieldLayerShaderBinding>,
   compositionBindings: Map<string, CompositionNodeShaderBinding>,
   webGpuRuntime?: WebGpuCompositionRuntime,
   depth = 0
@@ -2102,7 +2259,8 @@ function composeNodesExpression(
               gradientBindings,
               fieldGradientBindings,
               imageBindings,
-              spotBindings
+              spotBindings,
+              starfieldBindings
             );
       const groupColorName = `groupColor${depth}_${index}`;
       const compositionBinding = compositionBindings.get(node.id);
@@ -2125,6 +2283,7 @@ function composeNodesExpression(
             fieldGradientBindings,
             imageBindings,
             spotBindings,
+            starfieldBindings,
             compositionBindings,
             webGpuRuntime,
             depth + 1
@@ -2178,6 +2337,11 @@ function webGpuEffectExpression(
 
 type WebGpuImageLayerSampleNodes = WebGpuLayerSampleNodes & {
   sampleData: Map<string, WebGpuImageSampleNodeData>;
+  sampleNodesByParameterName: Record<string, unknown>;
+};
+
+type WebGpuStarfieldLayerSampleNodes = WebGpuLayerSampleNodes & {
+  sampleData: Map<string, WebGpuStarfieldSampleNodeData>;
   sampleNodesByParameterName: Record<string, unknown>;
 };
 
@@ -2461,17 +2625,72 @@ const spotWebGpuAdapter: BuiltInWebGpuLayerAdapter<"spot", SpotLayerShaderBindin
   updateUniforms: applySpotLayerParamsToUniformNodes,
 };
 
+const starfieldWebGpuAdapter: BuiltInWebGpuLayerAdapter<"starfield", StarfieldLayerShaderBinding, never> = {
+  collect: collectStarfieldLayerBindings,
+  createParameterDeclarations: (bindings) =>
+    bindings
+      .map((binding) => `,
+      ${binding.parameterName}: vec4<f32>`)
+      .join(""),
+  createSampleExpression: (layer, language, context) => {
+    const binding = context.bindingsByLayerId.get(layer.id);
+
+    return binding ? `effectColor = ${binding.parameterName};` : zeroEffectExpression(language);
+  },
+  createSampleNodes: ({ bindings, direction, imageTextures }) => {
+    const sampleData = new Map<string, WebGpuStarfieldSampleNodeData>();
+    const sampleNodesByParameterName = Object.fromEntries(
+      bindings.map((binding) => {
+        const sampleTextureNode = vec4(0.0, 0.0, 0.0, 0.0);
+
+        sampleData.set(binding.layer.id, {
+          sampleNode: sampleTextureNode,
+          textureNodes: [],
+        });
+
+        return [binding.parameterName, sampleTextureNode];
+      })
+    );
+
+    return {
+      sampleData,
+      sampleNodesByLayerId: Object.fromEntries(
+        bindings.map((binding) => [
+          binding.layer.id,
+          sampleNodesByParameterName[binding.parameterName],
+        ])
+      ),
+      sampleNodesByParameterName,
+      textureSlots: Object.fromEntries(
+        Array.from(sampleData.entries()).map(([layerId, sample]) => [
+          layerId,
+          sample.textureNodes,
+        ])
+      ),
+    } satisfies WebGpuStarfieldLayerSampleNodes;
+  },
+  createSampleParameters: (_bindings, _uniforms, samples) =>
+    (samples as WebGpuStarfieldLayerSampleNodes | undefined)?.sampleNodesByParameterName ?? {},
+  createUniforms: () => [],
+  getTopologyKey: () => ({}),
+  type: "starfield",
+  updateUniforms: () => {},
+};
+
 const WEBGPU_LAYER_ADAPTERS = createBuiltInWebGpuLayerAdapters([
   gradientWebGpuAdapter,
   fieldGradientWebGpuAdapter,
   imageWebGpuAdapter,
   spotWebGpuAdapter,
+  starfieldWebGpuAdapter,
 ]);
 
 function createWebGpuLayerRuntime(
   manifest: SkyboxManifestV2,
   direction: unknown,
-  imageTextures: Map<string, THREE.Texture>
+  imageTextures: Map<string, THREE.Texture>,
+  starfieldTextures: Map<string, THREE.Texture>,
+  starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>
 ): WebGpuCompositionRuntime {
   const adapters = new Map<string, WebGpuLayerAdapterRuntime>();
   const editorProjectionByLayerId = new Map<string, { uv: unknown; valid: unknown }>();
@@ -2486,7 +2705,7 @@ function createWebGpuLayerRuntime(
       .createSampleNodes?.({
         bindings,
         direction,
-        imageTextures,
+        imageTextures: adapter.type === "starfield" ? starfieldPatchTextures as unknown as Map<string, THREE.Texture> : imageTextures,
         uniforms,
       });
     const bindingRuntime: WebGpuLayerAdapterRuntime = {
@@ -2577,6 +2796,7 @@ function createSkyboxFunction(
     new Map(),
     new Map(),
     new Map(),
+    new Map(),
     compositionBindingMap,
     layerRuntime
   );
@@ -2652,6 +2872,8 @@ function createWebGpuMaterial(
   manifest: SkyboxManifestV2,
   editorLayerState: SkyboxEditorLayerState,
   imageTextures: Map<string, THREE.Texture>,
+  starfieldTextures: Map<string, THREE.Texture>,
+  starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
   editorPresentationEnabled: boolean
 ) {
   const material = new NodeMaterial();
@@ -2670,7 +2892,13 @@ function createWebGpuMaterial(
   material.depthWrite = false;
   material.vertexNode = vertexNode as any;
   const direction = normalize(positionWorld.sub(cameraPosition));
-  const layerRuntime = createWebGpuLayerRuntime(manifest, direction, imageTextures);
+  const layerRuntime = createWebGpuLayerRuntime(
+    manifest,
+    direction,
+    imageTextures,
+    starfieldTextures,
+    starfieldPatchTextures
+  );
   const imageRuntime = getWebGpuAdapterRuntime<"image", ImageLayerShaderBinding, ImagePlacementUniformNodes>(
     layerRuntime,
     "image"
@@ -2683,6 +2911,14 @@ function createWebGpuMaterial(
   const spotBindings = spotRuntime?.bindings ?? [];
   const imageUniforms = imageRuntime?.uniforms ?? [];
   const imageSamples = imageRuntime?.samples as WebGpuImageLayerSampleNodes | undefined;
+  const starfieldRuntime = getWebGpuAdapterRuntime<
+    "starfield",
+    StarfieldLayerShaderBinding,
+    never
+  >(layerRuntime, "starfield");
+  const starfieldSamples = starfieldRuntime?.samples as
+    | WebGpuStarfieldLayerSampleNodes
+    | undefined;
   const skyboxSample = createSkyboxFunction(manifest, layerRuntime, compositionBindings);
   const imageEditorUniforms = editorPresentationEnabled
     ? createImageEditorUniformNodes(imageBindings, editorLayerState)
@@ -2774,6 +3010,8 @@ function createWebGpuMaterial(
   );
   material.userData.applyImageTextures = (textures: Map<string, THREE.Texture>) =>
     updateImageTextureNodes(imageSamples?.sampleData ?? new Map(), textures);
+  material.userData.applyStarfieldTextures = (textures: Map<string, THREE.Texture>) =>
+    updateStarfieldTextureNodes(starfieldSamples?.sampleData ?? new Map(), textures);
   material.userData.debugImageTextureSlots = layerRuntime.textureSlotsByLayerId;
 
   return material;
@@ -2788,6 +3026,114 @@ const directionToEquirectUv = wgslFn(`
     return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);
   }
 `);
+
+const directionToSourceStarfieldUv = wgslFn(`
+  fn skyboxStudioDirectionToSourceStarfieldUv(direction: vec3<f32>) -> vec2<f32> {
+    let normalizedDirection = normalize(direction);
+    let theta = atan2(normalizedDirection.x, normalizedDirection.z);
+    let u = fract(theta / 6.283185307179586 + 0.5);
+    let v = acos(clamp(normalizedDirection.y, -1.0, 1.0)) / 3.141592653589793;
+
+    return vec2<f32>(u, v);
+  }
+`);
+
+function webGpuStarfieldPatchInfoFunction(
+  layerIndex: number,
+  patchIndex: number,
+  patch: StarfieldGpuPatchTextureSet["patches"][number]
+) {
+  const { descriptor } = patch;
+  const contentUvMin = descriptor.uvMin;
+  const contentUvSize = descriptor.uvSize;
+  const storageUvMin = descriptor.storageUvMin;
+  const storageUvSize = descriptor.storageUvSize;
+  const hasLeftNeighbor = descriptor.hasLeftNeighbor ? 1 : 0;
+  const hasRightNeighbor = descriptor.hasRightNeighbor ? 1 : 0;
+  const hasTopNeighbor = descriptor.hasTopNeighbor ? 1 : 0;
+  const hasBottomNeighbor = descriptor.hasBottomNeighbor ? 1 : 0;
+  const prefix = `skyboxStudioStarfieldPatch${layerIndex}_${patchIndex}`;
+
+  return wgslFn(`
+    fn ${prefix}(direction: vec3<f32>) -> vec4<f32> {
+      let skyUv = ${prefix}DirectionToUv(direction);
+      let contentUvMin = vec2<f32>(${numberLiteral(contentUvMin.x)}, ${numberLiteral(contentUvMin.y)});
+      let contentUvSize = vec2<f32>(${numberLiteral(contentUvSize.x)}, ${numberLiteral(contentUvSize.y)});
+      let storageUvMin = vec2<f32>(${numberLiteral(storageUvMin.x)}, ${numberLiteral(storageUvMin.y)});
+      let storageUvSize = vec2<f32>(${numberLiteral(storageUvSize.x)}, ${numberLiteral(storageUvSize.y)});
+      let patchUvRaw = vec2<f32>(
+        ${prefix}StorageLocalU(skyUv.x, storageUvMin.x, storageUvSize.x),
+        (skyUv.y - storageUvMin.y) / storageUvSize.y
+      );
+      let patchUv = clamp(patchUvRaw, vec2<f32>(0.0), vec2<f32>(1.0));
+      let sampleMask = ${prefix}UvInside01Mask(patchUvRaw);
+      let contentLocalUv = vec2<f32>(
+        ${prefix}WrappedIntervalOffset(skyUv.x, contentUvMin.x, contentUvSize.x) / contentUvSize.x,
+        (skyUv.y - contentUvMin.y) / contentUvSize.y
+      );
+      let contentMask = ${prefix}UvInside01Mask(contentLocalUv);
+      let guardFrac = max((storageUvSize - contentUvSize) / (contentUvSize * 2.0), vec2<f32>(0.0));
+      let safeGuardFrac = max(guardFrac, vec2<f32>(0.000001));
+      let leftOwner = select(
+        1.0,
+        smoothstep(-safeGuardFrac.x, safeGuardFrac.x, contentLocalUv.x),
+        ${numberLiteral(hasLeftNeighbor)} > 0.5
+      );
+      let rightOwner = select(
+        1.0,
+        1.0 - smoothstep(1.0 - safeGuardFrac.x, 1.0 + safeGuardFrac.x, contentLocalUv.x),
+        ${numberLiteral(hasRightNeighbor)} > 0.5
+      );
+      let horizontalOwner = select(leftOwner * rightOwner, 1.0, guardFrac.x <= 0.0);
+      let topOwner = select(
+        1.0,
+        smoothstep(-safeGuardFrac.y, safeGuardFrac.y, contentLocalUv.y),
+        ${numberLiteral(hasTopNeighbor)} > 0.5
+      );
+      let bottomOwner = select(
+        1.0,
+        1.0 - smoothstep(1.0 - safeGuardFrac.y, 1.0 + safeGuardFrac.y, contentLocalUv.y),
+        ${numberLiteral(hasBottomNeighbor)} > 0.5
+      );
+      let verticalOwner = select(topOwner * bottomOwner, 1.0, guardFrac.y <= 0.0);
+      let ownership = clamp(horizontalOwner * verticalOwner * sampleMask, 0.0, 1.0);
+      return vec4<f32>(patchUv, ownership, contentMask);
+    }
+
+    fn ${prefix}IntervalError(value: f32, intervalSize: f32) -> f32 {
+      return max(max(-value, value - intervalSize), 0.0);
+    }
+
+    fn ${prefix}WrappedIntervalOffset(skyU: f32, intervalMinU: f32, intervalSizeU: f32) -> f32 {
+      let d0 = skyU - intervalMinU;
+      let d1 = d0 + 1.0;
+      let d2 = d0 - 1.0;
+      let e0 = ${prefix}IntervalError(d0, intervalSizeU);
+      let e1 = ${prefix}IntervalError(d1, intervalSizeU);
+      let e2 = ${prefix}IntervalError(d2, intervalSizeU);
+      return select(select(d0, d2, e2 < e0 && e2 < e1), d1, e1 < e0 && e1 <= e2);
+    }
+
+    fn ${prefix}StorageLocalU(skyU: f32, storageMinU: f32, storageSizeU: f32) -> f32 {
+      return ${prefix}WrappedIntervalOffset(skyU, storageMinU, storageSizeU) / storageSizeU;
+    }
+
+    fn ${prefix}UvInside01Mask(localUv: vec2<f32>) -> f32 {
+      return step(0.0, localUv.x) *
+        step(localUv.x, 1.0) *
+        step(0.0, localUv.y) *
+        step(localUv.y, 1.0);
+    }
+
+    fn ${prefix}DirectionToUv(direction: vec3<f32>) -> vec2<f32> {
+      let normalizedDirection = normalize(direction);
+      let theta = atan2(normalizedDirection.x, normalizedDirection.z);
+      let u = fract(theta / 6.283185307179586 + 0.5);
+      let v = acos(clamp(normalizedDirection.y, -1.0, 1.0)) / 3.141592653589793;
+      return vec2<f32>(u, v);
+    }
+  `);
+}
 
 function createWebGpuBakedMaterial(texture: THREE.Texture) {
   const material = new NodeMaterial();
@@ -2813,17 +3159,20 @@ function createWebGlMaterial(
   manifest: SkyboxManifestV2,
   editorLayerState: SkyboxEditorLayerState,
   imageTextures: Map<string, THREE.Texture>,
+  starfieldTextures: Map<string, THREE.Texture>,
   editorPresentationEnabled: boolean
 ) {
   const gradientBindings = collectGradientLayerBindings(manifest.nodes);
   const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
   const imageBindings = collectImageLayerBindings(manifest.nodes);
   const spotBindings = collectSpotLayerBindings(manifest.nodes);
+  const starfieldBindings = collectStarfieldLayerBindings(manifest.nodes);
   const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
   const gradientBindingMap = createGradientBindingMap(gradientBindings);
   const fieldGradientBindingMap = createFieldGradientBindingMap(fieldGradientBindings);
   const imageBindingMap = createImageBindingMap(imageBindings);
   const spotBindingMap = createSpotBindingMap(spotBindings);
+  const starfieldBindingMap = createStarfieldBindingMap(starfieldBindings);
   const compositionBindingMap = createCompositionBindingMap(compositionBindings);
   const layerBlocks = composeNodesExpression(
     manifest.nodes,
@@ -2832,6 +3181,7 @@ function createWebGlMaterial(
     fieldGradientBindingMap,
     imageBindingMap,
     spotBindingMap,
+    starfieldBindingMap,
     compositionBindingMap
   );
   const material = new THREE.ShaderMaterial({
@@ -2839,6 +3189,7 @@ function createWebGlMaterial(
       ...gradientShaderUniforms(gradientBindings),
       ...fieldGradientShaderUniforms(fieldGradientBindings),
       ...spotShaderUniforms(spotBindings),
+      ...starfieldTextureUniforms(starfieldBindings, starfieldTextures),
       ...compositionShaderUniforms(compositionBindings),
       ...(editorPresentationEnabled ? imageEditorShaderUniforms(imageBindings, editorLayerState) : {}),
       ...(editorPresentationEnabled ? spotEditorShaderUniforms(spotBindings, editorLayerState) : {}),
@@ -2913,11 +3264,15 @@ function createWebGlMaterial(
       }`
         )
         .join("\n")}
+      ${starfieldBindings
+        .map((binding) => `uniform sampler2D starfieldTexture${binding.index};`)
+        .join("\n")}
       ${compositionBindings
         .map((binding) => `uniform float ${binding.parameterPrefix}Opacity;
       uniform float ${binding.parameterPrefix}BlendMode;`)
         .join("\n")}
       varying vec3 vDirection;
+      ${glslDirectionToEquirectUvFunction()}
       ${glslImageSampleInfoFunctions(imageBindings)}
 
       float softLightDChannel(float backdrop) {
@@ -3068,6 +3423,8 @@ function createWebGlMaterial(
   );
   material.userData.applyImageTextures = (textures: Map<string, THREE.Texture>) =>
     updateImageTextureUniforms(material, imageBindings, textures);
+  material.userData.applyStarfieldTextures = (textures: Map<string, THREE.Texture>) =>
+    updateStarfieldTextureUniforms(material, starfieldBindings, textures);
 
   return material;
 }
@@ -3226,6 +3583,14 @@ function createMaterialTopologyKey(
       };
     }
 
+    if (node.type === "starfield") {
+      return {
+        enabled: node.enabled,
+        id: node.id,
+        type: node.type,
+      };
+    }
+
     return {
       anchorCount: node.params.anchors.length,
       enabled: node.enabled,
@@ -3272,14 +3637,22 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #ownedTexture: THREE.Texture | null = null;
   #renderMode: SkyboxRenderMode = "auto";
   #renderer: SupportedRenderer | null = null;
+  #starfieldGpuBakeService: StarfieldGpuBakeService | null = null;
+  #starfieldBakeTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  #starfieldPatchOverlay = new THREE.Group();
+  #starfieldPatchTextures = new Map<string, StarfieldGpuPatchTextureSet>();
+  #starfieldTextureKeys = new Map<string, string>();
+  #starfieldTextures = new Map<string, THREE.Texture>();
 
   constructor() {
     super(
       createSkyboxGeometry(DEFAULT_SKYBOX_GEOMETRY),
-      createWebGpuMaterial(DEFAULT_MANIFEST, DEFAULT_EDITOR_LAYER_STATE, new Map(), false)
+      createWebGpuMaterial(DEFAULT_MANIFEST, DEFAULT_EDITOR_LAYER_STATE, new Map(), new Map(), new Map(), false)
     );
     this.frustumCulled = false;
     this.renderOrder = -1;
+    this.#starfieldPatchOverlay.name = "Skybox live starfield patches";
+    this.add(this.#starfieldPatchOverlay);
   }
 
   fromManifest(manifest: SkyboxManifest) {
@@ -3301,6 +3674,8 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
 
   setRenderer(renderer: SupportedRenderer | null) {
     this.#renderer = renderer;
+    this.#starfieldGpuBakeService?.dispose();
+    this.#starfieldGpuBakeService = createStarfieldGpuBakeService(renderer);
     return this;
   }
 
@@ -3342,6 +3717,15 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     return this;
   }
 
+  private refreshStarfieldTextureBindings() {
+    if (resolveRenderMode(this.#renderMode, this.#renderer) === "live-webgpu") {
+      this.syncStarfieldPatchOverlay();
+      return;
+    }
+
+    this.material.userData.applyStarfieldTextures?.(this.#starfieldTextures);
+  }
+
   otherOverridingSetup() {
     return this;
   }
@@ -3373,6 +3757,180 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#ownedTexture = null;
   }
 
+  private clearStarfieldPatchOverlay() {
+    this.#starfieldPatchOverlay.children.forEach((child) => {
+      if (child instanceof THREE.Group) {
+        disposeStarfieldPatchMeshGroup(child);
+      }
+    });
+    this.#starfieldPatchOverlay.clear();
+  }
+
+  private syncStarfieldPatchOverlay() {
+    this.clearStarfieldPatchOverlay();
+    const debugTextureSlots = this.material.userData.debugImageTextureSlots as
+      | Record<string, { value?: unknown }>
+      | undefined;
+
+    if (resolveRenderMode(this.#renderMode, this.#renderer) !== "live-webgpu") {
+      return;
+    }
+
+    forEachRenderableLayer(this.#manifest.nodes, (layer) => {
+      if (layer.type !== "starfield") {
+        return;
+      }
+
+      const patchSet = this.#starfieldPatchTextures.get(layer.id);
+
+      if (!patchSet) {
+        return;
+      }
+
+      if (debugTextureSlots) {
+        debugTextureSlots[layer.id] = { value: patchSet };
+      }
+
+      const group = createStarfieldPatchMeshGroup(patchSet, layer.params);
+
+      group.renderOrder = 0;
+      this.#starfieldPatchOverlay.add(group);
+    });
+  }
+
+  private disposeStarfieldTextures() {
+    this.#starfieldBakeTimeouts.forEach((timeoutId) => {
+      clearTimeout(timeoutId);
+    });
+    this.#starfieldBakeTimeouts.clear();
+    this.#starfieldTextures.forEach((texture) => disposeStarfieldTexture(texture));
+    this.#starfieldTextures.clear();
+    this.clearStarfieldPatchOverlay();
+    this.#starfieldPatchTextures.clear();
+    this.#starfieldTextureKeys.clear();
+    this.#starfieldGpuBakeService?.dispose();
+    this.#starfieldGpuBakeService = null;
+  }
+
+  private syncStarfieldTextures() {
+    const activeLayerIds = new Set<string>();
+
+    forEachRenderableLayer(this.#manifest.nodes, (layer) => {
+      if (layer.type !== "starfield") {
+        return;
+      }
+
+      activeLayerIds.add(layer.id);
+      const textureKey = this.#starfieldGpuBakeService?.createBakeKey(layer.params) ??
+        createStarfieldBakeCacheKey(
+          layer.params,
+          STARFIELD_PREVIEW_BAKE_WIDTH,
+          Math.floor(STARFIELD_PREVIEW_BAKE_WIDTH / 2)
+        );
+
+      if (this.#starfieldTextureKeys.get(layer.id) === textureKey) {
+        return;
+      }
+
+      this.scheduleStarfieldTextureBake(layer.id, layer.params);
+    });
+
+    Array.from(this.#starfieldTextures.keys()).forEach((layerId) => {
+      if (activeLayerIds.has(layerId)) {
+        return;
+      }
+
+      const previousTexture = this.#starfieldTextures.get(layerId);
+      if (previousTexture) {
+        disposeStarfieldTexture(previousTexture);
+      }
+      this.#starfieldTextures.delete(layerId);
+      this.#starfieldPatchTextures.delete(layerId);
+      this.#starfieldTextureKeys.delete(layerId);
+    });
+
+    Array.from(this.#starfieldBakeTimeouts.entries()).forEach(([layerId, timeoutId]) => {
+      if (activeLayerIds.has(layerId)) {
+        return;
+      }
+
+      clearTimeout(timeoutId);
+      this.#starfieldBakeTimeouts.delete(layerId);
+    });
+
+    this.syncStarfieldPatchOverlay();
+  }
+
+  private scheduleStarfieldTextureBake(layerId: string, params: SkyboxStarfieldParams) {
+    const textureKey = this.#starfieldGpuBakeService?.createBakeKey(params) ??
+      createStarfieldBakeCacheKey(
+        params,
+        STARFIELD_PREVIEW_BAKE_WIDTH,
+        Math.floor(STARFIELD_PREVIEW_BAKE_WIDTH / 2)
+      );
+
+    if (this.#starfieldTextureKeys.get(layerId) === textureKey) {
+      return;
+    }
+
+    const pendingTimeout = this.#starfieldBakeTimeouts.get(layerId);
+
+    if (pendingTimeout) {
+      clearTimeout(pendingTimeout);
+    }
+
+    const timeoutId = setTimeout(() => {
+      this.#starfieldBakeTimeouts.delete(layerId);
+
+      const node = findManifestNodeById(this.#manifest.nodes, layerId);
+
+      if (node?.type !== "starfield") {
+        return;
+      }
+
+      const currentTextureKey = this.#starfieldGpuBakeService?.createBakeKey(node.params) ??
+        createStarfieldBakeCacheKey(
+          node.params,
+          STARFIELD_PREVIEW_BAKE_WIDTH,
+          Math.floor(STARFIELD_PREVIEW_BAKE_WIDTH / 2)
+        );
+
+      if (currentTextureKey !== textureKey) {
+        this.scheduleStarfieldTextureBake(layerId, node.params);
+        return;
+      }
+
+      if (!this.#starfieldGpuBakeService?.canBake()) {
+        return;
+      }
+
+      if (resolveRenderMode(this.#renderMode, this.#renderer) === "live-webgpu") {
+        const patchTextures = this.#starfieldGpuBakeService.bakePatchTextures(
+          node.params,
+          currentTextureKey
+        );
+
+        this.#starfieldPatchTextures.set(layerId, patchTextures);
+        this.#starfieldTextureKeys.set(layerId, currentTextureKey);
+      } else {
+        const nextTexture = this.#starfieldGpuBakeService.bakeTexture(
+          node.params,
+          currentTextureKey
+        );
+        const previousTexture = this.#starfieldTextures.get(layerId);
+        if (previousTexture && previousTexture !== nextTexture) {
+          disposeStarfieldTexture(previousTexture);
+        }
+        this.#starfieldTextures.set(layerId, nextTexture);
+        this.#starfieldTextureKeys.set(layerId, currentTextureKey);
+      }
+      this.refreshStarfieldTextureBindings();
+      this.dispatchEvent({ type: "starfieldtexturechange" } as never);
+    }, 150);
+
+    this.#starfieldBakeTimeouts.set(layerId, timeoutId);
+  }
+
   private replaceMaterial(nextMaterial: RuntimeMaterial, ownedTexture: THREE.Texture | null = null) {
     const previousMaterial = this.material;
 
@@ -3381,6 +3939,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#imagePlacementOverrides.forEach((placement, layerId) => {
       nextMaterial.userData.applyImageLayerPlacement?.(layerId, placement);
     });
+    nextMaterial.userData.applyStarfieldTextures?.(this.#starfieldTextures);
     previousMaterial.dispose();
     this.disposeOwnedTexture();
     this.#ownedTexture = ownedTexture;
@@ -3396,6 +3955,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       this.material.userData.applySpotLayerParams?.(this.#manifest);
     }
     this.material.userData.applyImageTextures?.(this.#imageTextures);
+    this.material.userData.applyStarfieldTextures?.(this.#starfieldTextures);
     this.material.userData.applyEditorLayerState?.(this.#editorLayerState);
     this.#imagePlacementOverrides.forEach((placement, layerId) => {
       this.material.userData.applyImageLayerPlacement?.(layerId, placement);
@@ -3532,10 +4092,24 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     return this;
   }
 
+  updateStarfieldLayer(layerId: string, params: SkyboxStarfieldParams) {
+    const node = findManifestNodeById(this.#manifest.nodes, layerId);
+
+    if (node?.type !== "starfield") {
+      return this;
+    }
+
+    node.params = params;
+    this.scheduleStarfieldTextureBake(layerId, params);
+
+    return this;
+  }
+
   setManifest(manifest: SkyboxManifest) {
     const nextManifest = migrateManifestToV2(manifest);
     this.#manifest = nextManifest;
     this.applyGeometry(this.#manifest.geometry ?? this.#geometryOptions);
+    this.syncStarfieldTextures();
     const renderMode = resolveRenderMode(this.#renderMode, this.#renderer);
     const nextTopologyKey = createMaterialTopologyKey(
       this.#manifest,
@@ -3556,6 +4130,8 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         this.#manifest,
         this.#editorLayerState,
         this.#imageTextures,
+        this.#starfieldTextures,
+        this.#starfieldPatchTextures,
         this.#editorPresentationEnabled
       ));
     } else if (renderMode === "live-webgl") {
@@ -3563,6 +4139,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         this.#manifest,
         this.#editorLayerState,
         this.#imageTextures,
+        this.#starfieldTextures,
         this.#editorPresentationEnabled
       ));
     } else {
@@ -3591,5 +4168,6 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.geometry.dispose();
     this.material.dispose();
     this.disposeOwnedTexture();
+    this.disposeStarfieldTextures();
   }
 }

@@ -1,11 +1,12 @@
 export type SkyboxCompositionMode = "alpha-over";
 export type SkyboxCompositionOrder = "bottom-to-top";
-export type SkyboxEffectType = "field-gradient" | "gradient" | "image" | "spot";
+export type SkyboxEffectType = "field-gradient" | "gradient" | "image" | "spot" | "starfield";
 export type SkyboxLayerBlendMode = "normal" | "darken" | "multiply" | "color-burn" | "lighten" | "screen" | "color-dodge" | "overlay" | "soft-light" | "hard-light" | "difference" | "exclusion";
 export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
 export type SkyboxGeometryType = "box" | "sphere";
 export type SkyboxSpotColorMode = "gradient" | "light";
+export type SkyboxStarfieldQuality = "medium" | "high";
 export type SkyboxGeometryOptions = {
     type: SkyboxGeometryType;
 };
@@ -82,6 +83,52 @@ export type SkyboxSpotParams = {
     lightColor: string;
     stops: SkyboxGradientStop[];
 };
+export type SkyboxStarfieldStarsParams = {
+    uBright: number;
+    uBrightVar: number;
+    uColorVar: number;
+    uDensity: number;
+    uGlareSize: number;
+    uGlareStr: number;
+    uGlareVar: number;
+    uLargeStarRarity: number;
+    uSeed: number;
+    uSizeVar: number;
+    uStarSize: number;
+};
+export type SkyboxStarfieldNebulaParams = {
+    uBaseScale: number;
+    uCloudCore: [number, number, number];
+    uCloudHighlight: [number, number, number];
+    uCloudShadow: [number, number, number];
+    uColorWarpAmp: number;
+    uColorWarpFreq: number;
+    uContrast: number;
+    uCoverage: number;
+    uDensity: number;
+    uLightFocus: number;
+    uLightIntensity: number;
+    uLightLining: number;
+    uNebulaExposure: number;
+    uNebulaStrength: number;
+    uOctaves: number;
+    uOpacity: number;
+    uSeed: number;
+    uSoftness: number;
+};
+export type SkyboxStarfieldClipParams = {
+    altitudeCenterDeg: number;
+    altitudeSpanDeg: number;
+    azimuthCenterDeg: number;
+    azimuthSpanDeg: number;
+};
+export type SkyboxStarfieldParams = {
+    clip: SkyboxStarfieldClipParams;
+    nebula: SkyboxStarfieldNebulaParams;
+    nebulaField: SkyboxFieldGradientParams;
+    quality: SkyboxStarfieldQuality;
+    stars: SkyboxStarfieldStarsParams;
+};
 export type SkyboxGradientLayer = {
     blendMode: SkyboxLayerBlendMode;
     enabled: boolean;
@@ -118,7 +165,16 @@ export type SkyboxSpotLayer = {
     params: SkyboxSpotParams;
     type: "spot";
 };
-export type SkyboxManifestLayer = SkyboxGradientLayer | SkyboxFieldGradientLayer | SkyboxImageLayer | SkyboxSpotLayer;
+export type SkyboxStarfieldLayer = {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxStarfieldParams;
+    type: "starfield";
+};
+export type SkyboxManifestLayer = SkyboxGradientLayer | SkyboxFieldGradientLayer | SkyboxImageLayer | SkyboxSpotLayer | SkyboxStarfieldLayer;
 export type SkyboxManifestGroup = {
     blendMode: SkyboxLayerBlendMode;
     children: SkyboxManifestNode[];
@@ -161,6 +217,14 @@ export type SkyboxManifestV1Layer = {
     opacity: number;
     params: SkyboxSpotParams;
     type: "spot";
+} | {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxStarfieldParams;
+    type: "starfield";
 };
 export type SkyboxManifestV1 = {
     composition: {
