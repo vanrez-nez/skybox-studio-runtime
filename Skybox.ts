@@ -173,7 +173,7 @@ type WebGpuImageSampleNodeData = {
 };
 type WebGpuStarfieldSampleNodeData = {
   sampleNode: any;
-  textureNodes: any[];
+  textureNode: any;
 };
 type BuiltInWebGpuLayerAdapter<
   TType extends SkyboxManifestLayer["type"],
@@ -1818,12 +1818,10 @@ function updateStarfieldTextureUniforms(
 
 function updateStarfieldTextureNodes(
   sampleData: Map<string, WebGpuStarfieldSampleNodeData>,
-  _starfieldTextures: Map<string, THREE.Texture>
+  starfieldTextures: Map<string, THREE.Texture>
 ) {
-  sampleData.forEach((sample) => {
-    sample.textureNodes.forEach((textureSlot) => {
-      textureSlot.value = textureSlot.value ?? EMPTY_IMAGE_TEXTURE;
-    });
+  sampleData.forEach((sample, layerId) => {
+    sample.textureNode.value = starfieldTextures.get(layerId) ?? EMPTY_IMAGE_TEXTURE;
   });
 }
 
@@ -2638,14 +2636,22 @@ const starfieldWebGpuAdapter: BuiltInWebGpuLayerAdapter<"starfield", StarfieldLa
     return binding ? `effectColor = ${binding.parameterName};` : zeroEffectExpression(language);
   },
   createSampleNodes: ({ bindings, direction, imageTextures }) => {
+    const starfieldTextures = imageTextures;
     const sampleData = new Map<string, WebGpuStarfieldSampleNodeData>();
     const sampleNodesByParameterName = Object.fromEntries(
       bindings.map((binding) => {
-        const sampleTextureNode = vec4(0.0, 0.0, 0.0, 0.0);
+        const sampleUv = (directionToSourceStarfieldUv as any)({ direction });
+        const sampleTextureNode = textureNode(
+          getStarfieldTexture(starfieldTextures, binding.layer),
+          sampleUv
+        ).setName(`starfieldTexture${binding.index}`);
+
+        (sampleTextureNode as any).getUniformHash = () =>
+          `skybox-starfield-texture:${binding.layer.id}`;
 
         sampleData.set(binding.layer.id, {
           sampleNode: sampleTextureNode,
-          textureNodes: [],
+          textureNode: sampleTextureNode,
         });
 
         return [binding.parameterName, sampleTextureNode];
@@ -2664,7 +2670,7 @@ const starfieldWebGpuAdapter: BuiltInWebGpuLayerAdapter<"starfield", StarfieldLa
       textureSlots: Object.fromEntries(
         Array.from(sampleData.entries()).map(([layerId, sample]) => [
           layerId,
-          sample.textureNodes,
+          sample.textureNode,
         ])
       ),
     } satisfies WebGpuStarfieldLayerSampleNodes;
@@ -2690,7 +2696,7 @@ function createWebGpuLayerRuntime(
   direction: unknown,
   imageTextures: Map<string, THREE.Texture>,
   starfieldTextures: Map<string, THREE.Texture>,
-  starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>
+  _starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>
 ): WebGpuCompositionRuntime {
   const adapters = new Map<string, WebGpuLayerAdapterRuntime>();
   const editorProjectionByLayerId = new Map<string, { uv: unknown; valid: unknown }>();
@@ -2705,7 +2711,7 @@ function createWebGpuLayerRuntime(
       .createSampleNodes?.({
         bindings,
         direction,
-        imageTextures: adapter.type === "starfield" ? starfieldPatchTextures as unknown as Map<string, THREE.Texture> : imageTextures,
+        imageTextures: adapter.type === "starfield" ? starfieldTextures : imageTextures,
         uniforms,
       });
     const bindingRuntime: WebGpuLayerAdapterRuntime = {
@@ -3718,11 +3724,6 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   }
 
   private refreshStarfieldTextureBindings() {
-    if (resolveRenderMode(this.#renderMode, this.#renderer) === "live-webgpu") {
-      this.syncStarfieldPatchOverlay();
-      return;
-    }
-
     this.material.userData.applyStarfieldTextures?.(this.#starfieldTextures);
   }
 
@@ -3904,26 +3905,16 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         return;
       }
 
-      if (resolveRenderMode(this.#renderMode, this.#renderer) === "live-webgpu") {
-        const patchTextures = this.#starfieldGpuBakeService.bakePatchTextures(
-          node.params,
-          currentTextureKey
-        );
-
-        this.#starfieldPatchTextures.set(layerId, patchTextures);
-        this.#starfieldTextureKeys.set(layerId, currentTextureKey);
-      } else {
-        const nextTexture = this.#starfieldGpuBakeService.bakeTexture(
-          node.params,
-          currentTextureKey
-        );
-        const previousTexture = this.#starfieldTextures.get(layerId);
-        if (previousTexture && previousTexture !== nextTexture) {
-          disposeStarfieldTexture(previousTexture);
-        }
-        this.#starfieldTextures.set(layerId, nextTexture);
-        this.#starfieldTextureKeys.set(layerId, currentTextureKey);
+      const nextTexture = this.#starfieldGpuBakeService.bakeTexture(
+        node.params,
+        currentTextureKey
+      );
+      const previousTexture = this.#starfieldTextures.get(layerId);
+      if (previousTexture && previousTexture !== nextTexture) {
+        disposeStarfieldTexture(previousTexture);
       }
+      this.#starfieldTextures.set(layerId, nextTexture);
+      this.#starfieldTextureKeys.set(layerId, currentTextureKey);
       this.refreshStarfieldTextureBindings();
       this.dispatchEvent({ type: "starfieldtexturechange" } as never);
     }, 150);
