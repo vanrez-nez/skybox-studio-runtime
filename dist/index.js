@@ -1,37 +1,37 @@
 import * as e from "three";
 import { MeshBasicNodeMaterial as t, NodeMaterial as n } from "three/webgpu";
-import { Fn as r, If as i, Loop as a, PI as o, acos as s, atan as c, attribute as l, cameraPosition as u, clamp as d, cos as f, dot as p, exp as m, float as h, floor as g, int as _, max as v, min as y, mix as b, mod as x, modelViewProjection as S, mx_fractal_noise_float as C, normalize as w, positionGeometry as T, positionWorld as E, pow as D, select as O, sin as k, smoothstep as A, step as j, texture as M, uniform as N, uniformArray as ee, uniformTexture as P, uv as te, varyingProperty as ne, vec2 as F, vec3 as I, vec4 as re, wgslFn as ie } from "three/tsl";
+import { Fn as r, If as i, Loop as a, PI as o, acos as s, atan as c, attribute as l, cameraPosition as u, clamp as d, cos as f, dot as p, exp as m, float as h, floor as g, int as _, max as v, min as y, mix as b, mod as x, modelViewProjection as S, mx_fractal_noise_float as C, normalize as w, positionGeometry as ee, positionWorld as T, pow as E, select as D, sin as te, smoothstep as O, step as k, texture as A, uniform as j, uniformArray as ne, uniformTexture as M, uv as re, varyingProperty as ie, vec2 as N, vec3 as P, vec4 as ae, wgslFn as F } from "three/tsl";
 //#region math.ts
-function L(e, t = 0, n = 1) {
+function I(e, t = 0, n = 1) {
 	return Math.min(n, Math.max(t, e));
 }
-function R(e) {
+function oe(e) {
 	return e <= .04045 ? e / 12.92 : ((e + .055) / 1.055) ** 2.4;
 }
-function z(e) {
-	let t = L(e);
+function L(e) {
+	let t = I(e);
 	return t <= .0031308 ? t * 12.92 : 1.055 * t ** (1 / 2.4) - .055;
 }
-function ae(e) {
+function se(e) {
 	let t = e.trim().replace(/^#/, ""), n = t.length === 3 ? t.split("").map((e) => `${e}${e}`).join("") : t;
 	return /^[0-9a-fA-F]{6}$/.test(n) ? [
 		0,
 		2,
 		4
-	].map((e) => R(Number.parseInt(n.slice(e, e + 2), 16) / 255)) : [
+	].map((e) => oe(Number.parseInt(n.slice(e, e + 2), 16) / 255)) : [
 		1,
 		1,
 		1
 	];
 }
-function oe(e) {
-	return e.map((e) => Math.round(z(e) * 255));
+function ce(e) {
+	return e.map((e) => Math.round(L(e) * 255));
 }
-function se(e) {
+function le(e) {
 	return e <= .25 ? ((16 * e - 12) * e + 4) * e : Math.sqrt(e);
 }
-function ce(e, t, n) {
-	let r = L(t), i = L(n);
+function ue(e, t, n) {
+	let r = I(t), i = I(n);
 	switch (e) {
 		case "multiply": return r * i;
 		case "screen": return r + i - r * i;
@@ -41,108 +41,146 @@ function ce(e, t, n) {
 		case "color-dodge": return r === 0 ? 0 : i === 1 ? 1 : Math.min(1, r / (1 - i));
 		case "color-burn": return r === 1 ? 1 : i === 0 ? 0 : 1 - Math.min(1, (1 - r) / i);
 		case "hard-light": return i <= .5 ? 2 * r * i : r + (2 * i - 1) - r * (2 * i - 1);
-		case "soft-light": return i <= .5 ? r - (1 - 2 * i) * r * (1 - r) : r + (2 * i - 1) * (se(r) - r);
+		case "soft-light": return i <= .5 ? r - (1 - 2 * i) * r * (1 - r) : r + (2 * i - 1) * (le(r) - r);
 		case "difference": return Math.abs(r - i);
 		case "exclusion": return r + i - 2 * r * i;
 		default: return i;
 	}
 }
-function le(e, t, n, r) {
-	let i = L(t), a = L(r);
-	return L(L(ce(e, i, n)) * a + i * (1 - a));
+function de(e, t, n, r) {
+	let i = I(t), a = I(r);
+	return I(I(ue(e, i, n)) * a + i * (1 - a));
 }
-function ue(e, t, n, r) {
+function fe(e, t, n, r) {
 	return [
-		le(r, e[0], t[0], n),
-		le(r, e[1], t[1], n),
-		le(r, e[2], t[2], n)
+		de(r, e[0], t[0], n),
+		de(r, e[1], t[1], n),
+		de(r, e[2], t[2], n)
 	];
 }
-function de(e) {
+function pe(e) {
 	let t = 2166136261;
 	for (let n = 0; n < e.length; n += 1) t ^= e.charCodeAt(n), t = Math.imul(t, 16777619);
 	return (t >>> 0).toString(36);
 }
 //#endregion
 //#region manifest.ts
-var B = { type: "box" };
-function fe(e) {
+var R = { type: "box" };
+function me(e) {
 	return e.version === 2 ? {
 		...e,
-		geometry: e.geometry ?? B
+		geometry: e.geometry ?? R
 	} : {
 		composition: e.composition,
-		geometry: B,
+		geometry: R,
 		nodes: e.layers.map((e) => ({ ...e })),
 		version: 2
 	};
 }
 //#endregion
+//#region layer-addons/registry.ts
+var he = /* @__PURE__ */ new Map();
+function ge(e) {
+	let t = he.get(e.type);
+	he.set(e.type, {
+		...t ?? { type: e.type },
+		...e
+	});
+}
+function _e(e) {
+	return he.get(e);
+}
+function ve() {
+	return Array.from(he.values());
+}
+function ye(e) {
+	return he.has(e);
+}
+//#endregion
+//#region layer-addons/cpu-sampling.ts
+var be = Math.PI * 2;
+function xe(e, t) {
+	let n = (e - .5) * be, r = (.5 - t) * Math.PI, i = Math.cos(r);
+	return [
+		i * Math.cos(n),
+		Math.sin(r),
+		i * Math.sin(n)
+	];
+}
+function Se(e, t) {
+	let n = (e - .5) * be, r = (t - .5) * Math.PI, i = Math.cos(r);
+	return [
+		i * Math.cos(n),
+		Math.sin(r),
+		i * Math.sin(n)
+	];
+}
+//#endregion
 //#region image-placement-transform.ts
-var pe = [
+var Ce = [
 	0,
 	1,
 	0
-], me = [
+], we = [
 	0,
 	0,
 	-1
-], he = [
+], Te = [
 	1,
 	0,
 	0
-], ge = [
+], Ee = [
 	0,
 	1,
 	0
-], _e = 89.9;
-function ve(e, t, n) {
+], De = 89.9;
+function Oe(e, t, n) {
 	return Math.min(n, Math.max(t, e));
 }
-function ye(e) {
+function ke(e) {
 	return e * Math.PI / 180;
 }
-function be(e) {
+function Ae(e) {
 	return e * 180 / Math.PI;
 }
-function xe(e) {
+function je(e) {
 	return ((e + 180) % 360 + 360) % 360 - 180;
 }
-function Se(e) {
+function Me(e) {
 	return (Math.round(e) % 360 + 360) % 360;
 }
-function Ce(e, t) {
+function Ne(e, t) {
 	return e[0] * t[0] + e[1] * t[1] + e[2] * t[2];
 }
-function we(e, t) {
+function Pe(e, t) {
 	return [
 		e[0] - t[0],
 		e[1] - t[1],
 		e[2] - t[2]
 	];
 }
-function Te(e, t) {
+function Fe(e, t) {
 	return [
 		e[0] * t,
 		e[1] * t,
 		e[2] * t
 	];
 }
-function Ee(e, t) {
+function Ie(e, t) {
 	return [
 		e[0] + t[0],
 		e[1] + t[1],
 		e[2] + t[2]
 	];
 }
-function De(e, t) {
+function Le(e, t) {
 	return [
 		e[1] * t[2] - e[2] * t[1],
 		e[2] * t[0] - e[0] * t[2],
 		e[0] * t[1] - e[1] * t[0]
 	];
 }
-function V(e, t = me) {
+function z(e, t = we) {
 	if (Array.isArray(e) && e.length === 3 && e.every((e) => typeof e == "number" && Number.isFinite(e))) {
 		let t = Math.hypot(e[0], e[1], e[2]);
 		if (t > 1e-6) return [
@@ -153,27 +191,27 @@ function V(e, t = me) {
 	}
 	return t;
 }
-function Oe(e, t, n) {
-	let r = ye(n), i = Math.cos(r), a = Math.sin(r), o = V(t);
-	return V(Ee(Ee(Te(e, i), Te(De(o, e), a)), Te(o, Ce(o, e) * (1 - i))), e);
+function Re(e, t, n) {
+	let r = ke(n), i = Math.cos(r), a = Math.sin(r), o = z(t);
+	return z(Ie(Ie(Fe(e, i), Fe(Le(o, e), a)), Fe(o, Ne(o, e) * (1 - i))), e);
 }
-function ke(e, t = pe, n = 0) {
-	let r = V(e), i = we(V(t, pe), Te(r, Ce(V(t, pe), r)));
+function ze(e, t = Ce, n = 0) {
+	let r = z(e), i = Pe(z(t, Ce), Fe(r, Ne(z(t, Ce), r)));
 	if (Math.hypot(i[0], i[1], i[2]) < 1e-6) {
 		let e = Math.abs(r[1]) > .98 ? [
 			0,
 			0,
 			1
-		] : pe;
-		i = we(e, Te(r, Ce(e, r)));
+		] : Ce;
+		i = Pe(e, Fe(r, Ne(e, r)));
 	}
-	return i = V(i, ge), {
-		tangentX: Oe(V(De(r, i), he), r, n),
-		tangentY: Oe(i, r, n)
+	return i = z(i, Ee), {
+		tangentX: Re(z(Le(r, i), Te), r, n),
+		tangentY: Re(i, r, n)
 	};
 }
-function Ae({ angularHeight: e, angularWidth: t, baseAngularHeight: n, baseAngularWidth: r, centerDirection: i, rotation: a = 0, upDirection: o = pe }) {
-	let s = V(i), c = Se(a), { tangentX: l, tangentY: u } = ke(s, o, c), d = Math.max(1e-4, e), f = Math.max(1e-4, t);
+function Be({ angularHeight: e, angularWidth: t, baseAngularHeight: n, baseAngularWidth: r, centerDirection: i, rotation: a = 0, upDirection: o = Ce }) {
+	let s = z(i), c = Me(a), { tangentX: l, tangentY: u } = ze(s, o, c), d = Math.max(1e-4, e), f = Math.max(1e-4, t);
 	return {
 		angularHeight: d,
 		angularWidth: f,
@@ -186,9 +224,9 @@ function Ae({ angularHeight: e, angularWidth: t, baseAngularHeight: n, baseAngul
 		tangentY: u
 	};
 }
-function je(e) {
-	let t = e, n = V(t?.centerDirection ?? t?.normal ?? t?.center, me), r = Array.isArray(t?.center) ? Math.max(1e-4, Math.hypot(t.center[0], t.center[1], t.center[2])) : 1, i = typeof t?.angularWidth == "number" ? t.angularWidth : 2 * Math.atan(Math.max(1e-4, t?.width ?? .4) / (2 * r)), a = typeof t?.angularHeight == "number" ? t.angularHeight : 2 * Math.atan(Math.max(1e-4, t?.height ?? .3) / (2 * r));
-	return Ae({
+function Ve(e) {
+	let t = e, n = z(t?.centerDirection ?? t?.normal ?? t?.center, we), r = Array.isArray(t?.center) ? Math.max(1e-4, Math.hypot(t.center[0], t.center[1], t.center[2])) : 1, i = typeof t?.angularWidth == "number" ? t.angularWidth : 2 * Math.atan(Math.max(1e-4, t?.width ?? .4) / (2 * r)), a = typeof t?.angularHeight == "number" ? t.angularHeight : 2 * Math.atan(Math.max(1e-4, t?.height ?? .3) / (2 * r));
+	return Be({
 		angularHeight: a,
 		angularWidth: i,
 		baseAngularHeight: typeof t?.baseAngularHeight == "number" ? t.baseAngularHeight : a,
@@ -197,54 +235,54 @@ function je(e) {
 		rotation: typeof t?.rotation == "number" ? t.rotation : 0
 	});
 }
-function Me(e) {
-	let t = V(e.centerDirection);
+function He(e) {
+	let t = z(e.centerDirection);
 	return {
-		x: xe(be(Math.atan2(t[0], -t[2]))),
-		y: be(Math.asin(ve(t[1], -1, 1)))
+		x: je(Ae(Math.atan2(t[0], -t[2]))),
+		y: Ae(Math.asin(Oe(t[1], -1, 1)))
 	};
 }
-function Ne(e) {
-	let t = ye(e.x), n = ye(ve(e.y, -89.9, _e)), r = Math.cos(n);
-	return V([
+function Ue(e) {
+	let t = ke(e.x), n = ke(Oe(e.y, -89.9, De)), r = Math.cos(n);
+	return z([
 		Math.sin(t) * r,
 		Math.sin(n),
 		-Math.cos(t) * r
 	]);
 }
-function Pe(e, t, n) {
-	let r = je(e);
-	return Ae({
+function We(e, t, n) {
+	let r = Ve(e);
+	return Be({
 		angularHeight: r.angularHeight,
 		angularWidth: r.angularWidth,
 		baseAngularHeight: r.baseAngularHeight,
 		baseAngularWidth: r.baseAngularWidth,
-		centerDirection: Ne(t),
+		centerDirection: Ue(t),
 		rotation: r.rotation,
 		upDirection: n?.upDirection
 	});
 }
-function Fe(e) {
-	let t = je(e);
+function Ge(e) {
+	let t = Ve(e);
 	return {
 		x: t.angularWidth / t.baseAngularWidth,
 		y: t.angularHeight / t.baseAngularHeight
 	};
 }
-function Ie(e, t) {
-	let n = je(e);
+function Ke(e, t) {
+	let n = Ve(e);
 	return {
 		...n,
 		angularHeight: Math.max(1e-4, n.baseAngularHeight * Math.max(1e-4, t.y)),
 		angularWidth: Math.max(1e-4, n.baseAngularWidth * Math.max(1e-4, t.x))
 	};
 }
-function Le(e) {
-	return je(e).rotation;
+function qe(e) {
+	return Ve(e).rotation;
 }
-function Re(e, t) {
-	let n = je(e);
-	return Ae({
+function Je(e, t) {
+	let n = Ve(e);
+	return Be({
 		angularHeight: n.angularHeight,
 		angularWidth: n.angularWidth,
 		baseAngularHeight: n.baseAngularHeight,
@@ -253,10 +291,10 @@ function Re(e, t) {
 		rotation: t
 	});
 }
-function ze(e, t) {
-	let n = je(t), r = V(e), i = Ce(r, n.centerDirection);
+function Ye(e, t) {
+	let n = Ve(t), r = z(e), i = Ne(r, n.centerDirection);
 	if (i <= 0) return null;
-	let a = Ce(r, n.tangentX) / i, o = Ce(r, n.tangentY) / i, s = Math.tan(n.angularWidth / 2), c = Math.tan(n.angularHeight / 2);
+	let a = Ne(r, n.tangentX) / i, o = Ne(r, n.tangentY) / i, s = Math.tan(n.angularWidth / 2), c = Math.tan(n.angularHeight / 2);
 	return s <= 0 || c <= 0 || a < -s || a > s || o < -c || o > c ? null : {
 		u: a / (2 * s) + .5,
 		v: .5 - o / (2 * c)
@@ -264,20 +302,20 @@ function ze(e, t) {
 }
 //#endregion
 //#region spot-transform.ts
-var Be = Math.PI / 12;
-function H(e, t, n) {
+var Xe = Math.PI / 12;
+function B(e, t, n) {
 	return Math.min(n, Math.max(t, e));
 }
-function Ve(e) {
+function Ze(e) {
 	return e * 180 / Math.PI;
 }
-function He(e) {
+function Qe(e) {
 	return ((e + 180) % 360 + 360) % 360 - 180;
 }
-function Ue() {
+function $e() {
 	return {
-		angularRadius: Be,
-		baseAngularRadius: Be,
+		angularRadius: Xe,
+		baseAngularRadius: Xe,
 		brightness: 1,
 		centerDirection: [
 			0,
@@ -315,82 +353,82 @@ function Ue() {
 		}]
 	};
 }
-function We(e) {
-	let t = e, n = Ue(), r = Math.max(1e-4, typeof t?.baseAngularRadius == "number" ? t.baseAngularRadius : n.baseAngularRadius);
+function et(e) {
+	let t = e, n = $e(), r = Math.max(1e-4, typeof t?.baseAngularRadius == "number" ? t.baseAngularRadius : n.baseAngularRadius);
 	return {
 		angularRadius: Math.max(1e-4, typeof t?.angularRadius == "number" ? t.angularRadius : r),
 		baseAngularRadius: r,
 		brightness: Math.max(0, typeof t?.brightness == "number" ? t.brightness : n.brightness),
-		centerDirection: V(t?.centerDirection, n.centerDirection),
+		centerDirection: z(t?.centerDirection, n.centerDirection),
 		colorMode: t?.colorMode === "gradient" ? "gradient" : "light",
-		coreRadius: H(typeof t?.coreRadius == "number" ? t.coreRadius : n.coreRadius, .01, .7),
-		coreSoftness: H(typeof t?.coreSoftness == "number" ? t.coreSoftness : n.coreSoftness, .4, 6),
-		dispersion: H(typeof t?.dispersion == "number" ? t.dispersion : n.dispersion, 0, 1),
-		dogSpread: H(typeof t?.dogSpread == "number" ? t.dogSpread : n.dogSpread, .015, .18),
-		dogStrength: H(typeof t?.dogStrength == "number" ? t.dogStrength : n.dogStrength, 0, 1.8),
-		dogStretch: H(typeof t?.dogStretch == "number" ? t.dogStretch : n.dogStretch, 0, .55),
-		glareSize: H(typeof t?.glareSize == "number" ? t.glareSize : n.glareSize, .03, 1.1),
-		glareStrength: H(typeof t?.glareStrength == "number" ? t.glareStrength : n.glareStrength, 0, 1.4),
-		glow: H(typeof t?.glow == "number" ? t.glow : n.glow, 0, 1),
-		glowSize: H(typeof t?.glowSize == "number" ? t.glowSize : n.glowSize, .05, 1.4),
-		glowStrength: H(typeof t?.glowStrength == "number" ? t.glowStrength : n.glowStrength, 0, 1),
-		halo: H(typeof t?.halo == "number" ? t.halo : n.halo, 0, 1),
-		haloInnerWidth: H(typeof t?.haloInnerWidth == "number" ? t.haloInnerWidth : n.haloInnerWidth, .003, .09),
-		haloOuterWidth: H(typeof t?.haloOuterWidth == "number" ? t.haloOuterWidth : n.haloOuterWidth, .01, .24),
-		haloRadius: H(typeof t?.haloRadius == "number" ? t.haloRadius : n.haloRadius, .04, 1),
-		haloStrength: H(typeof t?.haloStrength == "number" ? t.haloStrength : n.haloStrength, 0, 1.4),
+		coreRadius: B(typeof t?.coreRadius == "number" ? t.coreRadius : n.coreRadius, .01, .7),
+		coreSoftness: B(typeof t?.coreSoftness == "number" ? t.coreSoftness : n.coreSoftness, .4, 6),
+		dispersion: B(typeof t?.dispersion == "number" ? t.dispersion : n.dispersion, 0, 1),
+		dogSpread: B(typeof t?.dogSpread == "number" ? t.dogSpread : n.dogSpread, .015, .18),
+		dogStrength: B(typeof t?.dogStrength == "number" ? t.dogStrength : n.dogStrength, 0, 1.8),
+		dogStretch: B(typeof t?.dogStretch == "number" ? t.dogStretch : n.dogStretch, 0, .55),
+		glareSize: B(typeof t?.glareSize == "number" ? t.glareSize : n.glareSize, .03, 1.1),
+		glareStrength: B(typeof t?.glareStrength == "number" ? t.glareStrength : n.glareStrength, 0, 1.4),
+		glow: B(typeof t?.glow == "number" ? t.glow : n.glow, 0, 1),
+		glowSize: B(typeof t?.glowSize == "number" ? t.glowSize : n.glowSize, .05, 1.4),
+		glowStrength: B(typeof t?.glowStrength == "number" ? t.glowStrength : n.glowStrength, 0, 1),
+		halo: B(typeof t?.halo == "number" ? t.halo : n.halo, 0, 1),
+		haloInnerWidth: B(typeof t?.haloInnerWidth == "number" ? t.haloInnerWidth : n.haloInnerWidth, .003, .09),
+		haloOuterWidth: B(typeof t?.haloOuterWidth == "number" ? t.haloOuterWidth : n.haloOuterWidth, .01, .24),
+		haloRadius: B(typeof t?.haloRadius == "number" ? t.haloRadius : n.haloRadius, .04, 1),
+		haloStrength: B(typeof t?.haloStrength == "number" ? t.haloStrength : n.haloStrength, 0, 1.4),
 		lightColor: typeof t?.lightColor == "string" ? t.lightColor : n.lightColor,
 		stops: (t?.stops?.length ? t.stops : n.stops).map((e) => ({
 			color: e.color,
-			location: H(e.location, 0, 100),
-			midpoint: H(e.midpoint ?? 50, 1, 99),
-			opacity: H(e.opacity, 0, 100)
+			location: B(e.location, 0, 100),
+			midpoint: B(e.midpoint ?? 50, 1, 99),
+			opacity: B(e.opacity, 0, 100)
 		}))
 	};
 }
-function Ge(e) {
-	let t = V(e.centerDirection);
+function tt(e) {
+	let t = z(e.centerDirection);
 	return {
-		x: He(Ve(Math.atan2(t[0], -t[2]))),
-		y: Ve(Math.asin(H(t[1], -1, 1)))
+		x: Qe(Ze(Math.atan2(t[0], -t[2]))),
+		y: Ze(Math.asin(B(t[1], -1, 1)))
 	};
 }
-function Ke(e, t) {
+function nt(e, t) {
 	return {
-		...We(e),
-		centerDirection: Ne({
+		...et(e),
+		centerDirection: Ue({
 			x: t.x,
-			y: H(t.y, -_e, _e)
+			y: B(t.y, -De, De)
 		})
 	};
 }
-function qe(e) {
-	let t = We(e);
+function rt(e) {
+	let t = et(e);
 	return t.angularRadius / t.baseAngularRadius;
 }
-function Je(e, t) {
-	let n = We(e);
+function it(e, t) {
+	let n = et(e);
 	return {
 		...n,
 		angularRadius: Math.max(1e-4, n.baseAngularRadius * Math.max(1e-4, t))
 	};
 }
-function Ye(e, t) {
-	let n = We(t), r = V(e), i = V(n.centerDirection), a = r[0] * i[0] + r[1] * i[1] + r[2] * i[2];
-	return Math.acos(H(a, -1, 1)) <= n.angularRadius;
+function at(e, t) {
+	let n = et(t), r = z(e), i = z(n.centerDirection), a = r[0] * i[0] + r[1] * i[1] + r[2] * i[2];
+	return Math.acos(B(a, -1, 1)) <= n.angularRadius;
 }
 //#endregion
 //#region starfield-static.ts
-var U = Math.PI * 2, Xe = 8, Ze = 1e3, Qe = 2, $e = 128, et = 64, tt = 4, nt = 8, rt = 12, it = 2048 * 1024 * 1024, at = 512 * 1024 * 1024, ot = 8, st = 1.75, ct = 3.25, lt = 1, ut = 1.5, dt = 8, ft = 2048, pt = 5, mt = 12, ht = .35, gt = .25, _t = [
+var V = Math.PI * 2, ot = 8, st = 1e3, ct = 2, lt = 128, ut = 64, dt = 4, ft = 8, pt = 12, mt = 2048 * 1024 * 1024, ht = 512 * 1024 * 1024, gt = 8, _t = 1.75, vt = 3.25, yt = 1, bt = 1.5, xt = 8, St = 2048, Ct = 5, wt = 12, Tt = .35, Et = .25, Dt = [
 	1,
 	2,
 	4,
 	8,
 	16
-], vt = 1024, yt = 8192, bt = "medium", xt = {
-	high: { budgetBytes: it },
-	medium: { budgetBytes: at }
-}, W = {
+], Ot = 1024, kt = 8192, At = "medium", jt = {
+	high: { budgetBytes: mt },
+	medium: { budgetBytes: ht }
+}, H = {
 	uBright: 2,
 	uBrightVar: .85,
 	uColorVar: 1,
@@ -402,7 +440,7 @@ var U = Math.PI * 2, Xe = 8, Ze = 1e3, Qe = 2, $e = 128, et = 64, tt = 4, nt = 8
 	uSeed: 1,
 	uSizeVar: .7,
 	uStarSize: 1.55
-}, G = {
+}, U = {
 	uBaseScale: 10,
 	uCloudCore: [
 		.025,
@@ -433,7 +471,7 @@ var U = Math.PI * 2, Xe = 8, Ze = 1e3, Qe = 2, $e = 128, et = 64, tt = 4, nt = 8
 	uOpacity: .21,
 	uSeed: 2.4,
 	uSoftness: .596
-}, St = [
+}, Mt = [
 	{
 		dir: [
 			.26,
@@ -482,47 +520,47 @@ var U = Math.PI * 2, Xe = 8, Ze = 1e3, Qe = 2, $e = 128, et = 64, tt = 4, nt = 8
 			.2
 		]
 	}
-], K = {
+], W = {
 	amplitude: .045,
-	anchors: St.map((e) => ({
-		color: kt(e.color),
-		...Ft(e.dir)
+	anchors: Mt.map((e) => ({
+		color: zt(e.color),
+		...Gt(e.dir)
 	})),
 	frequency: 2.2,
 	mode: "inverse-distance",
 	power: 2
-}, Ct = {
+}, Nt = {
 	altitudeCenterDeg: 0,
 	altitudeSpanDeg: 180,
 	azimuthCenterDeg: 0,
 	azimuthSpanDeg: 360
-}, wt = {
-	clip: Ct,
-	nebula: G,
-	nebulaField: K,
-	quality: bt,
-	stars: W
-}, Tt = /* @__PURE__ */ new Map();
-function q(e, t, n = -Infinity, r = Infinity) {
-	return L(Number.isFinite(Number(e)) ? Number(e) : t, n, r);
+}, Pt = {
+	clip: Nt,
+	nebula: U,
+	nebulaField: W,
+	quality: At,
+	stars: H
+}, Ft = /* @__PURE__ */ new Map();
+function G(e, t, n = -Infinity, r = Infinity) {
+	return I(Number.isFinite(Number(e)) ? Number(e) : t, n, r);
 }
-function Et(e) {
-	return e === "high" ? "high" : bt;
+function It(e) {
+	return e === "high" ? "high" : At;
 }
-function Dt(e) {
-	return xt[Et(e)];
+function Lt(e) {
+	return jt[It(e)];
 }
-function Ot(e, t) {
+function Rt(e, t) {
 	return Array.isArray(e) ? [
-		q(e[0], t[0], 0, 1),
-		q(e[1], t[1], 0, 1),
-		q(e[2], t[2], 0, 1)
+		G(e[0], t[0], 0, 1),
+		G(e[1], t[1], 0, 1),
+		G(e[2], t[2], 0, 1)
 	] : [...t];
 }
-function kt(e) {
-	return `#${e.map((e) => Math.round(L(e) * 255).toString(16).padStart(2, "0")).join("")}`;
+function zt(e) {
+	return `#${e.map((e) => Math.round(I(e) * 255).toString(16).padStart(2, "0")).join("")}`;
 }
-function At(e) {
+function Bt(e) {
 	let t = e.replace("#", "");
 	return /^[0-9a-fA-F]{6}$/.test(t) ? [
 		0,
@@ -534,7 +572,7 @@ function At(e) {
 		1
 	];
 }
-function jt(e) {
+function Vt(e) {
 	let t = Math.hypot(e[0], e[1], e[2]);
 	return t <= 1e-5 ? [
 		0,
@@ -546,22 +584,22 @@ function jt(e) {
 		e[2] / t
 	];
 }
-function Mt(e, t) {
-	return jt(Array.isArray(e) ? [
-		q(e[0], t[0]),
-		q(e[1], t[1]),
-		q(e[2], t[2])
+function Ht(e, t) {
+	return Vt(Array.isArray(e) ? [
+		G(e[0], t[0]),
+		G(e[1], t[1]),
+		G(e[2], t[2])
 	] : t);
 }
-function Nt(e, t) {
-	let n = (e - .5) * U, r = L(t, 0, 1) * Math.PI, i = Math.sin(r);
-	return jt([
+function Ut(e, t) {
+	let n = (e - .5) * V, r = I(t, 0, 1) * Math.PI, i = Math.sin(r);
+	return Vt([
 		i * Math.sin(n),
 		Math.cos(r),
 		i * Math.cos(n)
 	]);
 }
-function Pt(e, t) {
+function Wt(e, t) {
 	let n = (t % 2 + 2) % 2, r = +(n >= 1), i = e + r * .5, a = r ? 2 - n : n;
 	return {
 		u: i,
@@ -570,8 +608,8 @@ function Pt(e, t) {
 		y: a
 	};
 }
-function Ft(e) {
-	let t = jt(e), n = ((Math.atan2(t[0], t[2]) / U + .5) % 1 + 1) % 1, r = Math.acos(L(t[1], -1, 1)) / Math.PI;
+function Gt(e) {
+	let t = Vt(e), n = ((Math.atan2(t[0], t[2]) / V + .5) % 1 + 1) % 1, r = Math.acos(I(t[1], -1, 1)) / Math.PI;
 	return {
 		u: n,
 		v: r,
@@ -579,20 +617,20 @@ function Ft(e) {
 		y: r
 	};
 }
-function It(e = {}) {
-	let t = Number(e.azimuthCenterDeg) || 0, n = q(e.azimuthSpanDeg, Ct.azimuthSpanDeg, 1, 360), r = q(e.altitudeSpanDeg, Ct.altitudeSpanDeg, 1, 180), i = Math.max(0, 90 - r * .5);
+function Kt(e = {}) {
+	let t = Number(e.azimuthCenterDeg) || 0, n = G(e.azimuthSpanDeg, Nt.azimuthSpanDeg, 1, 360), r = G(e.altitudeSpanDeg, Nt.altitudeSpanDeg, 1, 180), i = Math.max(0, 90 - r * .5);
 	return {
-		altitudeCenterDeg: q(e.altitudeCenterDeg, Ct.altitudeCenterDeg, -i, i),
+		altitudeCenterDeg: G(e.altitudeCenterDeg, Nt.altitudeCenterDeg, -i, i),
 		altitudeSpanDeg: r,
 		azimuthCenterDeg: t,
 		azimuthSpanDeg: n
 	};
 }
-function Lt(e) {
-	let t = It(e), n = t.altitudeCenterDeg + t.altitudeSpanDeg * .5, r = t.altitudeCenterDeg - t.altitudeSpanDeg * .5, i = t.azimuthSpanDeg >= 359.999, a = i ? 0 : .5 + (t.azimuthCenterDeg - t.azimuthSpanDeg * .5) / 360, o = i ? 1 : t.azimuthSpanDeg / 360, s = (90 - n) / 180, c = (n - r) / 180;
+function qt(e) {
+	let t = Kt(e), n = t.altitudeCenterDeg + t.altitudeSpanDeg * .5, r = t.altitudeCenterDeg - t.altitudeSpanDeg * .5, i = t.azimuthSpanDeg >= 359.999, a = i ? 0 : .5 + (t.azimuthCenterDeg - t.azimuthSpanDeg * .5) / 360, o = i ? 1 : t.azimuthSpanDeg / 360, s = (90 - n) / 180, c = (n - r) / 180;
 	return {
 		altitudeSpanRad: c * Math.PI,
-		azimuthSpanRad: o * U,
+		azimuthSpanRad: o * V,
 		config: t,
 		fraction: Math.max(1e-4, o * c),
 		uvMin: {
@@ -606,27 +644,27 @@ function Lt(e) {
 		wrapsHorizontally: i
 	};
 }
-function Rt(e, t = $e) {
+function Jt(e, t = lt) {
 	return Math.max(t, Math.ceil(Math.max(1, e) / t) * t);
 }
-function zt(e, t) {
-	return Math.max(1, Math.min(t, Rt(e)));
+function Yt(e, t) {
+	return Math.max(1, Math.min(t, Jt(e)));
 }
-function Bt(e, t, n) {
+function Xt(e, t, n) {
 	return Math.max(0, Math.round(e) * Math.round(t) * n);
 }
-function Vt({ accumulationBytes: e, patchCount: t, residentBytesPerPixel: n = tt, storageHeight: r, storageWidth: i, supersample: a }) {
-	let o = Bt(i, r, n) * t, s = Bt(i * a, r * a, e);
+function Zt({ accumulationBytes: e, patchCount: t, residentBytesPerPixel: n = dt, storageHeight: r, storageWidth: i, supersample: a }) {
+	let o = Xt(i, r, n) * t, s = Xt(i * a, r * a, e);
 	return {
 		peakBytes: o + s,
 		residentBytes: o,
 		scratchBytes: s
 	};
 }
-function Ht({ accumulationBytes: e, budgetBytes: t, maxTextureSize: n, patchCount: r, residentBytesPerPixel: i = tt, storageHeight: a, storageWidth: o }) {
-	let s = Math.max(1, Math.min(ot, Math.floor(n / Math.max(1, o)), Math.floor(n / Math.max(1, a))));
+function Qt({ accumulationBytes: e, budgetBytes: t, maxTextureSize: n, patchCount: r, residentBytesPerPixel: i = dt, storageHeight: a, storageWidth: o }) {
+	let s = Math.max(1, Math.min(gt, Math.floor(n / Math.max(1, o)), Math.floor(n / Math.max(1, a))));
 	for (let n = s; n >= 1; --n) {
-		let s = Vt({
+		let s = Zt({
 			accumulationBytes: e,
 			patchCount: r,
 			residentBytesPerPixel: i,
@@ -640,7 +678,7 @@ function Ht({ accumulationBytes: e, budgetBytes: t, maxTextureSize: n, patchCoun
 			supersample: n
 		};
 	}
-	let c = Vt({
+	let c = Zt({
 		accumulationBytes: e,
 		patchCount: r,
 		residentBytesPerPixel: i,
@@ -654,10 +692,10 @@ function Ht({ accumulationBytes: e, budgetBytes: t, maxTextureSize: n, patchCoun
 		supersample: 1
 	};
 }
-function Ut({ accumulationBytes: e, budgetBytes: t, coverage: n, grid: r, idealVirtualHeight: i, idealVirtualWidth: a, maxQualityScale: o = 1, maxTextureSize: s, residentBytesPerPixel: c = tt }) {
-	let l = Lt(n), u = r === 1 ? 0 : et, d = Math.max(1, s - u * 2), f = Math.max(1, s - u * 2), p = Math.max(1, a / r), m = Math.max(1, i / r), h = Math.min(1, Math.max(.001, o), d / p, f / m), g = r * r, _ = Math.max(.001, h), v = null;
+function $t({ accumulationBytes: e, budgetBytes: t, coverage: n, grid: r, idealVirtualHeight: i, idealVirtualWidth: a, maxQualityScale: o = 1, maxTextureSize: s, residentBytesPerPixel: c = dt }) {
+	let l = qt(n), u = r === 1 ? 0 : ut, d = Math.max(1, s - u * 2), f = Math.max(1, s - u * 2), p = Math.max(1, a / r), m = Math.max(1, i / r), h = Math.min(1, Math.max(.001, o), d / p, f / m), g = r * r, _ = Math.max(.001, h), v = null;
 	for (let n = 0; n < 18; n += 1) {
-		let n = zt(p * _, d), r = zt(m * _, f), i = n + u * 2, a = r + u * 2, o = Ht({
+		let n = Yt(p * _, d), r = Yt(m * _, f), i = n + u * 2, a = r + u * 2, o = Qt({
 			accumulationBytes: e,
 			budgetBytes: t,
 			maxTextureSize: s,
@@ -675,13 +713,13 @@ function Ut({ accumulationBytes: e, budgetBytes: t, coverage: n, grid: r, idealV
 			storageWidth: i
 		}, o.peakBytes <= t) break;
 		let l = _ * Math.sqrt(t / Math.max(o.peakBytes, 1)) * .96;
-		if (Math.abs(l - _) < .001 || n <= $e || r <= $e) break;
+		if (Math.abs(l - _) < .001 || n <= lt || r <= lt) break;
 		_ = Math.max(.001, l);
 	}
 	if (!v) {
-		let n = zt(p * _, d), r = zt(m * _, f), i = n + u * 2, a = r + u * 2;
+		let n = Yt(p * _, d), r = Yt(m * _, f), i = n + u * 2, a = r + u * 2;
 		v = {
-			allocation: Ht({
+			allocation: Qt({
 				accumulationBytes: e,
 				budgetBytes: t,
 				maxTextureSize: s,
@@ -707,20 +745,20 @@ function Ut({ accumulationBytes: e, budgetBytes: t, coverage: n, grid: r, idealV
 		...v
 	};
 }
-function Wt(e, t, n) {
+function en(e, t, n) {
 	return {
 		x: e.coverageUvMin.x + t / e.columns * e.coverageUvSize.x,
 		y: e.coverageUvMin.y + n / e.rows * e.coverageUvSize.y
 	};
 }
-function Gt(e) {
+function tn(e) {
 	return {
 		x: e.coverageUvSize.x / e.columns,
 		y: e.coverageUvSize.y / e.rows
 	};
 }
-function Kt(e, t, n, r) {
-	let i = Wt(e, t, n), a = Gt(e), o = Math.min(r, Math.max(1, Math.round(e.contentWidth))), s = Math.min(r, Math.max(1, Math.round(e.contentHeight))), c = Math.min(r, o + e.guard * 2), l = Math.min(r, s + e.guard * 2), u = Math.max(0, (c - o) * .5), d = Math.max(0, (l - s) * .5), f = a.x * (u / o), p = a.y * (d / s), m = e.wrapsHorizontally && e.columns === 1;
+function nn(e, t, n, r) {
+	let i = en(e, t, n), a = tn(e), o = Math.min(r, Math.max(1, Math.round(e.contentWidth))), s = Math.min(r, Math.max(1, Math.round(e.contentHeight))), c = Math.min(r, o + e.guard * 2), l = Math.min(r, s + e.guard * 2), u = Math.max(0, (c - o) * .5), d = Math.max(0, (l - s) * .5), f = a.x * (u / o), p = a.y * (d / s), m = e.wrapsHorizontally && e.columns === 1;
 	return {
 		hasBottomNeighbor: n < e.rows - 1,
 		hasLeftNeighbor: e.wrapsHorizontally || t > 0,
@@ -759,11 +797,11 @@ function Kt(e, t, n, r) {
 		y: n
 	};
 }
-function qt({ accumulationBytes: e = nt, budgetBytes: t = it, clip: n, height: r, maxTextureSize: i = 4096, residentBytesPerPixel: a = rt, width: o }) {
-	let s = Lt(n), c = Math.max(1, o * s.uvSize.x), l = Math.max(1, r * s.uvSize.y), u = Math.max(1, o), d = Math.max(1, r), f = (e, t) => _t.find((n) => {
-		let r = Math.max(1, i - (n === 1 ? 0 : et) * 2);
+function rn({ accumulationBytes: e = ft, budgetBytes: t = mt, clip: n, height: r, maxTextureSize: i = 4096, residentBytesPerPixel: a = pt, width: o }) {
+	let s = qt(n), c = Math.max(1, o * s.uvSize.x), l = Math.max(1, r * s.uvSize.y), u = Math.max(1, o), d = Math.max(1, r), f = (e, t) => Dt.find((n) => {
+		let r = Math.max(1, i - (n === 1 ? 0 : ut) * 2);
 		return e / n <= r && t / n <= r;
-	}) ?? _t[_t.length - 1], p = Ut({
+	}) ?? Dt[Dt.length - 1], p = $t({
 		accumulationBytes: e,
 		budgetBytes: t,
 		grid: f(u, d),
@@ -771,7 +809,7 @@ function qt({ accumulationBytes: e = nt, budgetBytes: t = it, clip: n, height: r
 		idealVirtualWidth: u,
 		maxTextureSize: i,
 		residentBytesPerPixel: a
-	}), m = f(c, l), h = Ut({
+	}), m = f(c, l), h = $t({
 		accumulationBytes: e,
 		budgetBytes: t,
 		coverage: s.config,
@@ -830,138 +868,138 @@ function qt({ accumulationBytes: e = nt, budgetBytes: t = it, clip: n, height: r
 		virtualWidth: h.contentWidth * m,
 		wrapsHorizontally: s.wrapsHorizontally
 	}, y = [];
-	for (let e = 0; e < m; e += 1) for (let t = 0; t < m; t += 1) y.push(Kt(v, t, e, i));
+	for (let e = 0; e < m; e += 1) for (let t = 0; t < m; t += 1) y.push(nn(v, t, e, i));
 	return {
 		...v,
 		descriptors: y
 	};
 }
-function Jt(e) {
+function an(e) {
 	return !!(e && typeof e == "object" && "mode" in e && !("blend" in e));
 }
-function Yt(e) {
-	let t = Array.isArray(e?.anchors) && e.anchors.length ? e.anchors : St;
+function on(e) {
+	let t = Array.isArray(e?.anchors) && e.anchors.length ? e.anchors : Mt;
 	return {
-		amplitude: q(e?.warp?.amp, K.amplitude, 0, .6),
-		anchors: t.slice(0, Xe).map((e, t) => {
-			let n = St[t] ?? St[0], r = Mt(e?.dir, n.dir);
+		amplitude: G(e?.warp?.amp, W.amplitude, 0, .6),
+		anchors: t.slice(0, ot).map((e, t) => {
+			let n = Mt[t] ?? Mt[0], r = Ht(e?.dir, n.dir);
 			return {
-				color: Array.isArray(e?.color) ? kt(Ot(e.color, n.color)) : typeof e?.color == "string" ? e.color : kt(n.color),
-				...Ft(r)
+				color: Array.isArray(e?.color) ? zt(Rt(e.color, n.color)) : typeof e?.color == "string" ? e.color : zt(n.color),
+				...Gt(r)
 			};
 		}),
-		frequency: q(e?.warp?.freq, K.frequency, .3, 4),
+		frequency: G(e?.warp?.freq, W.frequency, .3, 4),
 		mode: e?.blend === "gaussian" ? "gaussian" : "inverse-distance",
-		power: q(e?.power, K.power, .4, 6)
+		power: G(e?.power, W.power, .4, 6)
 	};
 }
-function Xt(e) {
-	if (!Jt(e)) return Yt(e);
-	let t = Array.isArray(e.anchors) && e.anchors.length ? e.anchors : K.anchors;
+function sn(e) {
+	if (!an(e)) return on(e);
+	let t = Array.isArray(e.anchors) && e.anchors.length ? e.anchors : W.anchors;
 	return {
-		amplitude: q(e.amplitude, K.amplitude, 0, .6),
-		anchors: t.slice(0, Xe).map((e, t) => ({
-			color: typeof e?.color == "string" ? e.color : K.anchors[t]?.color ?? "#ffffff",
-			x: q(e?.x, K.anchors[t]?.x ?? .5, 0, 1),
-			y: q(e?.y, K.anchors[t]?.y ?? .5, 0, 1)
+		amplitude: G(e.amplitude, W.amplitude, 0, .6),
+		anchors: t.slice(0, ot).map((e, t) => ({
+			color: typeof e?.color == "string" ? e.color : W.anchors[t]?.color ?? "#ffffff",
+			x: G(e?.x, W.anchors[t]?.x ?? .5, 0, 1),
+			y: G(e?.y, W.anchors[t]?.y ?? .5, 0, 1)
 		})),
-		frequency: q(e.frequency, K.frequency, .3, 4),
+		frequency: G(e.frequency, W.frequency, .3, 4),
 		mode: e.mode === "gaussian" ? "gaussian" : "inverse-distance",
-		power: q(e.power, K.power, .4, 6)
+		power: G(e.power, W.power, .4, 6)
 	};
 }
-function Zt(e = {}) {
-	let t = e.stars ?? W, n = e.nebula ?? G;
+function cn(e = {}) {
+	let t = e.stars ?? H, n = e.nebula ?? U;
 	return {
-		clip: It(e.clip),
+		clip: Kt(e.clip),
 		nebula: {
-			uBaseScale: q(n.uBaseScale, G.uBaseScale, .001, 100),
-			uCloudCore: Ot(n.uCloudCore, G.uCloudCore),
-			uCloudHighlight: Ot(n.uCloudHighlight, G.uCloudHighlight),
-			uCloudShadow: Ot(n.uCloudShadow, G.uCloudShadow),
-			uColorWarpAmp: q(n.uColorWarpAmp, G.uColorWarpAmp, 0, 1),
-			uColorWarpFreq: q(n.uColorWarpFreq, G.uColorWarpFreq, .001, 20),
-			uContrast: q(n.uContrast, G.uContrast, .05, 12),
-			uCoverage: q(n.uCoverage, G.uCoverage, .02, .98),
-			uDensity: q(n.uDensity, G.uDensity, 0, 10),
-			uLightFocus: q(n.uLightFocus, G.uLightFocus, .001, 8),
-			uLightIntensity: q(n.uLightIntensity, G.uLightIntensity, 0, 4),
-			uLightLining: q(n.uLightLining, G.uLightLining, 0, 4),
-			uNebulaExposure: q(n.uNebulaExposure, G.uNebulaExposure, .001, 4),
-			uNebulaStrength: q(n.uNebulaStrength, G.uNebulaStrength, 0, 20),
-			uOctaves: q(n.uOctaves, G.uOctaves, 1, 8),
-			uOpacity: q(n.uOpacity, G.uOpacity, 0, 1),
-			uSeed: q(n.uSeed, G.uSeed),
-			uSoftness: q(n.uSoftness, G.uSoftness, .001, 2)
+			uBaseScale: G(n.uBaseScale, U.uBaseScale, .001, 100),
+			uCloudCore: Rt(n.uCloudCore, U.uCloudCore),
+			uCloudHighlight: Rt(n.uCloudHighlight, U.uCloudHighlight),
+			uCloudShadow: Rt(n.uCloudShadow, U.uCloudShadow),
+			uColorWarpAmp: G(n.uColorWarpAmp, U.uColorWarpAmp, 0, 1),
+			uColorWarpFreq: G(n.uColorWarpFreq, U.uColorWarpFreq, .001, 20),
+			uContrast: G(n.uContrast, U.uContrast, .05, 12),
+			uCoverage: G(n.uCoverage, U.uCoverage, .02, .98),
+			uDensity: G(n.uDensity, U.uDensity, 0, 10),
+			uLightFocus: G(n.uLightFocus, U.uLightFocus, .001, 8),
+			uLightIntensity: G(n.uLightIntensity, U.uLightIntensity, 0, 4),
+			uLightLining: G(n.uLightLining, U.uLightLining, 0, 4),
+			uNebulaExposure: G(n.uNebulaExposure, U.uNebulaExposure, .001, 4),
+			uNebulaStrength: G(n.uNebulaStrength, U.uNebulaStrength, 0, 20),
+			uOctaves: G(n.uOctaves, U.uOctaves, 1, 8),
+			uOpacity: G(n.uOpacity, U.uOpacity, 0, 1),
+			uSeed: G(n.uSeed, U.uSeed),
+			uSoftness: G(n.uSoftness, U.uSoftness, .001, 2)
 		},
-		nebulaField: Xt(e.nebulaField),
-		quality: Et(e.quality),
+		nebulaField: sn(e.nebulaField),
+		quality: It(e.quality),
 		stars: {
-			uBright: q(t.uBright, W.uBright, 0, 8),
-			uBrightVar: q(t.uBrightVar, W.uBrightVar, 0, 1),
-			uColorVar: q(t.uColorVar, W.uColorVar, 0, 1),
-			uDensity: q(t.uDensity, W.uDensity, 0, 2e3),
-			uGlareSize: q(t.uGlareSize, W.uGlareSize, 0, 12),
-			uGlareStr: q(t.uGlareStr, W.uGlareStr, 0, 4),
-			uGlareVar: q(t.uGlareVar, W.uGlareVar, 0, 1),
-			uLargeStarRarity: q(t.uLargeStarRarity, W.uLargeStarRarity, 0, 1),
-			uSeed: q(t.uSeed, W.uSeed),
-			uSizeVar: q(t.uSizeVar, W.uSizeVar, 0, 1),
-			uStarSize: q(t.uStarSize, W.uStarSize, .01, 8)
+			uBright: G(t.uBright, H.uBright, 0, 8),
+			uBrightVar: G(t.uBrightVar, H.uBrightVar, 0, 1),
+			uColorVar: G(t.uColorVar, H.uColorVar, 0, 1),
+			uDensity: G(t.uDensity, H.uDensity, 0, 2e3),
+			uGlareSize: G(t.uGlareSize, H.uGlareSize, 0, 12),
+			uGlareStr: G(t.uGlareStr, H.uGlareStr, 0, 4),
+			uGlareVar: G(t.uGlareVar, H.uGlareVar, 0, 1),
+			uLargeStarRarity: G(t.uLargeStarRarity, H.uLargeStarRarity, 0, 1),
+			uSeed: G(t.uSeed, H.uSeed),
+			uSizeVar: G(t.uSizeVar, H.uSizeVar, 0, 1),
+			uStarSize: G(t.uStarSize, H.uStarSize, .01, 8)
 		}
 	};
 }
-function J(e, t, n) {
+function K(e, t, n) {
 	return e + (t - e) * n;
 }
-function Qt(e, t, n) {
+function ln(e, t, n) {
 	return [
-		J(e[0], t[0], n),
-		J(e[1], t[1], n),
-		J(e[2], t[2], n)
+		K(e[0], t[0], n),
+		K(e[1], t[1], n),
+		K(e[2], t[2], n)
 	];
 }
-function Y(e, t) {
+function q(e, t) {
 	return [
 		e[0] + t[0],
 		e[1] + t[1],
 		e[2] + t[2]
 	];
 }
-function X(e, t) {
+function J(e, t) {
 	return [
 		e[0] * t,
 		e[1] * t,
 		e[2] * t
 	];
 }
-function $t(e, t) {
+function un(e, t) {
 	return [
 		e[0] * t[0],
 		e[1] * t[1],
 		e[2] * t[2]
 	];
 }
-function en(e, t, n) {
-	let r = L((n - e) / Math.max(t - e, 1e-5));
+function dn(e, t, n) {
+	let r = I((n - e) / Math.max(t - e, 1e-5));
 	return r * r * (3 - 2 * r);
 }
-function tn(e, t) {
+function fn(e, t) {
 	return e[0] * t[0] + e[1] * t[1] + e[2] * t[2];
 }
-function nn(e) {
-	return Math.max(0, 2 * (1 - L(e, -1, 1)));
+function pn(e) {
+	return Math.max(0, 2 * (1 - I(e, -1, 1)));
 }
-function rn(e, t) {
+function mn(e, t) {
 	return ((e - t) % 1 + 1.5) % 1 - .5;
 }
-function an(e, t, n) {
+function hn(e, t, n) {
 	if (t < n.uvMin.y || t > n.uvMin.y + n.uvSize.y) return !1;
 	if (n.wrapsHorizontally) return !0;
 	let r = n.uvMin.x + n.uvSize.x * .5;
-	return Math.abs(rn(e, r)) <= n.uvSize.x * .5;
+	return Math.abs(mn(e, r)) <= n.uvSize.x * .5;
 }
-function on(e, t, n) {
+function gn(e, t, n) {
 	if (t >= 1) return [{
 		end: n - 1,
 		start: 0
@@ -978,52 +1016,52 @@ function on(e, t, n) {
 		start: 0
 	}];
 }
-function sn(e, t) {
-	let n = Lt(t), r = Ft(e);
-	return an(r.u, r.v, n);
+function _n(e, t) {
+	let n = qt(t), r = Gt(e);
+	return hn(r.u, r.v, n);
 }
-function cn(e) {
+function vn(e) {
 	return (Math.floor(e * 1000003) ^ 2654435769) >>> 0;
 }
-function ln(e) {
+function yn(e) {
 	let t = e >>> 0;
 	return t = Math.imul(t ^ t >>> 16, 2146121005), t = Math.imul(t ^ t >>> 15, 2221713035), (t ^ t >>> 16) >>> 0;
 }
-function un(e, t, n, r) {
+function bn(e, t, n, r) {
 	let i = Math.imul(t + 2654435769 >>> 0, 2246822507), a = Math.imul(n + 3266489909 >>> 0, 668265263), o = Math.imul(r + 374761393 >>> 0, 2654435761);
-	return ln((e ^ i ^ a ^ o) >>> 0) / 4294967296;
+	return yn((e ^ i ^ a ^ o) >>> 0) / 4294967296;
 }
-function dn(e, t) {
+function xn(e, t) {
 	return (e % t + t) % t;
 }
-function fn(e) {
-	return (1 - Math.cos(L(e, 0, 1) * Math.PI)) * .5;
+function Sn(e) {
+	return (1 - Math.cos(I(e, 0, 1) * Math.PI)) * .5;
 }
-function pn(e) {
-	let t = Math.max(1, Math.round(e.uDensity)), n = L(t / Ze, 0, 1);
+function Cn(e) {
+	let t = Math.max(1, Math.round(e.uDensity)), n = I(t / st, 0, 1);
 	return {
 		activationThreshold: n * n,
-		columns: Ze,
+		columns: st,
 		density: t,
 		densityScale: n,
-		rows: Ze,
-		seed: cn(e.uSeed)
+		rows: st,
+		seed: vn(e.uSeed)
 	};
 }
-function mn(e, t = 1, n = 0) {
-	return L(e, 0, 1) ** pt * (1 + (L(t, 0, 1) ** mt - 1) * L(n, 0, 1));
+function wn(e, t = 1, n = 0) {
+	return I(e, 0, 1) ** Ct * (1 + (I(t, 0, 1) ** wt - 1) * I(n, 0, 1));
 }
-function hn(e, t, n, r, i) {
-	let a = mn(e, t, n), o = r + (Math.max(r, a) - r) * ht, s = i + (Math.max(i, a) - i) * gt, c = o ** 3, l = s ** 8, u = L(a * .3 + c * .55 + l * .15, 0, 1);
+function Tn(e, t, n, r, i) {
+	let a = wn(e, t, n), o = r + (Math.max(r, a) - r) * Tt, s = i + (Math.max(i, a) - i) * Et, c = o ** 3, l = s ** 8, u = I(a * .3 + c * .55 + l * .15, 0, 1);
 	return u >= .78 || c > .85 && (a > .65 || l > .35) ? 3 : u >= .52 || c > .62 || l > .65 && a > .45 ? 2 : u < .16 && a < .35 && c < .08 && l < .08 ? 0 : 1;
 }
-function gn(e, t, n, r = 0) {
+function En(e, t, n, r = 0) {
 	if (n < 0 || n >= e.rows) return null;
-	let i = dn(t, e.columns);
-	if (un(e.seed, i, n, 0) >= e.activationThreshold) return null;
-	let a = (i + un(e.seed, i, n, 1)) / e.columns, o = 1 - (n + un(e.seed, i, n, 2)) / e.rows * 2, s = (a - .5) * U, c = Math.sqrt(Math.max(0, 1 - o * o)), l = un(e.seed, i, n, 3), u = un(e.seed, i, n, 4), d = un(e.seed, i, n, 5), f = un(e.seed, i, n, 6), p = un(e.seed, i, n, 7);
+	let i = xn(t, e.columns);
+	if (bn(e.seed, i, n, 0) >= e.activationThreshold) return null;
+	let a = (i + bn(e.seed, i, n, 1)) / e.columns, o = 1 - (n + bn(e.seed, i, n, 2)) / e.rows * 2, s = (a - .5) * V, c = Math.sqrt(Math.max(0, 1 - o * o)), l = bn(e.seed, i, n, 3), u = bn(e.seed, i, n, 4), d = bn(e.seed, i, n, 5), f = bn(e.seed, i, n, 6), p = bn(e.seed, i, n, 7);
 	return {
-		classId: hn(l, p, r, u, d),
+		classId: Tn(l, p, r, u, d),
 		column: i,
 		rBright: u,
 		rColor: f,
@@ -1032,24 +1070,24 @@ function gn(e, t, n, r = 0) {
 		rSizeGate: p,
 		row: n,
 		u: a,
-		v: Math.acos(L(o, -1, 1)) / Math.PI,
+		v: Math.acos(I(o, -1, 1)) / Math.PI,
 		x: c * Math.sin(s),
 		y: o,
 		z: c * Math.cos(s)
 	};
 }
-function _n(e, t, n, r) {
+function Dn(e, t, n, r) {
 	if (t - e >= 1) return !0;
 	let i = n / r, a = (n + 1) / r;
 	for (let n = -1; n <= 1; n += 1) if (a + n >= e && i + n <= t) return !0;
 	return !1;
 }
-function vn(e, t) {
-	let n = Math.PI / Math.max(1, t), r = Math.PI / ft, i = Math.max(e.uStarSize * r, st * Math.max(n, r)), a = Math.max((e.uStarSize + e.uGlareSize) * r, ct * Math.max(n, r));
-	return Math.max(i * .45, a * .36, n, r) * dt;
+function On(e, t) {
+	let n = Math.PI / Math.max(1, t), r = Math.PI / St, i = Math.max(e.uStarSize * r, _t * Math.max(n, r)), a = Math.max((e.uStarSize + e.uGlareSize) * r, vt * Math.max(n, r));
+	return Math.max(i * .45, a * .36, n, r) * xt;
 }
-function yn({ height: e, includeSeamCopies: t, rawVMax: n, rawVMin: r, seamCopies: i, stars: a, uMax: o, uMin: s, wrapsHorizontally: c }) {
-	let l = pn(a), u = vn(a, e) / Math.PI, d = L(r, 0, 1), f = L(n, 0, 1), p = fn(d), m = fn(f), h = Math.max(0, Math.floor(p * l.rows) - Qe), g = Math.min(l.rows - 1, Math.floor(m * l.rows) + Qe), _ = r <= u || n >= 1 - u, v = L(a.uLargeStarRarity, 0, 1), y = JSON.stringify({
+function kn({ height: e, includeSeamCopies: t, rawVMax: n, rawVMin: r, seamCopies: i, stars: a, uMax: o, uMin: s, wrapsHorizontally: c }) {
+	let l = Cn(a), u = On(a, e) / Math.PI, d = I(r, 0, 1), f = I(n, 0, 1), p = Sn(d), m = Sn(f), h = Math.max(0, Math.floor(p * l.rows) - ct), g = Math.min(l.rows - 1, Math.floor(m * l.rows) + ct), _ = r <= u || n >= 1 - u, v = I(a.uLargeStarRarity, 0, 1), y = JSON.stringify({
 		activationThreshold: l.activationThreshold,
 		height: e,
 		includeSeamCopies: t,
@@ -1064,12 +1102,12 @@ function yn({ height: e, includeSeamCopies: t, rawVMax: n, rawVMin: r, seamCopie
 		vMax: f,
 		vMin: d,
 		wrapsHorizontally: c
-	}), b = Tt.get(y);
+	}), b = Ft.get(y);
 	if (b) return b.map((e) => ({ ...e }));
 	let x = [];
 	for (let e = h; e <= g; e += 1) for (let n = 0; n < l.columns; n += 1) {
-		if (!_ && !c && !_n(s, o, n, l.columns)) continue;
-		let r = gn(l, n, e, v);
+		if (!_ && !c && !Dn(s, o, n, l.columns)) continue;
+		let r = En(l, n, e, v);
 		if (r) {
 			if (!t) {
 				x.push(r);
@@ -1084,11 +1122,11 @@ function yn({ height: e, includeSeamCopies: t, rawVMax: n, rawVMin: r, seamCopie
 			}
 		}
 	}
-	return Tt.set(y, x.map((e) => ({ ...e }))), x;
+	return Ft.set(y, x.map((e) => ({ ...e }))), x;
 }
-function bn(e, t, n, r = {}) {
-	let i = pn(e), a = vn(e, n), o = a / Math.PI, s = t.uvMin.y - o, c = t.uvMin.y + t.uvSize.y + o, l = L(s, 0, 1), u = L(c, 0, 1), d = s <= o || c >= 1 - o, f = Math.max(Math.min(Math.sin(Math.max(l, .001) * Math.PI), Math.sin(Math.min(u, .999) * Math.PI)), .015), p = d ? 1 : Math.min(1, a / (U * f) + Qe / i.columns), m = t.wrapsHorizontally ? -p : t.uvMin.x - p, h = t.wrapsHorizontally ? 1 + p : t.uvMin.x + t.uvSize.x + p;
-	return yn({
+function An(e, t, n, r = {}) {
+	let i = Cn(e), a = On(e, n), o = a / Math.PI, s = t.uvMin.y - o, c = t.uvMin.y + t.uvSize.y + o, l = I(s, 0, 1), u = I(c, 0, 1), d = s <= o || c >= 1 - o, f = Math.max(Math.min(Math.sin(Math.max(l, .001) * Math.PI), Math.sin(Math.min(u, .999) * Math.PI)), .015), p = d ? 1 : Math.min(1, a / (V * f) + ct / i.columns), m = t.wrapsHorizontally ? -p : t.uvMin.x - p, h = t.wrapsHorizontally ? 1 + p : t.uvMin.x + t.uvSize.x + p;
+	return kn({
 		height: n,
 		includeSeamCopies: r.includeSeamCopies ?? !0,
 		rawVMax: c,
@@ -1100,9 +1138,9 @@ function bn(e, t, n, r = {}) {
 		wrapsHorizontally: t.wrapsHorizontally
 	});
 }
-function xn(e, t, n, r = {}) {
-	let i = pn(e), a = vn(e, n), o = a / Math.PI, s = t.storageUvMin.y - o, c = t.storageUvMin.y + t.storageUvSize.y + o, l = L(s, 0, 1), u = L(c, 0, 1), d = s <= o || c >= 1 - o, f = Math.max(Math.min(Math.sin(Math.max(l, .001) * Math.PI), Math.sin(Math.min(u, .999) * Math.PI)), .015), p = d ? 1 : Math.min(1, a / (U * f) + Qe / i.columns);
-	return yn({
+function jn(e, t, n, r = {}) {
+	let i = Cn(e), a = On(e, n), o = a / Math.PI, s = t.storageUvMin.y - o, c = t.storageUvMin.y + t.storageUvSize.y + o, l = I(s, 0, 1), u = I(c, 0, 1), d = s <= o || c >= 1 - o, f = Math.max(Math.min(Math.sin(Math.max(l, .001) * Math.PI), Math.sin(Math.min(u, .999) * Math.PI)), .015), p = d ? 1 : Math.min(1, a / (V * f) + ct / i.columns);
+	return kn({
 		height: n,
 		includeSeamCopies: r.includeSeamCopies ?? !0,
 		rawVMax: c,
@@ -1114,57 +1152,57 @@ function xn(e, t, n, r = {}) {
 		wrapsHorizontally: !1
 	});
 }
-function Z(e) {
+function Y(e) {
 	return e >>> 0;
 }
-function Sn(e, t) {
-	let n = Z(e);
-	return Z(n << t | n >>> 32 - t);
+function Mn(e, t) {
+	let n = Y(e);
+	return Y(n << t | n >>> 32 - t);
 }
-function Cn(e, t, n) {
-	let r = Z(e), i = Z(t), a = Z(n);
-	return a = Z(a ^ i), a = Z(a - Sn(i, 14)), r = Z(r ^ a), r = Z(r - Sn(a, 11)), i = Z(i ^ r), i = Z(i - Sn(r, 25)), a = Z(a ^ i), a = Z(a - Sn(i, 16)), r = Z(r ^ a), r = Z(r - Sn(a, 4)), i = Z(i ^ r), i = Z(i - Sn(r, 14)), a = Z(a ^ i), a = Z(a - Sn(i, 24)), a;
+function Nn(e, t, n) {
+	let r = Y(e), i = Y(t), a = Y(n);
+	return a = Y(a ^ i), a = Y(a - Mn(i, 14)), r = Y(r ^ a), r = Y(r - Mn(a, 11)), i = Y(i ^ r), i = Y(i - Mn(r, 25)), a = Y(a ^ i), a = Y(a - Mn(i, 16)), r = Y(r ^ a), r = Y(r - Mn(a, 4)), i = Y(i ^ r), i = Y(i - Mn(r, 14)), a = Y(a ^ i), a = Y(a - Mn(i, 24)), a;
 }
-function wn(e, t, n) {
-	let r = Z(3735928584);
-	return Cn(Z(r + Z(e)), Z(r + Z(t)), Z(r + Z(n)));
+function Pn(e, t, n) {
+	let r = Y(3735928584);
+	return Nn(Y(r + Y(e)), Y(r + Y(t)), Y(r + Y(n)));
 }
-function Tn(e) {
+function Fn(e) {
 	return e * e * e * (e * (e * 6 - 15) + 10);
 }
-function En(e, t, n, r) {
+function In(e, t, n, r) {
 	let i = e & 15, a = i < 8 ? t : n, o = i < 4 ? n : i === 12 || i === 14 ? t : r;
 	return (i & 1 ? -a : a) + (i & 2 ? -o : o);
 }
-function Dn(e, t, n, r, i, a, o, s, c, l, u) {
+function Ln(e, t, n, r, i, a, o, s, c, l, u) {
 	let d = 1 - c, f = 1 - l;
 	return (1 - u) * (f * (e * d + t * c) + l * (n * d + r * c)) + u * (f * (i * d + a * c) + l * (o * d + s * c));
 }
-function On(e) {
-	let t = Math.floor(e[0]), n = Math.floor(e[1]), r = Math.floor(e[2]), i = e[0] - t, a = e[1] - n, o = e[2] - r, s = Tn(i), c = Tn(a), l = Tn(o);
-	return Dn(En(wn(t, n, r), i, a, o), En(wn(t + 1, n, r), i - 1, a, o), En(wn(t, n + 1, r), i, a - 1, o), En(wn(t + 1, n + 1, r), i - 1, a - 1, o), En(wn(t, n, r + 1), i, a, o - 1), En(wn(t + 1, n, r + 1), i - 1, a, o - 1), En(wn(t, n + 1, r + 1), i, a - 1, o - 1), En(wn(t + 1, n + 1, r + 1), i - 1, a - 1, o - 1), s, c, l) * .982;
+function Rn(e) {
+	let t = Math.floor(e[0]), n = Math.floor(e[1]), r = Math.floor(e[2]), i = e[0] - t, a = e[1] - n, o = e[2] - r, s = Fn(i), c = Fn(a), l = Fn(o);
+	return Ln(In(Pn(t, n, r), i, a, o), In(Pn(t + 1, n, r), i - 1, a, o), In(Pn(t, n + 1, r), i, a - 1, o), In(Pn(t + 1, n + 1, r), i - 1, a - 1, o), In(Pn(t, n, r + 1), i, a, o - 1), In(Pn(t + 1, n, r + 1), i - 1, a, o - 1), In(Pn(t, n + 1, r + 1), i, a - 1, o - 1), In(Pn(t + 1, n + 1, r + 1), i - 1, a - 1, o - 1), s, c, l) * .982;
 }
-function kn(e, t, n, r) {
-	let i = 0, a = .5, o = 0, s = Math.floor(L(t, 1, 8)), c = Math.max(n, .001), l = L(r, .001, .999), u = [...e];
+function zn(e, t, n, r) {
+	let i = 0, a = .5, o = 0, s = Math.floor(I(t, 1, 8)), c = Math.max(n, .001), l = I(r, .001, .999), u = [...e];
 	for (let e = 0; e < s; e += 1) {
-		let e = On(u) * .5 + .5;
-		i += a * e, o += a, u = X(u, c), a *= l;
+		let e = Rn(u) * .5 + .5;
+		i += a * e, o += a, u = J(u, c), a *= l;
 	}
 	return o <= 0 ? 0 : i / o;
 }
-function An(e, t, n) {
-	return t <= 0 ? e : jt([
-		e[0] + Math.sin((e[1] * n + .23) * U) * Math.cos((e[2] * n + .41) * U) * t,
-		e[1] + Math.cos((e[2] * n + .17) * U) * Math.sin((e[0] * n + .37) * U) * t,
-		e[2] + Math.sin((e[0] * n - .31) * U) * Math.cos((e[1] * n + .29) * U) * t
+function Bn(e, t, n) {
+	return t <= 0 ? e : Vt([
+		e[0] + Math.sin((e[1] * n + .23) * V) * Math.cos((e[2] * n + .41) * V) * t,
+		e[1] + Math.cos((e[2] * n + .17) * V) * Math.sin((e[0] * n + .37) * V) * t,
+		e[2] + Math.sin((e[0] * n - .31) * V) * Math.cos((e[1] * n + .29) * V) * t
 	]);
 }
-function jn(e) {
-	let t = Xt(e);
+function Vn(e) {
+	let t = sn(e);
 	return {
 		anchors: t.anchors.map((e) => ({
-			color: At(e.color),
-			dir: Nt(e.x, e.y)
+			color: Bt(e.color),
+			dir: Ut(e.x, e.y)
 		})),
 		blend: t.mode === "gaussian" ? "gaussian" : "idw",
 		power: t.power,
@@ -1175,37 +1213,37 @@ function jn(e) {
 		}
 	};
 }
-function Mn(e, t, n) {
-	return 1 - en(e, t, n);
+function Hn(e, t, n) {
+	return 1 - dn(e, t, n);
 }
-function Nn(e, t) {
-	let n = jn(t), r = An(e, n.warp.amp, n.warp.freq), i = [
+function Un(e, t) {
+	let n = Vn(t), r = Bn(e, n.warp.amp, n.warp.freq), i = [
 		0,
 		0,
 		0
 	], a = 0;
 	return n.anchors.forEach((e) => {
-		let t = 1 - L(tn(r, e.dir), -1, 1), o = n.blend === "gaussian" ? Math.exp(-(t * t) / Math.max(2 * n.sigma * n.sigma, 1e-4)) : 1 / (t + 1e-4) ** Math.max(n.power, 1e-4);
-		i = Y(i, X(e.color, o)), a += o;
+		let t = 1 - I(fn(r, e.dir), -1, 1), o = n.blend === "gaussian" ? Math.exp(-(t * t) / Math.max(2 * n.sigma * n.sigma, 1e-4)) : 1 / (t + 1e-4) ** Math.max(n.power, 1e-4);
+		i = q(i, J(e.color, o)), a += o;
 	}), a <= 0 ? [
 		0,
 		0,
 		0
-	] : X(i, 1 / a);
+	] : J(i, 1 / a);
 }
-function Pn(e, t) {
-	let n = t.nebula, r = L(n.uOctaves, 1, 8), i = Y(X(e, Math.max(n.uColorWarpFreq, .001)), [
+function Wn(e, t) {
+	let n = t.nebula, r = I(n.uOctaves, 1, 8), i = q(J(e, Math.max(n.uColorWarpFreq, .001)), [
 		n.uSeed,
 		n.uSeed * .37,
 		n.uSeed * -.21
-	]), a = Nn(jt(Y(e, X([
-		kn(i, r, 2.02, .52) * 2 - 1,
-		kn(Y(i, [
+	]), a = Un(Vt(q(e, J([
+		zn(i, r, 2.02, .52) * 2 - 1,
+		zn(q(i, [
 			5.2,
 			1.3,
 			7.1
 		]), r, 2.03, .5) * 2 - 1,
-		kn(Y(i, [
+		zn(q(i, [
 			9.1,
 			8.4,
 			2.8
@@ -1214,27 +1252,27 @@ function Pn(e, t) {
 		n.uSeed * 13.17,
 		n.uSeed * -7.31,
 		n.uSeed * 5.19
-	], s = Y(X(e, Math.max(n.uBaseScale, .001)), o), c = L(kn(Y(s, X([
-		kn(s, r, 2.02, .5),
-		kn(Y(s, [
+	], s = q(J(e, Math.max(n.uBaseScale, .001)), o), c = I(zn(q(s, J([
+		zn(s, r, 2.02, .5),
+		zn(q(s, [
 			5.2,
 			1.3,
 			2.8
 		]), r, 2.02, .5),
-		kn(Y(s, [
+		zn(q(s, [
 			2.1,
 			4.7,
 			9.2
 		]), r, 2.02, .5)
-	], 3)), r, 2.02, .5)), l = L(en(n.uCoverage, n.uCoverage + Math.max(n.uSoftness, .001), c)) ** Math.max(n.uContrast, .05), u = L(Math.max(a[0], a[1], a[2]) * Math.max(n.uLightIntensity, 0)) ** Math.max(n.uLightFocus, .001), d = X($t(a, n.uCloudHighlight), Math.max(n.uLightIntensity, 0));
-	return Y([
+	], 3)), r, 2.02, .5)), l = I(dn(n.uCoverage, n.uCoverage + Math.max(n.uSoftness, .001), c)) ** Math.max(n.uContrast, .05), u = I(Math.max(a[0], a[1], a[2]) * Math.max(n.uLightIntensity, 0)) ** Math.max(n.uLightFocus, .001), d = J(un(a, n.uCloudHighlight), Math.max(n.uLightIntensity, 0));
+	return q([
 		.004,
 		.005,
 		.011
-	], X(X(Y(Qt(Qt(n.uCloudShadow, d, u), n.uCloudCore, L(l * .4)), X(a, u * (1 - l) * Math.max(n.uLightLining, 0) * Math.max(n.uLightIntensity, 0))), Math.max(n.uDensity, 0)).map((e) => Math.max(0, e) ** .92), L(l * n.uOpacity) * Math.max(n.uNebulaStrength, 0)));
+	], J(J(q(ln(ln(n.uCloudShadow, d, u), n.uCloudCore, I(l * .4)), J(a, u * (1 - l) * Math.max(n.uLightLining, 0) * Math.max(n.uLightIntensity, 0))), Math.max(n.uDensity, 0)).map((e) => Math.max(0, e) ** .92), I(l * n.uOpacity) * Math.max(n.uNebulaStrength, 0)));
 }
-function Fn(e) {
-	return e < .5 ? Qt([
+function Gn(e) {
+	return e < .5 ? ln([
 		1,
 		.55,
 		.3
@@ -1242,7 +1280,7 @@ function Fn(e) {
 		1,
 		.96,
 		.92
-	], e * 2) : Qt([
+	], e * 2) : ln([
 		1,
 		.96,
 		.92
@@ -1252,28 +1290,28 @@ function Fn(e) {
 		1
 	], (e - .5) * 2);
 }
-function In(e, t, n, r, i) {
+function Kn(e, t, n, r, i) {
 	let a = (r * t + n) * 4;
 	e[a] += i[0], e[a + 1] += i[1], e[a + 2] += i[2], e[a + 3] = Math.max(e[a + 3], Math.max(i[0], i[1], i[2]));
 }
-function Ln(e) {
+function qn(e) {
 	return e < 256 ? 1 : e < 2048 ? 2 : 1;
 }
-function Rn(e, t, n, r, i = r) {
-	let a = Lt(t.clip), o = t.stars;
+function Jn(e, t, n, r, i = r) {
+	let a = qt(t.clip), o = t.stars;
 	if (o.uDensity <= 0 || o.uBright <= 0) return;
-	let s = bn(o, a, i, { includeSeamCopies: !1 }), c = Math.PI / Math.max(1, i), l = Math.PI / ft, u = Math.PI / Math.max(1, r);
+	let s = An(o, a, i, { includeSeamCopies: !1 }), c = Math.PI / Math.max(1, i), l = Math.PI / St, u = Math.PI / Math.max(1, r);
 	s.forEach((t) => {
-		let i = mn(t.rSize, t.rSizeGate, o.uLargeStarRarity), s = t.rBright + (Math.max(t.rBright, i) - t.rBright) * ht, d = t.rGlare + (Math.max(t.rGlare, i) - t.rGlare) * gt, f = J(1, J(.1, 1, i), o.uSizeVar), p = o.uStarSize * f * l, m = o.uStarSize * f, h = Mn(lt, ut, m), g = st * Math.max(c, l), _ = Math.max(c, l * .5), v = Math.max(p, J(g, _, h)), y = Math.max(p, l * .1), b = J(1, Math.max(.08, en(0, lt, m)), Mn(lt * .75, lt, m)), x = Math.max(y * .45, u * .5), S = Math.max(v * .45, u), C = en(ut, 1.75, m), w = o.uGlareSize * J(1, f, o.uSizeVar) * l, T = Math.max(p + w, ct * Math.max(c, l)), E = Math.max(p + w, l * .1), D = Math.max(E * .36, u * .5), O = Math.max(T * .36, u) * C * +(o.uGlareSize > 0 && o.uGlareStr > 0), k = Math.max(x, D) * dt, A = Math.ceil(Math.max(k, S * dt, O * dt) / Math.PI * r), j = t.u * n, M = t.v * r, N = o.uBright * J(1, s ** 3 * 3, o.uBrightVar), ee = o.uGlareStr * J(1, d ** 8, o.uGlareVar), P = Fn(J(.5, t.rColor, o.uColorVar)), te = Math.floor(j - A), ne = Math.ceil(j + A), F = Math.max(0, Math.floor(M - A)), I = Math.min(r - 1, Math.ceil(M + A)), re = Math.max(Math.sin(t.v * Math.PI), .015);
-		for (let i = F; i <= I; i += 1) for (let o = te; o <= ne; o += 1) {
-			let s = dn(o, n), c = (s + .5) / n, l = (i + .5) / r;
-			if (!an(c, l, a)) continue;
-			let u = rn(c, t.u) * U * re, d = (l - t.v) * Math.PI, f = u * u + d * d, p = (Math.exp(-f / Math.max(x * x * 2, 1e-10)) * b + Math.exp(-f / Math.max(D * D * 2, 1e-10)) * C * ee) * N;
-			p <= 1e-6 || In(e, n, s, i, X(P, p));
+		let i = wn(t.rSize, t.rSizeGate, o.uLargeStarRarity), s = t.rBright + (Math.max(t.rBright, i) - t.rBright) * Tt, d = t.rGlare + (Math.max(t.rGlare, i) - t.rGlare) * Et, f = K(1, K(.1, 1, i), o.uSizeVar), p = o.uStarSize * f * l, m = o.uStarSize * f, h = Hn(yt, bt, m), g = _t * Math.max(c, l), _ = Math.max(c, l * .5), v = Math.max(p, K(g, _, h)), y = Math.max(p, l * .1), b = K(1, Math.max(.08, dn(0, yt, m)), Hn(yt * .75, yt, m)), x = Math.max(y * .45, u * .5), S = Math.max(v * .45, u), C = dn(bt, 1.75, m), w = o.uGlareSize * K(1, f, o.uSizeVar) * l, ee = Math.max(p + w, vt * Math.max(c, l)), T = Math.max(p + w, l * .1), E = Math.max(T * .36, u * .5), D = Math.max(ee * .36, u) * C * +(o.uGlareSize > 0 && o.uGlareStr > 0), te = Math.max(x, E) * xt, O = Math.ceil(Math.max(te, S * xt, D * xt) / Math.PI * r), k = t.u * n, A = t.v * r, j = o.uBright * K(1, s ** 3 * 3, o.uBrightVar), ne = o.uGlareStr * K(1, d ** 8, o.uGlareVar), M = Gn(K(.5, t.rColor, o.uColorVar)), re = Math.floor(k - O), ie = Math.ceil(k + O), N = Math.max(0, Math.floor(A - O)), P = Math.min(r - 1, Math.ceil(A + O)), ae = Math.max(Math.sin(t.v * Math.PI), .015);
+		for (let i = N; i <= P; i += 1) for (let o = re; o <= ie; o += 1) {
+			let s = xn(o, n), c = (s + .5) / n, l = (i + .5) / r;
+			if (!hn(c, l, a)) continue;
+			let u = mn(c, t.u) * V * ae, d = (l - t.v) * Math.PI, f = u * u + d * d, p = (Math.exp(-f / Math.max(x * x * 2, 1e-10)) * b + Math.exp(-f / Math.max(E * E * 2, 1e-10)) * C * ne) * j;
+			p <= 1e-6 || Kn(e, n, s, i, J(M, p));
 		}
 	});
 }
-function zn(e, t, n, r) {
+function Yn(e, t, n, r) {
 	if (r <= 1) return e;
 	let i = Math.max(1, Math.floor(t / r)), a = Math.max(1, Math.floor(n / r)), o = new Float32Array(i * a * 4), s = r * r;
 	for (let n = 0; n < a; n += 1) for (let a = 0; a < i; a += 1) {
@@ -1286,34 +1324,34 @@ function zn(e, t, n, r) {
 	}
 	return o;
 }
-function Bn(e, t, n) {
+function Xn(e, t, n) {
 	if (t.uDensity <= 0 || t.uBright <= 0) return [
 		0,
 		0,
 		0
 	];
-	let r = Ft(e), i = pn(t), a = vn(t, n), o = a / Math.PI, s = L(r.v - o, 0, 1), c = L(r.v + o, 0, 1), l = fn(s), u = fn(c), d = Math.max(0, Math.floor(l * i.rows) - Qe), f = Math.min(i.rows - 1, Math.floor(u * i.rows) + Qe), p = Math.max(Math.sin(L(r.v, .001, .999) * Math.PI), .015), m = Math.min(1, a / (U * p) + Qe / i.columns), h = Math.floor((r.u - m) * i.columns) - Qe, g = Math.ceil((r.u + m) * i.columns) + Qe, _ = Math.PI / Math.max(1, n), v = Math.PI / ft, y = [
+	let r = Gt(e), i = Cn(t), a = On(t, n), o = a / Math.PI, s = I(r.v - o, 0, 1), c = I(r.v + o, 0, 1), l = Sn(s), u = Sn(c), d = Math.max(0, Math.floor(l * i.rows) - ct), f = Math.min(i.rows - 1, Math.floor(u * i.rows) + ct), p = Math.max(Math.sin(I(r.v, .001, .999) * Math.PI), .015), m = Math.min(1, a / (V * p) + ct / i.columns), h = Math.floor((r.u - m) * i.columns) - ct, g = Math.ceil((r.u + m) * i.columns) + ct, _ = Math.PI / Math.max(1, n), v = Math.PI / St, y = [
 		0,
 		0,
 		0
 	];
 	for (let n = d; n <= f; n += 1) for (let r = h; r <= g; r += 1) {
-		let a = gn(i, r, n, t.uLargeStarRarity);
+		let a = En(i, r, n, t.uLargeStarRarity);
 		if (!a) continue;
-		let o = mn(a.rSize, a.rSizeGate, t.uLargeStarRarity), s = a.rBright + (Math.max(a.rBright, o) - a.rBright) * ht, c = a.rGlare + (Math.max(a.rGlare, o) - a.rGlare) * gt, l = J(1, J(.1, 1, o), t.uSizeVar), u = t.uStarSize * l * v, d = t.uStarSize * l, f = Math.max(u, v * .1), p = Math.max(f * .45, _ * .5), m = J(1, Math.max(.08, en(0, lt, d)), Mn(lt * .75, lt, d)), h = en(ut, 1.75, d), g = t.uGlareSize * J(1, l, t.uSizeVar) * v, b = Math.max(u + g, v * .1), x = Math.max(b * .36, _ * .5), S = nn(e[0] * a.x + e[1] * a.y + e[2] * a.z), C = Math.exp(-S / Math.max(p * p * 2, 1e-10)) * m, w = t.uGlareStr * J(1, c ** 8, t.uGlareVar), T = Math.exp(-S / Math.max(x * x * 2, 1e-10)) * h * w, E = t.uBright * J(1, s ** 3 * 3, t.uBrightVar), D = (C + T) * E;
-		D <= 1e-6 || (y = Y(y, X(Fn(J(.5, a.rColor, t.uColorVar)), D)));
+		let o = wn(a.rSize, a.rSizeGate, t.uLargeStarRarity), s = a.rBright + (Math.max(a.rBright, o) - a.rBright) * Tt, c = a.rGlare + (Math.max(a.rGlare, o) - a.rGlare) * Et, l = K(1, K(.1, 1, o), t.uSizeVar), u = t.uStarSize * l * v, d = t.uStarSize * l, f = Math.max(u, v * .1), p = Math.max(f * .45, _ * .5), m = K(1, Math.max(.08, dn(0, yt, d)), Hn(yt * .75, yt, d)), h = dn(bt, 1.75, d), g = t.uGlareSize * K(1, l, t.uSizeVar) * v, b = Math.max(u + g, v * .1), x = Math.max(b * .36, _ * .5), S = pn(e[0] * a.x + e[1] * a.y + e[2] * a.z), C = Math.exp(-S / Math.max(p * p * 2, 1e-10)) * m, w = t.uGlareStr * K(1, c ** 8, t.uGlareVar), ee = Math.exp(-S / Math.max(x * x * 2, 1e-10)) * h * w, T = t.uBright * K(1, s ** 3 * 3, t.uBrightVar), E = (C + ee) * T;
+		E <= 1e-6 || (y = q(y, J(Gn(K(.5, a.rColor, t.uColorVar)), E)));
 	}
 	return y;
 }
-function Vn(e, t, n = Math.floor(yt / 2)) {
-	let r = Zt(t);
-	if (!sn(e, r.clip)) return [
+function Zn(e, t, n = Math.floor(kt / 2)) {
+	let r = cn(t);
+	if (!_n(e, r.clip)) return [
 		0,
 		0,
 		0,
 		0
 	];
-	let i = Gn(Pn(e, r), Bn(e, r.stars, n), r.nebula.uNebulaExposure);
+	let i = tr(Wn(e, r), Xn(e, r.stars, n), r.nebula.uNebulaExposure);
 	return [
 		i[0],
 		i[1],
@@ -1321,11 +1359,11 @@ function Vn(e, t, n = Math.floor(yt / 2)) {
 		1
 	];
 }
-function Hn(e, t, n = {}) {
-	return Vn(e, t, n.sampleHeight);
+function Qn(e, t, n = {}) {
+	return Zn(e, t, n.sampleHeight);
 }
-function Un(e, t, n, r = {}) {
-	let i = Zt(e), a = Dt(i.quality), o = Math.max(1, Math.floor(r.budgetBytes ?? a.budgetBytes)), s = Math.max(1, Math.floor(r.maxTextureSize ?? 8192)), c = qt({
+function $n(e, t, n, r = {}) {
+	let i = cn(e), a = Lt(i.quality), o = Math.max(1, Math.floor(r.budgetBytes ?? a.budgetBytes)), s = Math.max(1, Math.floor(r.maxTextureSize ?? 8192)), c = rn({
 		accumulationBytes: r.accumulationBytes,
 		budgetBytes: o,
 		clip: i.clip,
@@ -1334,11 +1372,11 @@ function Un(e, t, n, r = {}) {
 		residentBytesPerPixel: r.residentBytesPerPixel,
 		width: t
 	});
-	return de(JSON.stringify({
+	return pe(JSON.stringify({
 		height: n,
 		layout: {
 			allocation: c.allocation,
-			accumulationBytes: r.accumulationBytes ?? nt,
+			accumulationBytes: r.accumulationBytes ?? ft,
 			columns: c.columns,
 			contentHeight: c.contentHeight,
 			contentWidth: c.contentWidth,
@@ -1347,7 +1385,7 @@ function Un(e, t, n, r = {}) {
 			maxTextureSize: s,
 			qualityScale: c.qualityScale,
 			rows: c.rows,
-			residentBytesPerPixel: r.residentBytesPerPixel ?? rt,
+			residentBytesPerPixel: r.residentBytesPerPixel ?? pt,
 			storageHeight: c.storageHeight,
 			storageWidth: c.storageWidth,
 			supersample: c.supersample
@@ -1356,31 +1394,31 @@ function Un(e, t, n, r = {}) {
 		width: t
 	}));
 }
-function Wn(e, t) {
+function er(e, t) {
 	return e.map((e) => 1 - Math.exp(-Math.max(0, e) * Math.max(t, .001)));
 }
-function Gn(e, t, n) {
-	let r = Wn(e, n), i = [
+function tr(e, t, n) {
+	let r = er(e, n), i = [
 		.004,
 		.005,
 		.011
-	], a = Wn(i, 1), o = Wn(Y(i, t), 1);
-	return Y(r, [
+	], a = er(i, 1), o = er(q(i, t), 1);
+	return q(r, [
 		Math.max(o[0] - a[0], 0),
 		Math.max(o[1] - a[1], 0),
 		Math.max(o[2] - a[2], 0)
 	]);
 }
-function Kn(e, t, n, r, i, a, o, s) {
+function nr(e, t, n, r, i, a, o, s) {
 	for (let c = 0; c < o; c += 1) {
 		let l = (c + .5) / o * n - .5, u = Math.floor(l), d = Math.max(0, u), f = Math.min(n - 1, u + 1), p = l - u, m = d * t * 4, h = f * t * 4;
 		for (let n = 0; n < a; n += 1) {
-			let o = (c * a + n) * 4, l = (n + .5) / a * t - .5, u = Math.floor(l), d = u + 1, f = l - u, g = dn(u, t) * 4, _ = dn(d, t) * 4, v = m + g, y = m + _, b = h + g, x = h + _, S = J(J(e[v], e[y], f), J(e[b], e[x], f), p), C = J(J(e[v + 1], e[y + 1], f), J(e[b + 1], e[x + 1], f), p), w = J(J(e[v + 2], e[y + 2], f), J(e[b + 2], e[x + 2], f), p), T = J(J(e[v + 3], e[y + 3], f), J(e[b + 3], e[x + 3], f), p), E = Math.max(r[o], r[o + 1], r[o + 2]);
-			if (T <= 0 && E <= 0) {
+			let o = (c * a + n) * 4, l = (n + .5) / a * t - .5, u = Math.floor(l), d = u + 1, f = l - u, g = xn(u, t) * 4, _ = xn(d, t) * 4, v = m + g, y = m + _, b = h + g, x = h + _, S = K(K(e[v], e[y], f), K(e[b], e[x], f), p), C = K(K(e[v + 1], e[y + 1], f), K(e[b + 1], e[x + 1], f), p), w = K(K(e[v + 2], e[y + 2], f), K(e[b + 2], e[x + 2], f), p), ee = K(K(e[v + 3], e[y + 3], f), K(e[b + 3], e[x + 3], f), p), T = Math.max(r[o], r[o + 1], r[o + 2]);
+			if (ee <= 0 && T <= 0) {
 				i[o] = 0, i[o + 1] = 0, i[o + 2] = 0, i[o + 3] = 0;
 				continue;
 			}
-			let [D, O, k] = oe(Gn([
+			let [E, D, te] = ce(tr([
 				S,
 				C,
 				w
@@ -1389,33 +1427,33 @@ function Kn(e, t, n, r, i, a, o, s) {
 				r[o + 1],
 				r[o + 2]
 			], s.nebula.uNebulaExposure));
-			i[o] = D, i[o + 1] = O, i[o + 2] = k, i[o + 3] = 255;
+			i[o] = E, i[o + 1] = D, i[o + 2] = te, i[o + 3] = 255;
 		}
 	}
 }
-function qn(e, t = yt, n = Math.floor(t / 2)) {
-	let r = Zt(e), i = Dt(r.quality), a = Math.min(t, vt), o = Math.max(1, Math.floor(a / 2)), s = qt({
+function rr(e, t = kt, n = Math.floor(t / 2)) {
+	let r = cn(e), i = Lt(r.quality), a = Math.min(t, Ot), o = Math.max(1, Math.floor(a / 2)), s = rn({
 		budgetBytes: i.budgetBytes,
 		clip: r.clip,
 		height: o,
-		maxTextureSize: yt,
-		residentBytesPerPixel: tt,
+		maxTextureSize: kt,
+		residentBytesPerPixel: dt,
 		width: a
-	}), c = new Float32Array(a * o * 4), l = new Uint8ClampedArray(t * n * 4), u = Lt(r.clip), d = Ln(t), f = t * d, p = n * d, m = new Float32Array(f * p * 4);
+	}), c = new Float32Array(a * o * 4), l = new Uint8ClampedArray(t * n * 4), u = qt(r.clip), d = qn(t), f = t * d, p = n * d, m = new Float32Array(f * p * 4);
 	return s.descriptors.forEach((e) => {
-		let t = on(e.uvMin.x, e.uvSize.x, a), n = Math.max(0, Math.floor(e.uvMin.y * o)), i = Math.min(o - 1, Math.ceil((e.uvMin.y + e.uvSize.y) * o));
+		let t = gn(e.uvMin.x, e.uvSize.x, a), n = Math.max(0, Math.floor(e.uvMin.y * o)), i = Math.min(o - 1, Math.ceil((e.uvMin.y + e.uvSize.y) * o));
 		for (let e = n; e <= i; e += 1) {
 			let n = (e + .5) / o;
 			t.forEach(({ end: t, start: i }) => {
 				for (let o = i; o <= t; o += 1) {
 					let t = (o + .5) / a;
-					if (!an(t, n, u)) continue;
-					let i = Pn(Nt(t, n), r), s = (e * a + o) * 4;
+					if (!hn(t, n, u)) continue;
+					let i = Wn(Ut(t, n), r), s = (e * a + o) * 4;
 					c[s] = i[0], c[s + 1] = i[1], c[s + 2] = i[2], c[s + 3] = 1;
 				}
 			});
 		}
-	}), Rn(m, r, f, p, n), Kn(c, a, o, zn(m, f, p, d), l, t, n, r), {
+	}), Jn(m, r, f, p, n), nr(c, a, o, Yn(m, f, p, d), l, t, n, r), {
 		data: l,
 		height: n,
 		width: t
@@ -1423,328 +1461,23 @@ function qn(e, t = yt, n = Math.floor(t / 2)) {
 }
 //#endregion
 //#region evaluator.ts
-var Jn = Math.PI * 2;
-function Yn(e, t, n) {
-	return e + (t - e) * n;
-}
-function Xn(e) {
-	return e.map((e) => ({
-		alpha: L(e.opacity / 100),
-		color: ae(e.color),
-		midpoint: L((e.midpoint ?? 50) / 100, .01, .99),
-		t: L(e.location / 100)
-	})).sort((e, t) => e.t - t.t);
-}
-function Zn(e, t) {
-	return e <= t ? e / Math.max(t * 2, 1e-5) : .5 + (e - t) / Math.max((1 - t) * 2, 1e-5);
-}
-function Qn(e, t) {
-	if (e.length === 0) return [
+function ir(e, t, n = {}) {
+	let r = _e(t.type);
+	return r?.sampleCpu ? r.sampleCpu(e, t.params, {
+		layerId: t.id,
+		sampleHeight: n.sampleHeight,
+		starfieldBakes: n.starfieldBakes
+	}) : [
 		0,
 		0,
 		0,
 		0
 	];
-	let n = L(t), r = e[0], i = e[e.length - 1];
-	if (n <= r.t) return [...r.color, r.alpha];
-	if (n >= i.t) return [...i.color, i.alpha];
-	for (let t = 0; t < e.length - 1; t += 1) {
-		let r = e[t], i = e[t + 1];
-		if (n < r.t || n > i.t) continue;
-		let a = i.t - r.t, o = Zn(a <= 0 ? 0 : (n - r.t) / a, r.midpoint);
-		return [
-			Yn(r.color[0], i.color[0], o),
-			Yn(r.color[1], i.color[1], o),
-			Yn(r.color[2], i.color[2], o),
-			Yn(r.alpha, i.alpha, o)
-		];
-	}
-	return [...i.color, i.alpha];
 }
-function $n(e) {
-	let t = e * Math.PI / 180;
-	return [
-		Math.sin(t),
-		Math.cos(t),
-		0
-	];
-}
-function er(e, t) {
-	let n = $n(t.rotation), r = e[0] * n[0] + e[1] * n[1] + e[2] * n[2];
-	return Qn(Xn(t.stops), r * .5 + .5);
-}
-function tr(e, t, n) {
-	let r = L((n - e) / Math.max(t - e, 1e-5));
-	return r * r * (3 - 2 * r);
-}
-function nr(e) {
-	return e * e;
-}
-function rr(e) {
-	let t = L(e), n = [
-		1,
-		.12,
-		.05
-	];
-	return n = ir(n, [
-		1,
-		.55,
-		.1
-	], tr(0, .28, t)), n = ir(n, [
-		1,
-		.93,
-		.6
-	], tr(.22, .45, t)), n = ir(n, [
-		1,
-		1,
-		1
-	], tr(.42, .6, t)), n = ir(n, [
-		.55,
-		.8,
-		1
-	], tr(.62, .85, t)), n = ir(n, [
-		.35,
-		.5,
-		1
-	], tr(.85, 1, t)), n;
-}
-function ir(e, t, n) {
-	return [
-		Yn(e[0], t[0], n),
-		Yn(e[1], t[1], n),
-		Yn(e[2], t[2], n)
-	];
-}
-function ar(e, t) {
-	return [
-		e[0] * t[0],
-		e[1] * t[1],
-		e[2] * t[2]
-	];
-}
-function or(e, t) {
-	return [
-		e[0] * t,
-		e[1] * t,
-		e[2] * t
-	];
-}
-function sr(e, t) {
-	return [
-		e[0] + t[0],
-		e[1] + t[1],
-		e[2] + t[2]
-	];
-}
-function cr(e, t) {
-	return ir(t, ar(e, ir([
-		1,
-		1,
-		1
-	], t, .82)), .82);
-}
-function lr(e, t) {
-	let n = (e - .5) * Jn, r = (.5 - t) * Math.PI, i = Math.cos(r);
-	return [
-		i * Math.cos(n),
-		Math.sin(r),
-		i * Math.sin(n)
-	];
-}
-function ur(e, t) {
-	let n = (e - .5) * Jn, r = (t - .5) * Math.PI, i = Math.cos(r);
-	return [
-		i * Math.cos(n),
-		Math.sin(r),
-		i * Math.sin(n)
-	];
-}
-function dr(e) {
-	let t = Math.hypot(e[0], e[1], e[2]);
-	return t <= 0 ? [
-		0,
-		1,
-		0
-	] : [
-		e[0] / t,
-		e[1] / t,
-		e[2] / t
-	];
-}
-function fr(e, t) {
-	return e[0] * t[0] + e[1] * t[1] + e[2] * t[2];
-}
-function pr(e, t) {
-	return [
-		e[1] * t[2] - e[2] * t[1],
-		e[2] * t[0] - e[0] * t[2],
-		e[0] * t[1] - e[1] * t[0]
-	];
-}
-function mr(e, t, n) {
-	let r = dr(e), i = dr(t), a = dr(pr([
-		0,
-		1,
-		0
-	], i)), o = dr(pr(i, a)), s = Math.max(fr(r, i), 1e-6), c = fr(r, a) / s / Math.max(n, 1e-4), l = fr(r, o) / s / Math.max(n, 1e-4);
-	return {
-		x: c,
-		y: l,
-		d: Math.hypot(c, l)
-	};
-}
-function hr(e, t, n) {
-	if (t <= 0) return e;
-	let r = Math.max(1e-4, n), i = [
-		Math.sin((e[1] * r + .23) * Jn) * Math.cos((e[2] * r + .41) * Jn),
-		Math.cos((e[2] * r + .17) * Jn) * Math.sin((e[0] * r + .37) * Jn),
-		Math.sin((e[0] * r - .31) * Jn) * Math.cos((e[1] * r + .29) * Jn)
-	];
-	return dr([
-		e[0] + i[0] * t,
-		e[1] + i[1] * t,
-		e[2] + i[2] * t
-	]);
-}
-function gr(e, t) {
-	return 1 - L(e[0] * t[0] + e[1] * t[1] + e[2] * t[2], -1, 1);
-}
-function _r(e, t) {
-	if (t.anchors.length === 0) return [
-		0,
-		0,
-		0,
-		0
-	];
-	let n = hr(e, L(t.amplitude, 0, .6), Math.max(1e-4, t.frequency)), r = 0, i = 0, a = 0, o = 0;
-	return t.anchors.forEach((e) => {
-		let s = gr(n, lr(e.x, e.y)), c = t.mode === "gaussian" ? Math.exp(-(s * s) / (2 * (.46 / t.power) ** 2)) : 1 / (s + 5e-4) ** t.power, l = ae(e.color);
-		r += l[0] * c, i += l[1] * c, a += l[2] * c, o += c;
-	}), o <= 0 ? [
-		0,
-		0,
-		0,
-		0
-	] : [
-		r / o,
-		i / o,
-		a / o,
-		1
-	];
-}
-function vr(e, t, n) {
-	return [
-		Yn(e[0], t[0], n),
-		Yn(e[1], t[1], n),
-		Yn(e[2], t[2], n),
-		Yn(e[3], t[3], n)
-	];
-}
-function yr(e, t, n) {
-	let r = (t % e.width + e.width) % e.width, i = (Math.min(e.height - 1, Math.max(0, n)) * e.width + r) * 4;
-	return [
-		R((e.data[i] ?? 0) / 255),
-		R((e.data[i + 1] ?? 0) / 255),
-		R((e.data[i + 2] ?? 0) / 255),
-		(e.data[i + 3] ?? 0) / 255
-	];
-}
-function br(e, t, n) {
-	let r = Math.min(e.width - 1, Math.max(0, t)), i = (Math.min(e.height - 1, Math.max(0, n)) * e.width + r) * 4, a = e.pixels?.[i] ?? 0, o = e.pixels?.[i + 1] ?? 0, s = e.pixels?.[i + 2] ?? 0, c = e.pixels?.[i + 3] ?? 255;
-	return [
-		R(a / 255),
-		R(o / 255),
-		R(s / 255),
-		c / 255
-	];
-}
-function xr(e, t) {
-	let n = t.placement;
-	if (!n || !t.pixels || t.width <= 0 || t.height <= 0) return [
-		0,
-		0,
-		0,
-		0
-	];
-	let r = ze(e, n);
-	if (!r) return [
-		0,
-		0,
-		0,
-		0
-	];
-	let { u: i, v: a } = r;
-	if (i < 0 || i > 1 || a < 0 || a > 1) return [
-		0,
-		0,
-		0,
-		0
-	];
-	let o = i * (t.width - 1), s = a * (t.height - 1), c = Math.floor(o), l = Math.floor(s), u = c + 1, d = l + 1, f = o - c, p = s - l;
-	return vr(vr(br(t, c, l), br(t, u, l), f), vr(br(t, c, d), br(t, u, d), f), p);
-}
-function Sr(e, t) {
-	let n = We(t), r = dr(e), i = dr(n.centerDirection), a = fr(r, i), o = Math.acos(L(a, -1, 1)), s = Math.max(n.angularRadius, 1e-4), c = o / s;
-	if (n.colorMode === "gradient") return c > 1 ? [
-		0,
-		0,
-		0,
-		0
-	] : Qn(Xn(n.stops), c);
-	let l = mr(e, i, s), u = l.d, d = ae(n.lightColor), f = n.brightness, p = L(1 - u / n.coreRadius) ** +n.coreSoftness, m = L(1 - u / n.glowSize) ** 2 * n.glowStrength, h = L(1 - u / n.glareSize) ** 1.15 * n.glareStrength, g = (p + m + h) * f, _ = or(d, g);
-	_ = sr(_, [
-		Math.max(g - 1, 0),
-		Math.max(g - 1, 0),
-		Math.max(g - 1, 0)
-	]);
-	let v = Math.max(n.haloInnerWidth, 1e-4), y = Math.max(n.haloOuterWidth, 1e-4), b = u - n.haloRadius, x = Math.exp(-nr(b / (b < 0 ? v : y))), S = cr(ir([
-		1,
-		1,
-		1
-	], rr(L((u - (n.haloRadius - v)) / (v + y))), n.dispersion), d), C = x * n.haloStrength * f;
-	_ = sr(_, or(S, C)), _ = sr(_, or([
-		1,
-		1,
-		1
-	], Math.max(C - 1.2, 0) * .22));
-	let w = Math.abs(l.y), T = Math.abs(l.x), E = Math.exp(-nr((T - n.haloRadius) / Math.max(n.dogSpread, 1e-4))) * Math.exp(-nr(w / Math.max(n.dogSpread * .72, 1e-4))), D = tr(n.haloRadius, n.haloRadius + Math.max(n.dogStretch, 1e-4), T) * (1 - tr(n.haloRadius + Math.max(n.dogStretch, 1e-4), n.haloRadius + Math.max(n.dogStretch * 2.2, 1e-4), T)) * Math.exp(-nr(w / Math.max(n.dogSpread * .9, 1e-4))), O = cr(ir([
-		1,
-		1,
-		1
-	], rr(L((T - (n.haloRadius - n.dogSpread * 1.4)) / Math.max(n.dogSpread * 3.5, 1e-4))), n.dispersion), d), k = (E + D * .28) * n.dogStrength * f;
-	_ = sr(_, or(O, k)), _ = sr(_, or([
-		1,
-		1,
-		1
-	], Math.max(k - 1.1, 0) * .18));
-	let A = L(Math.max(_[0], _[1], _[2]));
-	return A <= 1e-5 ? [
-		0,
-		0,
-		0,
-		0
-	] : [
-		_[0] / A,
-		_[1] / A,
-		_[2] / A,
-		A
-	];
-}
-function Cr(e, t, n, r = {}) {
-	let i = r.starfieldBakes?.get(e);
-	if (i) {
-		let e = Ft(t), n = (e.u % 1 + 1) % 1 * i.width - .5, r = L(e.v, 0, 1) * i.height - .5, a = Math.floor(n), o = Math.floor(r), s = a + 1, c = o + 1, l = n - a, u = r - o;
-		return vr(vr(yr(i, a, o), yr(i, s, o), l), vr(yr(i, a, c), yr(i, s, c), l), u);
-	}
-	return Hn(t, n, { sampleHeight: r.sampleHeight });
-}
-function wr(e, t, n = {}) {
-	return t.type === "gradient" ? er(e, t.params) : t.type === "field-gradient" ? _r(e, t.params) : t.type === "spot" ? Sr(e, t.params) : t.type === "starfield" ? Cr(t.id, e, t.params, n) : xr(e, t.params);
-}
-function Tr(e, t, n = {}) {
+function ar(e, t, n = {}) {
 	return t.filter((e) => e.enabled).reverse().reduce((t, r) => {
-		let i = r.type === "group" ? [...Tr(e, r.children, n), 1] : wr(e, r, n), a = L(i[3] * (r.opacity / 100));
-		return ue(t, [
+		let i = r.type === "group" ? [...ar(e, r.children, n), 1] : ir(e, r, n), a = I(i[3] * (r.opacity / 100));
+		return fe(t, [
 			i[0],
 			i[1],
 			i[2]
@@ -1755,22 +1488,22 @@ function Tr(e, t, n = {}) {
 		0
 	]);
 }
-function Er(e, t) {
+function or(e, t) {
 	for (let n of e) if (n.type === "group") {
 		if (n.id === t) return n;
-		let e = Er(n.children, t);
+		let e = or(n.children, t);
 		if (e) return e;
 	}
 	return null;
 }
-function Dr(e, t, n = {}) {
-	let r = fe(e), i = n.targetGroupId ? Er(r.nodes, n.targetGroupId) : null;
-	return Tr(t, n.targetGroupId ? i ? [i] : [] : r.nodes, n);
+function sr(e, t, n = {}) {
+	let r = me(e), i = n.targetGroupId ? or(r.nodes, n.targetGroupId) : null;
+	return ar(t, n.targetGroupId ? i ? [i] : [] : r.nodes, n);
 }
 //#endregion
 //#region bake.ts
-var Or = 1024, kr = "0.1.0", Ar = /* @__PURE__ */ new Map(), jr = /* @__PURE__ */ new Map();
-function Mr(e = {}) {
+var cr = 1024, lr = "0.1.0", ur = /* @__PURE__ */ new Map(), dr = /* @__PURE__ */ new Map();
+function fr(e = {}) {
 	let t = Math.max(.1, e.dpr ?? 1), n = Math.max(1, Math.floor((e.width ?? 1024) * t)), r = Math.max(1, Math.floor((e.height ?? n / 2) * t));
 	return {
 		cache: e.cache ?? !0,
@@ -1780,38 +1513,38 @@ function Mr(e = {}) {
 		width: n
 	};
 }
-function Nr(e, t) {
-	return de(JSON.stringify({
+function pr(e, t) {
+	return pe(JSON.stringify({
 		manifest: e,
 		options: t,
-		runtimeVersion: kr
+		runtimeVersion: lr
 	}));
 }
-function Pr() {
-	Ar.clear(), jr.clear();
+function mr() {
+	ur.clear(), dr.clear();
 }
-function Fr(e, t = []) {
+function hr(e, t = []) {
 	return e.forEach((e) => {
 		if (e.enabled) {
 			if (e.type === "group") {
-				Fr(e.children, t);
+				hr(e.children, t);
 				return;
 			}
 			e.type === "starfield" && t.push(e);
 		}
 	}), t;
 }
-function Ir(e, t) {
+function gr(e, t) {
 	for (let n of e) {
 		if (n.type !== "group") continue;
 		if (n.id === t) return n;
-		let e = Ir(n.children, t);
+		let e = gr(n.children, t);
 		if (e) return e;
 	}
 	return null;
 }
-function Lr(e, t, n, r, i) {
-	let a = Fr(r ? Ir(e.nodes, r)?.children ?? [] : e.nodes);
+function _r(e, t, n, r, i) {
+	let a = hr(r ? gr(e.nodes, r)?.children ?? [] : e.nodes);
 	if (a.length === 0) return;
 	let o = /* @__PURE__ */ new Map();
 	return a.forEach((e) => {
@@ -1820,24 +1553,24 @@ function Lr(e, t, n, r, i) {
 			o.set(e.id, r);
 			return;
 		}
-		let a = Un(e.params, t, n), s = jr.get(a), c = s ?? qn(e.params, t, n);
-		s || jr.set(a, c), o.set(e.id, c);
+		let a = $n(e.params, t, n), s = dr.get(a), c = s ?? rr(e.params, t, n);
+		s || dr.set(a, c), o.set(e.id, c);
 	}), o;
 }
-function Rr(e, t = {}) {
-	let n = fe(e), r = Mr(t), i = r.cache ? Nr(n, r) : null;
+function vr(e, t = {}) {
+	let n = me(e), r = fr(t), i = r.cache ? pr(n, r) : null;
 	if (i) {
-		let e = Ar.get(i);
+		let e = ur.get(i);
 		if (e) return {
 			...e,
 			data: new Uint8ClampedArray(e.data)
 		};
 	}
-	let { height: a, targetGroupId: o, width: s } = r, c = Lr(n, s, a, o, t.starfieldBakes), l = new Uint8ClampedArray(s * a * 4);
+	let { height: a, targetGroupId: o, width: s } = r, c = _r(n, s, a, o, t.starfieldBakes), l = new Uint8ClampedArray(s * a * 4);
 	for (let e = 0; e < a; e += 1) {
 		let t = (e + .5) / a;
 		for (let r = 0; r < s; r += 1) {
-			let [i, u, d] = oe(Dr(n, ur((r + .5) / s, t), {
+			let [i, u, d] = ce(sr(n, Se((r + .5) / s, t), {
 				sampleHeight: a,
 				starfieldBakes: c,
 				targetGroupId: o
@@ -1850,7 +1583,7 @@ function Rr(e, t = {}) {
 		height: a,
 		width: s
 	};
-	return i && Ar.set(i, {
+	return i && ur.set(i, {
 		...u,
 		data: new Uint8ClampedArray(l)
 	}), u;
@@ -1858,7 +1591,7 @@ function Rr(e, t = {}) {
 //#endregion
 //#region starfield-gpu-bake.ts
 Math.PI * 2;
-var zr = 8, Br = 2048, Vr = 1.75, Hr = 3.25, Ur = 1, Wr = 1.5, Gr = 8, Kr = .1, qr = 5, Jr = 12, Yr = .35, Xr = .25, Zr = 1.0005, Qr = 32, $r = new Float32Array([
+var yr = 8, br = 2048, xr = 1.75, Sr = 3.25, Cr = 1, wr = 1.5, Tr = 8, Er = .1, Dr = 5, Or = 12, kr = .35, Ar = .25, jr = 1.0005, Mr = 32, Nr = new Float32Array([
 	-1,
 	-1,
 	0,
@@ -1878,76 +1611,76 @@ var zr = 8, Br = 2048, Vr = 1.75, Hr = 3.25, Ur = 1, Wr = 1.5, Gr = 8, Kr = .1, 
 	1,
 	0
 ]);
-function ei(e) {
+function Pr(e) {
 	let t = e;
 	return !!(t && typeof t.render == "function" && typeof t.setRenderTarget == "function" && typeof t.getRenderTarget == "function");
 }
-function ti(e) {
+function Fr(e) {
 	let t = e.backend, n = t?.device, r = t?.gl;
-	return typeof n?.limits?.maxTextureDimension2D == "number" ? n.limits.maxTextureDimension2D : r ? Number(r.getParameter(r.MAX_TEXTURE_SIZE)) : yt;
+	return typeof n?.limits?.maxTextureDimension2D == "number" ? n.limits.maxTextureDimension2D : r ? Number(r.getParameter(r.MAX_TEXTURE_SIZE)) : kt;
 }
-function Q(e, t) {
+function X(e, t) {
 	let n = e[t];
 	if (n?.isUniformNode) return n;
-	let r = N(Number(n?.value ?? 0));
+	let r = j(Number(n?.value ?? 0));
 	return e[t] = r, r;
 }
-function ni(t, n) {
+function Z(t, n) {
 	let r = t[n], i = r?.value instanceof e.Vector2 ? r.value.clone() : new e.Vector2();
 	if (r?.isUniformNode) return r;
-	let a = N(i);
+	let a = j(i);
 	return t[n] = a, a;
 }
-function ri(t, n) {
+function Ir(t, n) {
 	let r = t[n], i = r?.value instanceof e.Vector3 ? r.value.clone() : new e.Vector3();
 	if (r?.isUniformNode) return r;
-	let a = N(i);
+	let a = j(i);
 	return t[n] = a, a;
 }
-function ii(e) {
-	let t = e.x.sub(.5).mul(o).mul(2), n = e.y.mul(o), r = k(n);
-	return w(I(r.mul(k(t)), f(n), r.mul(f(t))));
+function Lr(e) {
+	let t = e.x.sub(.5).mul(o).mul(2), n = e.y.mul(o), r = te(n);
+	return w(P(r.mul(te(t)), f(n), r.mul(f(t))));
 }
-function ai(e) {
-	let t = x(e.y, 2), n = j(1, t);
-	return F(e.x.add(n.mul(.5)), b(t, h(2).sub(t), n));
+function Rr(e) {
+	let t = x(e.y, 2), n = k(1, t);
+	return N(e.x.add(n.mul(.5)), b(t, h(2).sub(t), n));
 }
-function oi(e) {
-	return ii(ai(e));
+function zr(e) {
+	return Lr(Rr(e));
 }
-function si(e) {
+function Br(e) {
 	let t = w(e);
-	return F(c(t.x, t.z).div(o.mul(2)).add(.5), s(d(t.y, -1, 1)).div(o));
+	return N(c(t.x, t.z).div(o.mul(2)).add(.5), s(d(t.y, -1, 1)).div(o));
 }
-function ci(e, t) {
+function Vr(e, t) {
 	return o.mul(v(t.y, 1e-6)).div(v(e.y, 1));
 }
-function li(e, t) {
+function Hr(e, t) {
 	return v(v(e.negate(), e.sub(t)), 0);
 }
-function ui(e, t, n) {
-	let r = e.sub(t), i = r.add(1), a = r.sub(1), o = li(r, n), s = li(i, n), c = li(a, n);
-	return O(s.lessThan(o).and(s.lessThanEqual(c)), i, O(c.lessThan(o).and(c.lessThan(s)), a, r));
+function Ur(e, t, n) {
+	let r = e.sub(t), i = r.add(1), a = r.sub(1), o = Hr(r, n), s = Hr(i, n), c = Hr(a, n);
+	return D(s.lessThan(o).and(s.lessThanEqual(c)), i, D(c.lessThan(o).and(c.lessThan(s)), a, r));
 }
-function di(e, t, n) {
-	return F(ui(e.x, t.x, n.x).div(n.x), e.y.sub(t.y).div(n.y));
+function Wr(e, t, n) {
+	return N(Ur(e.x, t.x, n.x).div(n.x), e.y.sub(t.y).div(n.y));
 }
-function fi(e) {
-	return j(0, e.x).mul(j(e.x, 1)).mul(j(0, e.y)).mul(j(e.y, 1));
+function Gr(e) {
+	return k(0, e.x).mul(k(e.x, 1)).mul(k(0, e.y)).mul(k(e.y, 1));
 }
-function pi(e) {
-	let t = I(1, .55, .3), n = I(1, .96, .92), r = I(.7, .8, 1);
-	return O(e.lessThan(.5), b(t, n, e.mul(2)), b(n, r, e.sub(.5).mul(2)));
+function Kr(e) {
+	let t = P(1, .55, .3), n = P(1, .96, .92), r = P(.7, .8, 1);
+	return D(e.lessThan(.5), b(t, n, e.mul(2)), b(n, r, e.sub(.5).mul(2)));
 }
-function mi(e, t, n) {
-	let r = D(d(e, 0, 1), qr), i = b(1, D(d(t, 0, 1), Jr), n);
+function qr(e, t, n) {
+	let r = E(d(e, 0, 1), Dr), i = b(1, E(d(t, 0, 1), Or), n);
 	return r.mul(i);
 }
-function hi(e, t, n, r) {
-	return b(1, b(Kr, 1, mi(e, t, n)), r);
+function Jr(e, t, n, r) {
+	return b(1, b(Er, 1, qr(e, t, n)), r);
 }
-function gi(e, t, n, r) {
-	let o = d(t, 1, 8), s = v(n, .001), c = d(r, .001, .999), l = I(e).toVar(), u = h(.5).toVar(), f = h(0).toVar(), p = h(0).toVar();
+function Yr(e, t, n, r) {
+	let o = d(t, 1, 8), s = v(n, .001), c = d(r, .001, .999), l = P(e).toVar(), u = h(.5).toVar(), f = h(0).toVar(), p = h(0).toVar();
 	return a(8, ({ i: e }) => {
 		i(h(e).lessThan(o), () => {
 			let e = C(l, _(1), s, c).mul(.5).add(.5);
@@ -1955,15 +1688,15 @@ function gi(e, t, n, r) {
 		});
 	}), f.div(v(p, 1e-4));
 }
-function _i(n, o) {
-	let s = jn(n.nebulaField), c = Array.from({ length: zr }, (t, n) => {
+function Xr(n, o) {
+	let s = Vn(n.nebulaField), c = Array.from({ length: yr }, (t, n) => {
 		let r = s.anchors[n];
 		return new e.Vector3(...r?.dir ?? [
 			0,
 			1,
 			0
 		]);
-	}), l = Array.from({ length: zr }, (t, n) => {
+	}), l = Array.from({ length: yr }, (t, n) => {
 		let r = s.anchors[n];
 		return new e.Vector3(...r?.color ?? [
 			0,
@@ -1971,7 +1704,7 @@ function _i(n, o) {
 			0
 		]);
 	}), u = n.nebula, f = {
-		uAnchorCount: { value: Math.min(s.anchors.length, zr) },
+		uAnchorCount: { value: Math.min(s.anchors.length, yr) },
 		uBaseScale: { value: u.uBaseScale },
 		uBlend: { value: +(s.blend === "gaussian") },
 		uCloudCore: { value: new e.Vector3(...u.uCloudCore) },
@@ -1995,33 +1728,33 @@ function _i(n, o) {
 		uSoftness: { value: u.uSoftness },
 		uTileUvMin: { value: new e.Vector2(o.storageUvMin.x, o.storageUvMin.y) },
 		uTileUvSize: { value: new e.Vector2(o.storageUvSize.x, o.storageUvSize.y) }
-	}, g = ni(f, "uTileUvMin"), _ = ni(f, "uTileUvSize"), y = Q(f, "uAnchorCount"), x = Q(f, "uBlend"), S = Q(f, "uPower"), C = Q(f, "uSigma"), E = Q(f, "uColorWarpAmp"), k = Q(f, "uColorWarpFreq"), j = Q(f, "uSeed"), M = Q(f, "uCoverage"), N = Q(f, "uDensity"), P = Q(f, "uSoftness"), te = Q(f, "uContrast"), ne = Q(f, "uBaseScale"), F = Q(f, "uOctaves"), ie = Q(f, "uOpacity"), L = Q(f, "uLightFocus"), R = Q(f, "uLightLining"), z = Q(f, "uLightIntensity");
-	Q(f, "uNebulaExposure");
-	let ae = Q(f, "uNebulaStrength"), oe = ri(f, "uCloudShadow"), se = ri(f, "uCloudHighlight"), ce = ri(f, "uCloudCore"), le = ee(c, "vec3"), ue = ee(l, "vec3"), de = new t({
+	}, g = Z(f, "uTileUvMin"), _ = Z(f, "uTileUvSize"), y = X(f, "uAnchorCount"), x = X(f, "uBlend"), S = X(f, "uPower"), C = X(f, "uSigma"), T = X(f, "uColorWarpAmp"), te = X(f, "uColorWarpFreq"), k = X(f, "uSeed"), A = X(f, "uCoverage"), j = X(f, "uDensity"), M = X(f, "uSoftness"), re = X(f, "uContrast"), ie = X(f, "uBaseScale"), N = X(f, "uOctaves"), F = X(f, "uOpacity"), I = X(f, "uLightFocus"), oe = X(f, "uLightLining"), L = X(f, "uLightIntensity");
+	X(f, "uNebulaExposure");
+	let se = X(f, "uNebulaStrength"), ce = Ir(f, "uCloudShadow"), le = Ir(f, "uCloudHighlight"), ue = Ir(f, "uCloudCore"), de = ne(c, "vec3"), fe = ne(l, "vec3"), pe = new t({
 		depthTest: !1,
 		depthWrite: !1
 	});
-	return de.uniforms = f, de.colorNode = r(() => {
-		let e = T.xy.mul(.5).add(.5), t = oi(g.add(e.mul(_))), n = d(F, 1, 8), r = t.mul(v(k, .001)).add(I(j, j.mul(.37), j.mul(-.21))), o = I(gi(r, n, 2.02, .52), gi(r.add(I(5.2, 1.3, 7.1)), n, 2.03, .5), gi(r.add(I(9.1, 8.4, 2.8)), n, 2.01, .51)).mul(2).sub(1), s = w(t.add(o.mul(v(E, 0)))), c = I(0).toVar(), l = h(0).toVar();
-		a(zr, ({ i: e }) => {
+	return pe.uniforms = f, pe.colorNode = r(() => {
+		let e = ee.xy.mul(.5).add(.5), t = zr(g.add(e.mul(_))), n = d(N, 1, 8), r = t.mul(v(te, .001)).add(P(k, k.mul(.37), k.mul(-.21))), o = P(Yr(r, n, 2.02, .52), Yr(r.add(P(5.2, 1.3, 7.1)), n, 2.03, .5), Yr(r.add(P(9.1, 8.4, 2.8)), n, 2.01, .51)).mul(2).sub(1), s = w(t.add(o.mul(v(T, 0)))), c = P(0).toVar(), l = h(0).toVar();
+		a(yr, ({ i: e }) => {
 			i(h(e).lessThan(y), () => {
-				let t = w(le.element(e)), n = ue.element(e), r = h(1).sub(p(s, t)), i = h(1).div(D(r.add(1e-4), v(S, 1e-4))), a = m(r.mul(r).negate().div(v(1e-4, h(2).mul(C).mul(C)))), o = O(x.lessThan(.5), i, a);
+				let t = w(de.element(e)), n = fe.element(e), r = h(1).sub(p(s, t)), i = h(1).div(E(r.add(1e-4), v(S, 1e-4))), a = m(r.mul(r).negate().div(v(1e-4, h(2).mul(C).mul(C)))), o = D(x.lessThan(.5), i, a);
 				c.addAssign(n.mul(o)), l.addAssign(o);
 			});
 		}), c.assign(c.div(v(l, 1e-4)));
-		let u = I(j.mul(13.17), j.mul(-7.31), j.mul(5.19)), f = t.mul(v(ne, .001)).add(u), ee = I(gi(f, n, 2.02, .5), gi(f.add(I(5.2, 1.3, 2.8)), n, 2.02, .5), gi(f.add(I(2.1, 4.7, 9.2)), n, 2.02, .5)), de = d(gi(f.add(ee.mul(3)), n, 2.02, .5), 0, 1), B = D(d(A(M, M.add(v(P, .001)), de), 0, 1), v(te, .05)), fe = D(d(v(v(c.r, c.g), c.b).mul(v(z, 0)), 0, 1), v(L, .001)), pe = D(v(b(b(oe, c.mul(se).mul(v(z, 0)), fe), ce, d(B.mul(.4), 0, 1)).add(c.mul(fe).mul(B.oneMinus()).mul(v(R, 0)).mul(v(z, 0))).mul(v(N, 0)), I(0)), I(.92)), me = d(B.mul(ie), 0, 1);
-		return re(v(I(.004, .005, .011).add(pe.mul(me).mul(v(ae, 0))), I(0)), 1);
-	})(), de;
+		let u = P(k.mul(13.17), k.mul(-7.31), k.mul(5.19)), f = t.mul(v(ie, .001)).add(u), ne = P(Yr(f, n, 2.02, .5), Yr(f.add(P(5.2, 1.3, 2.8)), n, 2.02, .5), Yr(f.add(P(2.1, 4.7, 9.2)), n, 2.02, .5)), pe = d(Yr(f.add(ne.mul(3)), n, 2.02, .5), 0, 1), R = E(d(O(A, A.add(v(M, .001)), pe), 0, 1), v(re, .05)), me = E(d(v(v(c.r, c.g), c.b).mul(v(L, 0)), 0, 1), v(I, .001)), he = E(v(b(b(ce, c.mul(le).mul(v(L, 0)), me), ue, d(R.mul(.4), 0, 1)).add(c.mul(me).mul(R.oneMinus()).mul(v(oe, 0)).mul(v(L, 0))).mul(v(j, 0)), P(0)), P(.92)), ge = d(R.mul(F), 0, 1);
+		return ae(v(P(.004, .005, .011).add(he.mul(ge).mul(v(se, 0))), P(0)), 1);
+	})(), pe;
 }
-function vi(t, n, r) {
-	let i = xn(t.stars, n, r, { includeSeamCopies: !0 }), a = [], o = [], s = [], c = [], l = [];
+function Zr(t, n, r) {
+	let i = jn(t.stars, n, r, { includeSeamCopies: !0 }), a = [], o = [], s = [], c = [], l = [];
 	i.forEach((e) => {
 		a.push(e.x, e.y, e.z), o.push(e.u, e.v), s.push(e.rSize, e.rBright, e.rGlare, e.rColor), c.push(e.rSizeGate), l.push(e.classId);
 	});
 	let u = new e.InstancedBufferGeometry();
-	return u.setAttribute("position", new e.BufferAttribute($r, 3)), u.setAttribute("iDirection", new e.InstancedBufferAttribute(new Float32Array(a), 3)), u.setAttribute("iUv", new e.InstancedBufferAttribute(new Float32Array(o), 2)), u.setAttribute("iRandoms", new e.InstancedBufferAttribute(new Float32Array(s), 4)), u.setAttribute("iSizeGate", new e.InstancedBufferAttribute(new Float32Array(c), 1)), u.setAttribute("iClass", new e.InstancedBufferAttribute(new Float32Array(l), 1)), u.instanceCount = l.length, u;
+	return u.setAttribute("position", new e.BufferAttribute(Nr, 3)), u.setAttribute("iDirection", new e.InstancedBufferAttribute(new Float32Array(a), 3)), u.setAttribute("iUv", new e.InstancedBufferAttribute(new Float32Array(o), 2)), u.setAttribute("iRandoms", new e.InstancedBufferAttribute(new Float32Array(s), 4)), u.setAttribute("iSizeGate", new e.InstancedBufferAttribute(new Float32Array(c), 1)), u.setAttribute("iClass", new e.InstancedBufferAttribute(new Float32Array(l), 1)), u.instanceCount = l.length, u;
 }
-function yi(n, i, a = {}) {
+function Qr(n, i, a = {}) {
 	let c = n.stars, u = a.bakeWidth ?? i.storageSize.width, f = a.bakeHeight ?? i.storageSize.height, g = {
 		uBakeSize: { value: new e.Vector2(u, f) },
 		uBright: { value: c.uBright },
@@ -2032,33 +1765,33 @@ function yi(n, i, a = {}) {
 		uGlareVar: { value: c.uGlareVar },
 		uLargeStarRarity: { value: c.uLargeStarRarity },
 		uOutputSize: { value: new e.Vector2(i.storageSize.width, i.storageSize.height) },
-		uDisplayPixelAngle: { value: a.displayPixelAngle ?? Math.PI / Br },
+		uDisplayPixelAngle: { value: a.displayPixelAngle ?? Math.PI / br },
 		uSizeVar: { value: c.uSizeVar },
 		uStarSize: { value: c.uStarSize },
 		uTileUvMin: { value: new e.Vector2(i.storageUvMin.x, i.storageUvMin.y) },
 		uTileUvSize: { value: new e.Vector2(i.storageUvSize.x, i.storageUvSize.y) }
-	}, _ = ni(g, "uBakeSize"), x = ni(g, "uTileUvMin"), S = ni(g, "uTileUvSize"), C = Q(g, "uDisplayPixelAngle"), E = Q(g, "uStarSize"), O = Q(g, "uSizeVar"), M = Q(g, "uLargeStarRarity"), N = Q(g, "uBright"), ee = Q(g, "uBrightVar"), P = Q(g, "uGlareSize"), te = Q(g, "uGlareStr"), I = Q(g, "uGlareVar"), ie = Q(g, "uColorVar"), L = ne("vec2", "vStarBakeUv"), R = ne("vec3", "vStarBakeDirection"), z = ne("vec4", "vStarBakeRandoms"), ae = ne("float", "vStarBakeSizeGate"), oe = new t({
+	}, _ = Z(g, "uBakeSize"), x = Z(g, "uTileUvMin"), S = Z(g, "uTileUvSize"), C = X(g, "uDisplayPixelAngle"), T = X(g, "uStarSize"), D = X(g, "uSizeVar"), A = X(g, "uLargeStarRarity"), j = X(g, "uBright"), ne = X(g, "uBrightVar"), M = X(g, "uGlareSize"), re = X(g, "uGlareStr"), P = X(g, "uGlareVar"), F = X(g, "uColorVar"), I = ie("vec2", "vStarBakeUv"), oe = ie("vec3", "vStarBakeDirection"), L = ie("vec4", "vStarBakeRandoms"), se = ie("float", "vStarBakeSizeGate"), ce = new t({
 		blending: e.AdditiveBlending,
 		depthTest: !1,
 		depthWrite: !1,
 		transparent: !0
 	});
-	return oe.uniforms = g, oe.vertexNode = r(() => {
-		let e = l("iDirection", "vec3"), t = l("iUv", "vec2"), n = l("iRandoms", "vec4"), r = l("iSizeGate", "float"), i = ci(_, S), a = hi(n.x, r, M, O), s = E.mul(a).mul(C), c = E.mul(a), u = A(Ur, Wr, c).oneMinus(), d = v(v(s, b(h(Vr).mul(C), C.mul(.5), u)).mul(.45), C.mul(.5)), f = A(Wr, 1.75, c), p = P.mul(b(1, a, O)).mul(C), m = v(v(d, v(v(s.add(p), h(Hr).mul(C)).mul(.36), C.mul(.5)).mul(f).mul(j(1e-6, P)).mul(j(1e-6, te))), i).mul(Gr), g = v(k(t.y.mul(o)), .015), w = F(y(1.5, m.div(o.mul(2).mul(g))), m.div(o)), D = t.add(T.xy.mul(w)), N = D.sub(x).div(S);
-		return L.assign(D), R.assign(e), z.assign(n), ae.assign(r), re(N.mul(2).sub(1), 0, 1);
-	})(), oe.colorNode = r(() => {
-		let e = s(d(p(oi(L), w(R)), -1, 1)), t = mi(z.x, ae, M), n = hi(z.x, ae, M, O), r = E.mul(n).mul(C), i = E.mul(n), a = A(Ur * .75, Ur, i).oneMinus(), o = A(Wr, 1.75, i), c = v(r, C.mul(.1)), l = b(1, v(.08, A(0, Ur, i)), a), u = v(c.mul(.45), C.mul(.5)), f = m(e.mul(e).negate().div(v(u.mul(u).mul(2), 1e-10))).mul(l), h = P.mul(b(1, n, O)).mul(C), g = v(v(r.add(h), C.mul(.1)).mul(.36), C.mul(.5)), _ = m(e.mul(e).negate().div(v(g.mul(g).mul(2), 1e-10))).mul(o).mul(j(1e-6, P)).mul(j(1e-6, te)), y = b(z.y, v(z.y, t), O.mul(Yr)), x = b(z.z, v(z.z, t), O.mul(Xr)), S = te.mul(b(1, D(x, 8), I)), T = N.mul(b(1, D(y, 3).mul(3), ee));
-		return re(pi(b(.5, z.w, ie)).mul(f.add(_.mul(S))).mul(T), 1);
-	})(), oe;
+	return ce.uniforms = g, ce.vertexNode = r(() => {
+		let e = l("iDirection", "vec3"), t = l("iUv", "vec2"), n = l("iRandoms", "vec4"), r = l("iSizeGate", "float"), i = Vr(_, S), a = Jr(n.x, r, A, D), s = T.mul(a).mul(C), c = T.mul(a), u = O(Cr, wr, c).oneMinus(), d = v(v(s, b(h(xr).mul(C), C.mul(.5), u)).mul(.45), C.mul(.5)), f = O(wr, 1.75, c), p = M.mul(b(1, a, D)).mul(C), m = v(v(d, v(v(s.add(p), h(Sr).mul(C)).mul(.36), C.mul(.5)).mul(f).mul(k(1e-6, M)).mul(k(1e-6, re))), i).mul(Tr), g = v(te(t.y.mul(o)), .015), w = N(y(1.5, m.div(o.mul(2).mul(g))), m.div(o)), E = t.add(ee.xy.mul(w)), j = E.sub(x).div(S);
+		return I.assign(E), oe.assign(e), L.assign(n), se.assign(r), ae(j.mul(2).sub(1), 0, 1);
+	})(), ce.colorNode = r(() => {
+		let e = s(d(p(zr(I), w(oe)), -1, 1)), t = qr(L.x, se, A), n = Jr(L.x, se, A, D), r = T.mul(n).mul(C), i = T.mul(n), a = O(Cr * .75, Cr, i).oneMinus(), o = O(wr, 1.75, i), c = v(r, C.mul(.1)), l = b(1, v(.08, O(0, Cr, i)), a), u = v(c.mul(.45), C.mul(.5)), f = m(e.mul(e).negate().div(v(u.mul(u).mul(2), 1e-10))).mul(l), h = M.mul(b(1, n, D)).mul(C), g = v(v(r.add(h), C.mul(.1)).mul(.36), C.mul(.5)), _ = m(e.mul(e).negate().div(v(g.mul(g).mul(2), 1e-10))).mul(o).mul(k(1e-6, M)).mul(k(1e-6, re)), y = b(L.y, v(L.y, t), D.mul(kr)), x = b(L.z, v(L.z, t), D.mul(Ar)), S = re.mul(b(1, E(x, 8), P)), ee = j.mul(b(1, E(y, 3).mul(3), ne));
+		return ae(Kr(b(.5, L.w, F)).mul(f.add(_.mul(S))).mul(ee), 1);
+	})(), ce;
 }
-function bi(n, o, s, c, l, u) {
+function $r(n, o, s, c, l, u) {
 	let f = {
 		uExposure: { value: 1 },
 		uSourcePerTarget: { value: u },
 		uSourceSize: { value: new e.Vector2(o, s) },
 		uSourceTexture: { value: n },
 		uTargetSize: { value: new e.Vector2(c, l) }
-	}, p = P(n), _ = ni(f, "uSourceSize"), y = ni(f, "uTargetSize"), b = Q(f, "uSourcePerTarget"), x = Q(f, "uExposure"), S = new t({
+	}, p = M(n), _ = Z(f, "uSourceSize"), y = Z(f, "uTargetSize"), b = X(f, "uSourcePerTarget"), x = X(f, "uExposure"), S = new t({
 		depthTest: !1,
 		depthWrite: !1
 	});
@@ -2066,20 +1799,20 @@ function bi(n, o, s, c, l, u) {
 		...f,
 		uSourceTexture: p
 	}, S.colorNode = r(() => {
-		let e = g(te().mul(y)), t = g(b.add(.5)), n = re(0).toVar(), r = h(0).toVar();
+		let e = g(re().mul(y)), t = g(b.add(.5)), n = ae(0).toVar(), r = h(0).toVar();
 		a(8, ({ i: o }) => {
 			a(8, ({ i: a }) => {
 				i(h(a).lessThan(t).and(h(o).lessThan(t)), () => {
-					let t = e.mul(b).add(F(h(a), h(o))).add(.5);
-					n.addAssign(M(p, t.div(_))), r.addAssign(1);
+					let t = e.mul(b).add(N(h(a), h(o))).add(.5);
+					n.addAssign(A(p, t.div(_))), r.addAssign(1);
 				});
 			});
 		});
-		let o = n.rgb.div(v(r, 1)), s = I(.004, .005, .011), c = I(1).sub(m(s.mul(x).negate())), l = v(I(1).sub(m(s.add(o).mul(x).negate())).sub(c), I(0));
-		return re(l, d(v(v(l.r, l.g), l.b), 0, 1));
+		let o = n.rgb.div(v(r, 1)), s = P(.004, .005, .011), c = P(1).sub(m(s.mul(x).negate())), l = v(P(1).sub(m(s.add(o).mul(x).negate())).sub(c), P(0));
+		return ae(l, d(v(v(l.r, l.g), l.b), 0, 1));
 	})(), S;
 }
-function xi(n, i, o, s) {
+function ei(n, i, o, s) {
 	let c = {
 		uContentUvMin: { value: new e.Vector2(o.uvMin.x, o.uvMin.y) },
 		uContentUvSize: { value: new e.Vector2(o.uvSize.x, o.uvSize.y) },
@@ -2092,23 +1825,23 @@ function xi(n, i, o, s) {
 		uStorageUvMin: { value: new e.Vector2(o.storageUvMin.x, o.storageUvMin.y) },
 		uStorageUvSize: { value: new e.Vector2(o.storageUvSize.x, o.storageUvSize.y) },
 		uStarTexture: { value: i }
-	}, l = P(n), u = P(i), f = ni(c, "uContentUvMin"), p = ni(c, "uContentUvSize"), g = ni(c, "uStorageUvMin"), _ = ni(c, "uStorageUvSize"), y = Q(c, "uHasLeftNeighbor"), x = Q(c, "uHasRightNeighbor"), S = Q(c, "uHasTopNeighbor"), C = Q(c, "uHasBottomNeighbor"), w = Q(c, "uNebulaExposure"), E = new t({
+	}, l = M(n), u = M(i), f = Z(c, "uContentUvMin"), p = Z(c, "uContentUvSize"), g = Z(c, "uStorageUvMin"), _ = Z(c, "uStorageUvSize"), y = X(c, "uHasLeftNeighbor"), x = X(c, "uHasRightNeighbor"), S = X(c, "uHasTopNeighbor"), C = X(c, "uHasBottomNeighbor"), w = X(c, "uNebulaExposure"), T = new t({
 		depthTest: !1,
 		depthWrite: !1,
 		transparent: !0
-	}), D = +(o.uvSize.x >= .999), k = .28;
-	return E.blending = e.CustomBlending, E.blendEquation = e.AddEquation, E.blendSrc = e.OneFactor, E.blendDst = e.OneFactor, E.blendEquationAlpha = e.AddEquation, E.blendSrcAlpha = e.OneFactor, E.blendDstAlpha = e.OneMinusSrcAlphaFactor, c.uNebulaTexture = l, c.uStarTexture = u, E.uniforms = c, E.colorNode = r(() => {
-		let e = T.xy.mul(.5).add(.5), t = F(e.x, h(1).sub(e.y)), n = v(h(1).sub(A(0, k, t.y)), h(1).sub(A(0, k, h(1).sub(t.y)))).mul(D), r = di(t, g, _), i = d(r, 0, 1), o = fi(r), s = F(ui(t.x, f.x, p.x).div(p.x), t.y.sub(f.y).div(p.y)), c = v(_.sub(p).div(p.mul(2)), F(0)), E = v(c, F(1e-6)), j = O(y.greaterThan(.5), A(E.x.negate(), E.x, s.x), 1), N = O(x.greaterThan(.5), h(1).sub(A(h(1).sub(E.x), h(1).add(E.x), s.x)), 1), ee = O(c.x.lessThanEqual(0), 1, j.mul(N)), P = O(S.greaterThan(.5), A(E.y.negate(), E.y, s.y), 1), te = O(C.greaterThan(.5), h(1).sub(A(h(1).sub(E.y), h(1).add(E.y), s.y)), 1), ne = O(c.y.lessThanEqual(0), 1, P.mul(te)), ie = d(ee.mul(ne).mul(o), 0, 1), L = M(l, i).rgb, R = I(0).toVar(), z = h(0).toVar();
+	}), E = +(o.uvSize.x >= .999), te = .28;
+	return T.blending = e.CustomBlending, T.blendEquation = e.AddEquation, T.blendSrc = e.OneFactor, T.blendDst = e.OneFactor, T.blendEquationAlpha = e.AddEquation, T.blendSrcAlpha = e.OneFactor, T.blendDstAlpha = e.OneMinusSrcAlphaFactor, c.uNebulaTexture = l, c.uStarTexture = u, T.uniforms = c, T.colorNode = r(() => {
+		let e = ee.xy.mul(.5).add(.5), t = N(e.x, h(1).sub(e.y)), n = v(h(1).sub(O(0, te, t.y)), h(1).sub(O(0, te, h(1).sub(t.y)))).mul(E), r = Wr(t, g, _), i = d(r, 0, 1), o = Gr(r), s = N(Ur(t.x, f.x, p.x).div(p.x), t.y.sub(f.y).div(p.y)), c = v(_.sub(p).div(p.mul(2)), N(0)), T = v(c, N(1e-6)), k = D(y.greaterThan(.5), O(T.x.negate(), T.x, s.x), 1), j = D(x.greaterThan(.5), h(1).sub(O(h(1).sub(T.x), h(1).add(T.x), s.x)), 1), ne = D(c.x.lessThanEqual(0), 1, k.mul(j)), M = D(S.greaterThan(.5), O(T.y.negate(), T.y, s.y), 1), re = D(C.greaterThan(.5), h(1).sub(O(h(1).sub(T.y), h(1).add(T.y), s.y)), 1), ie = D(c.y.lessThanEqual(0), 1, M.mul(re)), F = d(ne.mul(ie).mul(o), 0, 1), I = A(l, i).rgb, oe = P(0).toVar(), L = h(0).toVar();
 		a(32, ({ i: e }) => {
-			let n = di(F(h(e).add(.5).div(32), t.y), g, _), r = d(n, 0, 1), i = fi(n);
-			R.addAssign(M(l, r).rgb.mul(i)), z.addAssign(i);
+			let n = Wr(N(h(e).add(.5).div(32), t.y), g, _), r = d(n, 0, 1), i = Gr(n);
+			oe.addAssign(A(l, r).rgb.mul(i)), L.addAssign(i);
 		});
-		let ae = b(L, R.div(v(z, 1)), n), oe = M(u, i);
-		return re(I(1).sub(m(ae.mul(v(w, .001)).negate())).add(oe.rgb), 1).mul(ie);
-	})(), E.name = `Starfield composite ${o.id}`, E;
+		let se = b(I, oe.div(v(L, 1)), n), ce = A(u, i);
+		return ae(P(1).sub(m(se.mul(v(w, .001)).negate())).add(ce.rgb), 1).mul(F);
+	})(), T.name = `Starfield composite ${o.id}`, T;
 }
-function Si(t) {
-	return ji(t).map(({ end: n, offset: r, skyV0: i, skyV1: a, start: o }) => {
+function ti(t) {
+	return ui(t).map(({ end: n, offset: r, skyV0: i, skyV1: a, start: o }) => {
 		let s = (o + r - t.storageUvMin.x) / t.storageUvSize.x, c = (n + r - t.storageUvMin.x) / t.storageUvSize.x, l = (i - t.storageUvMin.y) / t.storageUvSize.y, u = (a - t.storageUvMin.y) / t.storageUvSize.y, d = o * 2 - 1, f = n * 2 - 1, p = 1 - i * 2, m = 1 - a * 2, h = new e.BufferGeometry();
 		return h.setAttribute("position", new e.BufferAttribute(new Float32Array([
 			d,
@@ -2145,64 +1878,64 @@ function Si(t) {
 		]), 2)), h;
 	});
 }
-function Ci(e) {
+function ni(e) {
 	return Math.max(8, Math.floor(e / 2));
 }
-function wi(t, n) {
-	let r = Ci(Qr), i = n.uvMin, a = n.uvSize, o = Math.max(0, Math.min(1, i.y)), s = Math.max(0, Math.min(1, i.y + a.y)), c = Math.max(s - o, 1e-4), l = Math.max(3, Math.ceil(Qr * Math.max(a.x, .001))), u = Math.max(2, Math.ceil(r * Math.max(c, .001))), d = (i.x - .25) * Math.PI * 2, f = a.x * Math.PI * 2, p = o * Math.PI, m = c * Math.PI;
-	return new e.SphereGeometry(Zr, l, u, d, f, p, m);
+function ri(t, n) {
+	let r = ni(Mr), i = n.uvMin, a = n.uvSize, o = Math.max(0, Math.min(1, i.y)), s = Math.max(0, Math.min(1, i.y + a.y)), c = Math.max(s - o, 1e-4), l = Math.max(3, Math.ceil(Mr * Math.max(a.x, .001))), u = Math.max(2, Math.ceil(r * Math.max(c, .001))), d = (i.x - .25) * Math.PI * 2, f = a.x * Math.PI * 2, p = o * Math.PI, m = c * Math.PI;
+	return new e.SphereGeometry(jr, l, u, d, f, p, m);
 }
-function Ti(t) {
+function ii(t) {
 	let n = t.uvMin.x, r = t.uvMin.y, i = t.uvMin.x + t.uvSize.x, a = t.uvMin.y + t.uvSize.y, o = t.storageUvMin.x, s = t.storageUvMin.y, c = t.storageUvMin.x + t.storageUvSize.x, l = t.storageUvMin.y + t.storageUvSize.y, u = t.hasLeftNeighbor ? o : n, d = t.hasRightNeighbor ? c : i, f = t.hasTopNeighbor ? s : r, p = t.hasBottomNeighbor ? l : a;
 	return {
 		uvMin: new e.Vector2(u, f),
 		uvSize: new e.Vector2(d - u, p - f)
 	};
 }
-function Ei(n, i, a) {
-	let o = P(n), s = N(new e.Vector2(i.uvMin.x, i.uvMin.y)), c = N(new e.Vector2(i.uvSize.x, i.uvSize.y)), l = N(new e.Vector2(i.storageUvMin.x, i.storageUvMin.y)), u = N(new e.Vector2(i.storageUvSize.x, i.storageUvSize.y)), f = N(Math.max(.001, a)), p = new t({
+function ai(n, i, a) {
+	let o = M(n), s = j(new e.Vector2(i.uvMin.x, i.uvMin.y)), c = j(new e.Vector2(i.uvSize.x, i.uvSize.y)), l = j(new e.Vector2(i.storageUvMin.x, i.storageUvMin.y)), u = j(new e.Vector2(i.storageUvSize.x, i.storageUvSize.y)), f = j(Math.max(.001, a)), p = new t({
 		depthTest: !1,
 		depthWrite: !1,
 		side: e.BackSide
 	});
 	return p.colorNode = r(() => {
-		let e = M(o, d(di(s.add(te().mul(c)), l, u), 0, 1));
-		return re(I(1).sub(m(v(e.rgb, I(0)).mul(f).negate())), 1);
+		let e = A(o, d(Wr(s.add(re().mul(c)), l, u), 0, 1));
+		return ae(P(1).sub(m(v(e.rgb, P(0)).mul(f).negate())), 1);
 	})(), p.name = `Starfield live nebula patch ${i.id}`, p;
 }
-function Di(n, i) {
-	let a = P(n), o = N(new e.Vector2(i.uvMin.x, i.uvMin.y)), s = N(new e.Vector2(i.uvSize.x, i.uvSize.y)), c = N(new e.Vector2(i.storageUvMin.x, i.storageUvMin.y)), l = N(new e.Vector2(i.storageUvSize.x, i.storageUvSize.y)), u = N(+!!i.hasLeftNeighbor), f = N(+!!i.hasRightNeighbor), p = N(+!!i.hasTopNeighbor), m = N(+!!i.hasBottomNeighbor), g = ne("vec3", `vStarfieldPatchDirection${i.x}_${i.y}`), _ = new t({
+function oi(n, i) {
+	let a = M(n), o = j(new e.Vector2(i.uvMin.x, i.uvMin.y)), s = j(new e.Vector2(i.uvSize.x, i.uvSize.y)), c = j(new e.Vector2(i.storageUvMin.x, i.storageUvMin.y)), l = j(new e.Vector2(i.storageUvSize.x, i.storageUvSize.y)), u = j(+!!i.hasLeftNeighbor), f = j(+!!i.hasRightNeighbor), p = j(+!!i.hasTopNeighbor), m = j(+!!i.hasBottomNeighbor), g = ie("vec3", `vStarfieldPatchDirection${i.x}_${i.y}`), _ = new t({
 		depthTest: !1,
 		depthWrite: !1,
 		side: e.BackSide,
 		transparent: !0
 	});
-	return _.blending = e.CustomBlending, _.blendEquation = e.AddEquation, _.blendSrc = e.OneFactor, _.blendDst = e.OneFactor, _.blendEquationAlpha = e.AddEquation, _.blendSrcAlpha = e.OneFactor, _.blendDstAlpha = e.OneMinusSrcAlphaFactor, _.vertexNode = r(() => (g.assign(T), S))(), _.colorNode = r(() => {
-		let e = si(g), t = F(ui(e.x, o.x, s.x).div(s.x), e.y.sub(o.y).div(s.y)), n = di(e, c, l), r = d(n, 0, 1), i = fi(n), _ = v(l.sub(s).div(s.mul(2)), F(0)), y = v(_, F(1e-6)), b = O(u.greaterThan(.5), A(y.x.negate(), y.x, t.x), 1), x = O(f.greaterThan(.5), h(1).sub(A(h(1).sub(y.x), h(1).add(y.x), t.x)), 1), S = O(_.x.lessThanEqual(0), 1, b.mul(x)), C = O(p.greaterThan(.5), A(y.y.negate(), y.y, t.y), 1), w = O(m.greaterThan(.5), h(1).sub(A(h(1).sub(y.y), h(1).add(y.y), t.y)), 1), T = O(_.y.lessThanEqual(0), 1, C.mul(w)), E = d(S.mul(T), 0, 1);
-		return M(a, r).mul(i).mul(E);
+	return _.blending = e.CustomBlending, _.blendEquation = e.AddEquation, _.blendSrc = e.OneFactor, _.blendDst = e.OneFactor, _.blendEquationAlpha = e.AddEquation, _.blendSrcAlpha = e.OneFactor, _.blendDstAlpha = e.OneMinusSrcAlphaFactor, _.vertexNode = r(() => (g.assign(ee), S))(), _.colorNode = r(() => {
+		let e = Br(g), t = N(Ur(e.x, o.x, s.x).div(s.x), e.y.sub(o.y).div(s.y)), n = Wr(e, c, l), r = d(n, 0, 1), i = Gr(n), _ = v(l.sub(s).div(s.mul(2)), N(0)), y = v(_, N(1e-6)), b = D(u.greaterThan(.5), O(y.x.negate(), y.x, t.x), 1), x = D(f.greaterThan(.5), h(1).sub(O(h(1).sub(y.x), h(1).add(y.x), t.x)), 1), S = D(_.x.lessThanEqual(0), 1, b.mul(x)), C = D(p.greaterThan(.5), O(y.y.negate(), y.y, t.y), 1), w = D(m.greaterThan(.5), h(1).sub(O(h(1).sub(y.y), h(1).add(y.y), t.y)), 1), ee = D(_.y.lessThanEqual(0), 1, C.mul(w)), T = d(S.mul(ee), 0, 1);
+		return A(a, r).mul(i).mul(T);
 	})(), _.name = `Starfield live stars patch ${i.id}`, _;
 }
-function Oi(t, n) {
+function si(t, n) {
 	let r = new e.Group();
 	return r.name = `Starfield live patch group ${t.key}`, t.patches.forEach((t) => {
-		let i = t.descriptor, a = wi(i, {
+		let i = t.descriptor, a = ri(i, {
 			uvMin: i.uvMin,
 			uvSize: i.uvSize
-		}), o = Ei(t.nebulaTexture, i, n.nebula.uNebulaExposure), s = new e.Mesh(a, o);
+		}), o = ai(t.nebulaTexture, i, n.nebula.uNebulaExposure), s = new e.Mesh(a, o);
 		s.frustumCulled = !1, s.renderOrder = 0, r.add(s);
 	}), t.patches.forEach((t) => {
-		let n = t.descriptor, i = wi(n, Ti(n)), a = Di(t.starTexture, n), o = new e.Mesh(i, a);
+		let n = t.descriptor, i = ri(n, ii(n)), a = oi(t.starTexture, n), o = new e.Mesh(i, a);
 		o.frustumCulled = !1, o.renderOrder = .01, r.add(o);
 	}), r;
 }
-function ki(t) {
+function ci(t) {
 	t.traverse((t) => {
 		t instanceof e.Mesh && (t.geometry.dispose(), (Array.isArray(t.material) ? t.material : [t.material]).forEach((e) => {
 			e.dispose();
 		}));
 	}), t.clear();
 }
-function Ai(e, t) {
+function li(e, t) {
 	if (t >= 1) return [{
 		end: 1,
 		offset: 0,
@@ -2223,18 +1956,18 @@ function Ai(e, t) {
 		start: 0
 	}];
 }
-function ji(e) {
+function ui(e) {
 	let t = e.hasLeftNeighbor ? e.storageUvMin.x : e.uvMin.x, n = e.hasRightNeighbor ? e.storageUvMin.x + e.storageUvSize.x : e.uvMin.x + e.uvSize.x, r = e.hasTopNeighbor ? e.storageUvMin.y : e.uvMin.y, i = e.hasBottomNeighbor ? e.storageUvMin.y + e.storageUvSize.y : e.uvMin.y + e.uvSize.y, a = Math.max(0, r), o = Math.min(1, i);
-	return o <= a ? [] : Ai(t, n - t).map((e) => ({
+	return o <= a ? [] : li(t, n - t).map((e) => ({
 		...e,
 		skyV0: a,
 		skyV1: o
 	}));
 }
-function Mi(t) {
+function di(t) {
 	return t === "repeat" ? e.RepeatWrapping : e.ClampToEdgeWrapping;
 }
-function Ni(t, n, r, i = {}) {
+function fi(t, n, r, i = {}) {
 	let a = new e.RenderTarget(t, n, {
 		depthBuffer: !1,
 		format: e.RGBAFormat,
@@ -2248,19 +1981,19 @@ function Ni(t, n, r, i = {}) {
 	});
 	return a.texture.name = r, a.texture.colorSpace = i.colorSpace ?? e.SRGBColorSpace, a.texture.generateMipmaps = !1, a;
 }
-function Pi(e) {
+function pi(e) {
 	e.dispose();
 }
-function Fi(e) {
+function mi(e) {
 	return Math.PI / Math.max(1, e);
 }
-function Ii(e) {
+function hi(e) {
 	return Math.max(1, Math.floor(e ?? 8192));
 }
-function Li(e, t) {
+function gi(e, t) {
 	return Math.max(1, Math.min(e, t));
 }
-var Ri = class {
+var _i = class {
 	#e = /* @__PURE__ */ new Map();
 	#t = /* @__PURE__ */ new Map();
 	#n;
@@ -2269,17 +2002,17 @@ var Ri = class {
 	#a = new e.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 	#o = new e.PlaneGeometry(2, 2);
 	constructor(e) {
-		this.#r = e, this.#n = ti(e);
+		this.#r = e, this.#n = Fr(e);
 	}
 	createBakeKey(e, t) {
-		let n = Zt(e), r = Dt(n.quality), i = Ii(t);
-		return Un(n, i, Math.floor(i / 2), {
+		let n = cn(e), r = Lt(n.quality), i = hi(t);
+		return $n(n, i, Math.floor(i / 2), {
 			budgetBytes: r.budgetBytes,
 			maxTextureSize: this.#n
 		});
 	}
 	previewWidthFor(e) {
-		return Math.max(1, Math.min(yt, this.#n));
+		return Math.max(1, Math.min(kt, this.#n));
 	}
 	bakeTexture(e, t, n) {
 		return this.#c(e, t, n).texture;
@@ -2299,7 +2032,7 @@ var Ri = class {
 		};
 	}
 	canBake() {
-		return ei(this.#r);
+		return Pr(this.#r);
 	}
 	dispose() {
 		this.#e.forEach((e) => e.target.dispose()), this.#e.clear(), this.#t.forEach((e) => {
@@ -2307,9 +2040,9 @@ var Ri = class {
 		}), this.#t.clear(), this.#o.dispose();
 	}
 	#s(t, n, r) {
-		let i = Zt(t), a = Dt(i.quality), o = Ii(r), s = Math.floor(o / 2), c = n ?? this.createBakeKey(i, o), l = this.#t.get(c);
+		let i = cn(t), a = Lt(i.quality), o = hi(r), s = Math.floor(o / 2), c = n ?? this.createBakeKey(i, o), l = this.#t.get(c);
 		if (l) return l;
-		let u = qt({
+		let u = rn({
 			budgetBytes: a.budgetBytes,
 			clip: i.clip,
 			height: s,
@@ -2317,18 +2050,18 @@ var Ri = class {
 			width: o
 		}), d = this.#r.getRenderTarget(), f = this.#r.autoClear, p = Object.assign(new e.Color(), { a: 1 }), m = this.#r.getClearAlpha(), h = [], g = [];
 		this.#r.getClearColor(p), this.#r.autoClear = !0, this.#r.setClearColor(0, 0), u.descriptors.forEach((t) => {
-			let n = Ni(t.storageSize.width, t.storageSize.height, `GPU baked starfield nebula ${t.id}`, {
+			let n = fi(t.storageSize.width, t.storageSize.height, `GPU baked starfield nebula ${t.id}`, {
 				colorSpace: e.LinearSRGBColorSpace,
 				type: e.HalfFloatType,
-				wrapS: Mi(t.wrapS),
-				wrapT: Mi(t.wrapT)
-			}), r = Ni(t.storageSize.width, t.storageSize.height, `GPU baked starfield stars ${t.id}`, {
+				wrapS: di(t.wrapS),
+				wrapT: di(t.wrapT)
+			}), r = fi(t.storageSize.width, t.storageSize.height, `GPU baked starfield stars ${t.id}`, {
 				colorSpace: e.SRGBColorSpace,
 				type: e.UnsignedByteType,
-				wrapS: Mi(t.wrapS),
-				wrapT: Mi(t.wrapT)
+				wrapS: di(t.wrapS),
+				wrapT: di(t.wrapT)
 			});
-			this.#l(_i(i, t), n), this.#u(i, t, r, s, u.supersample), h.push(n, r), g.push({
+			this.#l(Xr(i, t), n), this.#u(i, t, r, s, u.supersample), h.push(n, r), g.push({
 				descriptor: t,
 				nebulaTexture: n.texture,
 				starTexture: r.texture
@@ -2342,14 +2075,14 @@ var Ri = class {
 		return this.#t.set(c, _), _;
 	}
 	#c(t, n, r) {
-		let i = Zt(t), a = Dt(i.quality), o = Ii(r), s = Math.floor(o / 2), c = Li(o, this.#n), l = Math.floor(c / 2), u = n ?? this.createBakeKey(i, o), d = this.#e.get(u);
+		let i = cn(t), a = Lt(i.quality), o = hi(r), s = Math.floor(o / 2), c = gi(o, this.#n), l = Math.floor(c / 2), u = n ?? this.createBakeKey(i, o), d = this.#e.get(u);
 		if (d && d.target.width === c && d.target.height === l) return d;
-		let f = Ni(c, l, "GPU baked starfield layer", {
+		let f = fi(c, l, "GPU baked starfield layer", {
 			colorSpace: e.SRGBColorSpace,
 			type: e.UnsignedByteType,
 			wrapS: e.RepeatWrapping,
 			wrapT: e.ClampToEdgeWrapping
-		}), p = qt({
+		}), p = rn({
 			budgetBytes: a.budgetBytes,
 			clip: i.clip,
 			height: s,
@@ -2357,18 +2090,18 @@ var Ri = class {
 			width: o
 		}), m = this.#r.getRenderTarget(), h = this.#r.autoClear, g = Object.assign(new e.Color(), { a: 1 }), _ = this.#r.getClearAlpha();
 		return this.#r.getClearColor(g), this.#r.autoClear = !0, this.#r.setClearColor(0, 0), this.#r.setRenderTarget(f), this.#r.clear(), p.descriptors.forEach((t) => {
-			let n = Ni(t.storageSize.width, t.storageSize.height, `GPU baked starfield nebula ${t.id}`, {
+			let n = fi(t.storageSize.width, t.storageSize.height, `GPU baked starfield nebula ${t.id}`, {
 				colorSpace: e.LinearSRGBColorSpace,
 				type: e.HalfFloatType,
-				wrapS: Mi(t.wrapS),
-				wrapT: Mi(t.wrapT)
-			}), r = Ni(t.storageSize.width, t.storageSize.height, `GPU baked starfield stars ${t.id}`, {
+				wrapS: di(t.wrapS),
+				wrapT: di(t.wrapT)
+			}), r = fi(t.storageSize.width, t.storageSize.height, `GPU baked starfield stars ${t.id}`, {
 				colorSpace: e.SRGBColorSpace,
 				type: e.UnsignedByteType,
-				wrapS: Mi(t.wrapS),
-				wrapT: Mi(t.wrapT)
+				wrapS: di(t.wrapS),
+				wrapT: di(t.wrapT)
 			});
-			this.#l(_i(i, t), n), this.#u(i, t, r, s, p.supersample), this.#d(i, t, n.texture, r.texture, f), n.dispose(), r.dispose();
+			this.#l(Xr(i, t), n), this.#u(i, t, r, s, p.supersample), this.#d(i, t, n.texture, r.texture, f), n.dispose(), r.dispose();
 		}), this.#r.setRenderTarget(m), this.#r.autoClear = h, this.#r.setClearColor(g, _), f.texture.userData.starfieldRenderTarget = f, this.#e.get(u)?.target.dispose(), this.#e.set(u, {
 			key: u,
 			target: f,
@@ -2381,22 +2114,22 @@ var Ri = class {
 	}
 	#l(t, n) {
 		let r = new e.Mesh(this.#o, t);
-		r.frustumCulled = !1, this.#i.clear(), this.#i.add(r), this.#r.setRenderTarget(n), this.#r.clear(), this.#r.render(this.#i, this.#a), this.#i.remove(r), Pi(t);
+		r.frustumCulled = !1, this.#i.clear(), this.#i.add(r), this.#r.setRenderTarget(n), this.#r.clear(), this.#r.render(this.#i, this.#a), this.#i.remove(r), pi(t);
 	}
 	#u(t, n, r, i, a) {
-		let o = vi(t, n, i), s = Math.max(1, Math.floor(a)), c = n.storageSize.width * s, l = n.storageSize.height * s, u = c / n.storageSize.width, d = yi(t, n, {
+		let o = Zr(t, n, i), s = Math.max(1, Math.floor(a)), c = n.storageSize.width * s, l = n.storageSize.height * s, u = c / n.storageSize.width, d = Qr(t, n, {
 			bakeHeight: l,
 			bakeWidth: c,
-			displayPixelAngle: Fi(i)
-		}), f = new e.Mesh(o, d), p = Ni(c, l, `GPU baked starfield stars accumulation ${n.id}`, {
+			displayPixelAngle: mi(i)
+		}), f = new e.Mesh(o, d), p = fi(c, l, `GPU baked starfield stars accumulation ${n.id}`, {
 			colorSpace: e.LinearSRGBColorSpace,
 			type: e.HalfFloatType,
 			wrapS: e.ClampToEdgeWrapping
 		});
-		f.frustumCulled = !1, this.#i.clear(), this.#i.add(f), this.#r.setRenderTarget(p), this.#r.clear(), this.#r.render(this.#i, this.#a), this.#i.remove(f), o.dispose(), Pi(d), this.#l(bi(p.texture, c, l, n.storageSize.width, n.storageSize.height, u), r), p.dispose();
+		f.frustumCulled = !1, this.#i.clear(), this.#i.add(f), this.#r.setRenderTarget(p), this.#r.clear(), this.#r.render(this.#i, this.#a), this.#i.remove(f), o.dispose(), pi(d), this.#l($r(p.texture, c, l, n.storageSize.width, n.storageSize.height, u), r), p.dispose();
 	}
 	#d(t, n, r, i, a) {
-		let o = xi(r, i, n, t), s = Si(n);
+		let o = ei(r, i, n, t), s = ti(n);
 		this.#i.clear(), s.forEach((t) => {
 			let n = new e.Mesh(t, o);
 			n.frustumCulled = !1, this.#i.add(n);
@@ -2409,89 +2142,100 @@ var Ri = class {
 		}
 		this.#i.children.forEach((t) => {
 			t instanceof e.Mesh && t.geometry.dispose();
-		}), this.#i.clear(), Pi(o);
+		}), this.#i.clear(), pi(o);
 	}
 };
-function zi(e) {
-	return ei(e) ? new Ri(e) : null;
+function vi(e) {
+	return Pr(e) ? new _i(e) : null;
 }
 //#endregion
 //#region layer-addons/built-ins.ts
-function Bi(e) {
+function yi(e) {
 	return e;
 }
 //#endregion
+//#region layer-addons/shader-codegen.ts
+function Q(e) {
+	return Number.isFinite(e) ? e.toFixed(8) : "0.0";
+}
+function bi(e, t) {
+	return t === "wgsl" ? `vec3<f32>(${Q(e)})` : `vec3(${Q(e)})`;
+}
+function $(e, t, n, r) {
+	return r === "wgsl" ? `var ${e}: ${t} = ${n};` : `${t} ${e} = ${n};`;
+}
+function xi(e, t, n, r) {
+	return r === "wgsl" ? `select(${n}, ${t}, ${e})` : `((${e}) ? ${t} : ${n})`;
+}
+function Si(e) {
+	return `effectColor = ${e === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+}
+//#endregion
 //#region Skybox.ts
-var Vi = {
+var Ci = {
 	composition: {
 		mode: "alpha-over",
 		order: "bottom-to-top"
 	},
-	geometry: B,
+	geometry: R,
 	nodes: [],
 	version: 2
-}, Hi = .18, Ui = .75, Wi = 1.75, Gi = 1e-4, Ki = .01, qi = {
+}, wi = .18, Ti = .75, Ei = 1.75, Di = 1e-4, Oi = .01, ki = {
 	hoveredLayerId: null,
 	selectedLayerId: null
-}, Ji = new e.DataTexture(new Uint8Array([
+}, Ai = new e.DataTexture(new Uint8Array([
 	0,
 	0,
 	0,
 	0
 ]), 1, 1, e.RGBAFormat);
-Ji.colorSpace = e.SRGBColorSpace, Ji.needsUpdate = !0;
-function Yi(e, t) {
+Ai.colorSpace = e.SRGBColorSpace, Ai.needsUpdate = !0;
+function ji(e, t) {
 	return +(t === e);
 }
-function Xi(e, t) {
+function Mi(e, t) {
 	return +(t === e);
 }
-function Zi(e, t) {
-	return Math.max(Yi(e, t.hoveredLayerId), Xi(e, t.selectedLayerId));
+function Ni(e, t) {
+	return Math.max(ji(e, t.hoveredLayerId), Mi(e, t.selectedLayerId));
 }
-function Qi(e, t) {
+function Pi(e, t) {
 	return e.map((e) => ({
-		active: N(Zi(e.layer.id, t)),
+		active: j(Ni(e.layer.id, t)),
 		layerId: e.layer.id
 	}));
 }
-function $i(e, t) {
-	return e.map((e) => ({
-		active: N(Zi(e.layer.id, t)),
-		layerId: e.layer.id
-	}));
-}
-function ea(e, t) {
+function Fi(e, t) {
 	e.forEach((e) => {
-		e.active.value = Zi(e.layerId, t);
+		e.active.value = Ni(e.layerId, t);
 	});
 }
-function ta(e, t) {
-	return Object.fromEntries(e.map((e) => [`imageActive${e.index}`, { value: Zi(e.layer.id, t) }]));
+function Ii(e, t) {
+	return Object.fromEntries(e.map((e) => [`imageActive${e.index}`, { value: Ni(e.layer.id, t) }]));
 }
-function na(e, t) {
-	return Object.fromEntries(e.map((e) => [`spotActive${e.index}`, { value: Zi(e.layer.id, t) }]));
+function Li(e, t) {
+	return Object.fromEntries(e.map((e) => [`spotActive${e.index}`, { value: Ni(e.layer.id, t) }]));
 }
-function ra(e, t, n, r) {
+function Ri(e, t, n, r) {
 	t.forEach((t) => {
 		let n = `imageActive${t.index}`;
-		e.uniforms[n] && (e.uniforms[n].value = Zi(t.layer.id, r));
+		e.uniforms[n] && (e.uniforms[n].value = Ni(t.layer.id, r));
 	}), n.forEach((t) => {
 		let n = `spotActive${t.index}`;
-		e.uniforms[n] && (e.uniforms[n].value = Zi(t.layer.id, r));
+		e.uniforms[n] && (e.uniforms[n].value = Ni(t.layer.id, r));
 	});
 }
-function ia(e, t) {
+function zi(e, t) {
 	e.userData.applyEditorLayerState = t;
 }
-function aa(t) {
+function Bi(t) {
 	if (!t) return {
 		centerDirection: new e.Vector3(0, 0, -1),
 		halfSize: new e.Vector2(0, 0),
 		tangentX: new e.Vector3(1, 0, 0),
 		tangentY: new e.Vector3(0, 1, 0)
 	};
-	let n = je(t);
+	let n = Ve(t);
 	return {
 		centerDirection: new e.Vector3(...n.centerDirection),
 		halfSize: new e.Vector2(Math.max(0, Math.tan(n.angularWidth / 2)), Math.max(0, Math.tan(n.angularHeight / 2))),
@@ -2499,27 +2243,27 @@ function aa(t) {
 		tangentY: new e.Vector3(...n.tangentY)
 	};
 }
-function oa(e) {
+function Vi(e) {
 	return e.map((e) => {
-		let t = aa(e.layer.params.placement);
+		let t = Bi(e.layer.params.placement);
 		return {
-			centerDirection: N(t.centerDirection),
-			halfSize: N(t.halfSize),
+			centerDirection: j(t.centerDirection),
+			halfSize: j(t.halfSize),
 			layerId: e.layer.id,
-			tangentX: N(t.tangentX),
-			tangentY: N(t.tangentY)
+			tangentX: j(t.tangentX),
+			tangentY: j(t.tangentY)
 		};
 	});
 }
-function sa(e, t, n) {
+function Hi(e, t, n) {
 	let r = e.find((e) => e.layerId === t);
 	if (!r) return;
-	let i = aa(n);
+	let i = Bi(n);
 	r.centerDirection.value.copy(i.centerDirection), r.tangentX.value.copy(i.tangentX), r.tangentY.value.copy(i.tangentY), r.halfSize.value.copy(i.halfSize);
 }
-function ca(e) {
+function Ui(e) {
 	return Object.fromEntries(e.flatMap((e) => {
-		let t = aa(e.layer.params.placement);
+		let t = Bi(e.layer.params.placement);
 		return [
 			[`imageCenterDirection${e.index}`, { value: t.centerDirection }],
 			[`imageTangentX${e.index}`, { value: t.tangentX }],
@@ -2528,38 +2272,38 @@ function ca(e) {
 		];
 	}));
 }
-function la(e, t, n, r) {
+function Wi(e, t, n, r) {
 	let i = t.find((e) => e.layer.id === n);
 	if (!i) return;
-	let a = aa(r);
+	let a = Bi(r);
 	e.uniforms[`imageCenterDirection${i.index}`]?.value.copy(a.centerDirection), e.uniforms[`imageTangentX${i.index}`]?.value.copy(a.tangentX), e.uniforms[`imageTangentY${i.index}`]?.value.copy(a.tangentY), e.uniforms[`imageHalfSize${i.index}`]?.value.copy(a.halfSize);
 }
-function ua(e, t) {
+function Gi(e, t) {
 	e.userData.applyImageLayerPlacement = t;
 }
-function da(t) {
+function Ki(t) {
 	let n = t * Math.PI / 180;
 	return new e.Vector3(Math.sin(n), Math.cos(n), 0).normalize();
 }
-function fa(e) {
+function qi(e) {
 	return [...e.stops].map((e) => ({
 		color: e.color,
-		midpoint: L((e.midpoint ?? 50) / 100, .01, .99),
-		opacity: L(e.opacity / 100),
-		t: L(e.location / 100)
+		midpoint: I((e.midpoint ?? 50) / 100, .01, .99),
+		opacity: I(e.opacity / 100),
+		t: I(e.location / 100)
 	})).sort((e, t) => e.t - t.t);
 }
-function pa(t) {
-	let [n, r, i] = ae(t.color);
+function Ji(t) {
+	let [n, r, i] = se(t.color);
 	return new e.Vector4(n, r, i, t.opacity);
 }
-function ma(e) {
+function Yi(e) {
 	return +(e === "gaussian");
 }
-function ha(e) {
+function Xi(e) {
 	return +(e === "gradient");
 }
-function ga(e) {
+function Zi(e) {
 	switch (e) {
 		case "darken": return 1;
 		case "multiply": return 2;
@@ -2575,25 +2319,25 @@ function ga(e) {
 		default: return 0;
 	}
 }
-function _a(e) {
+function Qi(e) {
 	return {
-		blendMode: ga(e.blendMode),
-		opacity: L(e.opacity / 100)
+		blendMode: Zi(e.blendMode),
+		opacity: I(e.opacity / 100)
 	};
 }
-function va(t, n) {
-	let r = (L(t) - .5) * Math.PI * 2, i = (.5 - L(n)) * Math.PI, a = Math.cos(i);
+function $i(t, n) {
+	let r = (I(t) - .5) * Math.PI * 2, i = (.5 - I(n)) * Math.PI, a = Math.cos(i);
 	return new e.Vector3(a * Math.cos(r), Math.sin(i), a * Math.sin(r)).normalize();
 }
-function ya(t) {
-	let [n, r, i] = ae(t);
+function ea(t) {
+	let [n, r, i] = se(t);
 	return new e.Vector3(n, r, i);
 }
-function ba(e) {
+function ta(e) {
 	return e.map((e) => {
-		let t = fa(e.layer.params);
+		let t = qi(e.layer.params);
 		return {
-			axis: N(da(e.layer.params.rotation)),
+			axis: j(Ki(e.layer.params.rotation)),
 			layerId: e.layer.id,
 			stops: Array.from({ length: e.stopCount }, (e, n) => {
 				let r = t[n] ?? {
@@ -2603,32 +2347,32 @@ function ba(e) {
 					t: 0
 				};
 				return {
-					color: N(pa(r)),
-					midpoint: N(r.midpoint),
-					t: N(r.t)
+					color: j(Ji(r)),
+					midpoint: j(r.midpoint),
+					t: j(r.t)
 				};
 			})
 		};
 	});
 }
-function xa(e, t) {
+function na(e, t) {
 	let n = e.find((e) => e.layerId === t.id);
 	if (!n) return;
-	let r = fa(t.params);
-	n.axis.value.copy(da(t.params.rotation)), n.stops.forEach((e, t) => {
+	let r = qi(t.params);
+	n.axis.value.copy(Ki(t.params.rotation)), n.stops.forEach((e, t) => {
 		let n = r[t] ?? {
 			color: "#000000",
 			midpoint: .5,
 			opacity: 0,
 			t: 0
 		};
-		e.color.value.copy(pa(n)), e.midpoint.value = n.midpoint, e.t.value = n.t;
+		e.color.value.copy(Ji(n)), e.midpoint.value = n.midpoint, e.t.value = n.t;
 	});
 }
-function Sa(e) {
+function ra(e) {
 	return Object.fromEntries(e.flatMap((e) => {
-		let t = fa(e.layer.params);
-		return [[`${e.parameterPrefix}Axis`, { value: da(e.layer.params.rotation) }], ...Array.from({ length: e.stopCount }, (n, r) => {
+		let t = qi(e.layer.params);
+		return [[`${e.parameterPrefix}Axis`, { value: Ki(e.layer.params.rotation) }], ...Array.from({ length: e.stopCount }, (n, r) => {
 			let i = t[r] ?? {
 				color: "#000000",
 				midpoint: .5,
@@ -2636,30 +2380,30 @@ function Sa(e) {
 				t: 0
 			};
 			return [
-				[`${e.parameterPrefix}StopColor${r}`, { value: pa(i) }],
+				[`${e.parameterPrefix}StopColor${r}`, { value: Ji(i) }],
 				[`${e.parameterPrefix}StopMidpoint${r}`, { value: i.midpoint }],
 				[`${e.parameterPrefix}StopT${r}`, { value: i.t }]
 			];
 		}).flat()];
 	}));
 }
-function Ca(e, t, n) {
+function ia(e, t, n) {
 	let r = n.find((e) => e.layer.id === t.id);
 	if (!r) return;
-	let i = fa(t.params);
-	e.uniforms[`${r.parameterPrefix}Axis`]?.value.copy(da(t.params.rotation)), Array.from({ length: r.stopCount }, (t, n) => {
+	let i = qi(t.params);
+	e.uniforms[`${r.parameterPrefix}Axis`]?.value.copy(Ki(t.params.rotation)), Array.from({ length: r.stopCount }, (t, n) => {
 		let a = i[n] ?? {
 			color: "#000000",
 			midpoint: .5,
 			opacity: 0,
 			t: 0
 		};
-		e.uniforms[`${r.parameterPrefix}StopColor${n}`]?.value.copy(pa(a)), e.uniforms[`${r.parameterPrefix}StopT${n}`] && (e.uniforms[`${r.parameterPrefix}StopT${n}`].value = a.t), e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`] && (e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`].value = a.midpoint);
+		e.uniforms[`${r.parameterPrefix}StopColor${n}`]?.value.copy(Ji(a)), e.uniforms[`${r.parameterPrefix}StopT${n}`] && (e.uniforms[`${r.parameterPrefix}StopT${n}`].value = a.t), e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`] && (e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`].value = a.midpoint);
 	});
 }
-function wa(e) {
+function aa(e) {
 	return e.map((e) => ({
-		amplitude: N(L(e.layer.params.amplitude, 0, .6)),
+		amplitude: j(I(e.layer.params.amplitude, 0, .6)),
 		anchors: Array.from({ length: e.anchorCount }, (t, n) => {
 			let r = e.layer.params.anchors[n] ?? {
 				color: "#000000",
@@ -2667,32 +2411,32 @@ function wa(e) {
 				y: .5
 			};
 			return {
-				color: N(ya(r.color)),
-				direction: N(va(r.x, r.y))
+				color: j(ea(r.color)),
+				direction: j($i(r.x, r.y))
 			};
 		}),
-		frequency: N(Math.max(1e-4, e.layer.params.frequency)),
+		frequency: j(Math.max(1e-4, e.layer.params.frequency)),
 		layerId: e.layer.id,
-		mode: N(ma(e.layer.params.mode)),
-		power: N(Math.max(1e-4, e.layer.params.power))
+		mode: j(Yi(e.layer.params.mode)),
+		power: j(Math.max(1e-4, e.layer.params.power))
 	}));
 }
-function Ta(e, t) {
+function oa(e, t) {
 	let n = e.find((e) => e.layerId === t.id);
-	n && (n.amplitude.value = L(t.params.amplitude, 0, .6), n.frequency.value = Math.max(1e-4, t.params.frequency), n.mode.value = ma(t.params.mode), n.power.value = Math.max(1e-4, t.params.power), n.anchors.forEach((e, n) => {
+	n && (n.amplitude.value = I(t.params.amplitude, 0, .6), n.frequency.value = Math.max(1e-4, t.params.frequency), n.mode.value = Yi(t.params.mode), n.power.value = Math.max(1e-4, t.params.power), n.anchors.forEach((e, n) => {
 		let r = t.params.anchors[n] ?? {
 			color: "#000000",
 			x: .5,
 			y: .5
 		};
-		e.color.value.copy(ya(r.color)), e.direction.value.copy(va(r.x, r.y));
+		e.color.value.copy(ea(r.color)), e.direction.value.copy($i(r.x, r.y));
 	}));
 }
-function Ea(e) {
+function sa(e) {
 	return Object.fromEntries(e.flatMap((e) => [
-		[`${e.parameterPrefix}Amplitude`, { value: L(e.layer.params.amplitude, 0, .6) }],
+		[`${e.parameterPrefix}Amplitude`, { value: I(e.layer.params.amplitude, 0, .6) }],
 		[`${e.parameterPrefix}Frequency`, { value: Math.max(1e-4, e.layer.params.frequency) }],
-		[`${e.parameterPrefix}Mode`, { value: ma(e.layer.params.mode) }],
+		[`${e.parameterPrefix}Mode`, { value: Yi(e.layer.params.mode) }],
 		[`${e.parameterPrefix}Power`, { value: Math.max(1e-4, e.layer.params.power) }],
 		...Array.from({ length: e.anchorCount }, (t, n) => {
 			let r = e.layer.params.anchors[n] ?? {
@@ -2700,23 +2444,23 @@ function Ea(e) {
 				x: .5,
 				y: .5
 			};
-			return [[`${e.parameterPrefix}AnchorDirection${n}`, { value: va(r.x, r.y) }], [`${e.parameterPrefix}AnchorColor${n}`, { value: ya(r.color) }]];
+			return [[`${e.parameterPrefix}AnchorDirection${n}`, { value: $i(r.x, r.y) }], [`${e.parameterPrefix}AnchorColor${n}`, { value: ea(r.color) }]];
 		}).flat()
 	]));
 }
-function Da(e, t, n) {
+function ca(e, t, n) {
 	let r = n.find((e) => e.layer.id === t.id);
-	r && (e.uniforms[`${r.parameterPrefix}Amplitude`] && (e.uniforms[`${r.parameterPrefix}Amplitude`].value = L(t.params.amplitude, 0, .6)), e.uniforms[`${r.parameterPrefix}Frequency`] && (e.uniforms[`${r.parameterPrefix}Frequency`].value = Math.max(1e-4, t.params.frequency)), e.uniforms[`${r.parameterPrefix}Mode`] && (e.uniforms[`${r.parameterPrefix}Mode`].value = ma(t.params.mode)), e.uniforms[`${r.parameterPrefix}Power`] && (e.uniforms[`${r.parameterPrefix}Power`].value = Math.max(1e-4, t.params.power)), Array.from({ length: r.anchorCount }, (n, i) => {
+	r && (e.uniforms[`${r.parameterPrefix}Amplitude`] && (e.uniforms[`${r.parameterPrefix}Amplitude`].value = I(t.params.amplitude, 0, .6)), e.uniforms[`${r.parameterPrefix}Frequency`] && (e.uniforms[`${r.parameterPrefix}Frequency`].value = Math.max(1e-4, t.params.frequency)), e.uniforms[`${r.parameterPrefix}Mode`] && (e.uniforms[`${r.parameterPrefix}Mode`].value = Yi(t.params.mode)), e.uniforms[`${r.parameterPrefix}Power`] && (e.uniforms[`${r.parameterPrefix}Power`].value = Math.max(1e-4, t.params.power)), Array.from({ length: r.anchorCount }, (n, i) => {
 		let a = t.params.anchors[i] ?? {
 			color: "#000000",
 			x: .5,
 			y: .5
 		};
-		e.uniforms[`${r.parameterPrefix}AnchorDirection${i}`]?.value.copy(va(a.x, a.y)), e.uniforms[`${r.parameterPrefix}AnchorColor${i}`]?.value.copy(ya(a.color));
+		e.uniforms[`${r.parameterPrefix}AnchorDirection${i}`]?.value.copy($i(a.x, a.y)), e.uniforms[`${r.parameterPrefix}AnchorColor${i}`]?.value.copy(ea(a.color));
 	}));
 }
-function Oa(t) {
-	let n = We(t);
+function la(t) {
+	let n = et(t);
 	return {
 		brightness: Math.max(0, n.brightness),
 		centerDirection: new e.Vector3(...n.centerDirection).normalize(),
@@ -2734,36 +2478,36 @@ function Oa(t) {
 		haloOuterWidth: n.haloOuterWidth,
 		haloRadius: n.haloRadius,
 		haloStrength: n.haloStrength,
-		lightColor: ya(n.lightColor),
-		mode: ha(n.colorMode),
+		lightColor: ea(n.lightColor),
+		mode: Xi(n.colorMode),
 		radius: Math.max(1e-4, n.angularRadius),
-		stops: fa(n)
+		stops: qi(n)
 	};
 }
-function ka(e) {
+function ua(e) {
 	return e.map((e) => {
-		let t = Oa(e.layer.params);
+		let t = la(e.layer.params);
 		return {
-			brightness: N(t.brightness),
-			centerDirection: N(t.centerDirection),
-			coreRadius: N(t.coreRadius),
-			coreSoftness: N(t.coreSoftness),
-			dispersion: N(t.dispersion),
-			dogSpread: N(t.dogSpread),
-			dogStrength: N(t.dogStrength),
-			dogStretch: N(t.dogStretch),
-			glareSize: N(t.glareSize),
-			glareStrength: N(t.glareStrength),
-			glowSize: N(t.glowSize),
-			glowStrength: N(t.glowStrength),
-			haloInnerWidth: N(t.haloInnerWidth),
-			haloOuterWidth: N(t.haloOuterWidth),
-			haloRadius: N(t.haloRadius),
-			haloStrength: N(t.haloStrength),
+			brightness: j(t.brightness),
+			centerDirection: j(t.centerDirection),
+			coreRadius: j(t.coreRadius),
+			coreSoftness: j(t.coreSoftness),
+			dispersion: j(t.dispersion),
+			dogSpread: j(t.dogSpread),
+			dogStrength: j(t.dogStrength),
+			dogStretch: j(t.dogStretch),
+			glareSize: j(t.glareSize),
+			glareStrength: j(t.glareStrength),
+			glowSize: j(t.glowSize),
+			glowStrength: j(t.glowStrength),
+			haloInnerWidth: j(t.haloInnerWidth),
+			haloOuterWidth: j(t.haloOuterWidth),
+			haloRadius: j(t.haloRadius),
+			haloStrength: j(t.haloStrength),
 			layerId: e.layer.id,
-			lightColor: N(t.lightColor),
-			mode: N(t.mode),
-			radius: N(t.radius),
+			lightColor: j(t.lightColor),
+			mode: j(t.mode),
+			radius: j(t.radius),
 			stops: Array.from({ length: e.stopCount }, (e, n) => {
 				let r = t.stops[n] ?? {
 					color: "#000000",
@@ -2772,18 +2516,18 @@ function ka(e) {
 					t: 0
 				};
 				return {
-					color: N(pa(r)),
-					midpoint: N(r.midpoint),
-					t: N(r.t)
+					color: j(Ji(r)),
+					midpoint: j(r.midpoint),
+					t: j(r.t)
 				};
 			})
 		};
 	});
 }
-function Aa(e, t) {
+function da(e, t) {
 	let n = e.find((e) => e.layerId === t.id);
 	if (!n) return;
-	let r = Oa(t.params);
+	let r = la(t.params);
 	n.brightness.value = r.brightness, n.centerDirection.value.copy(r.centerDirection), n.coreRadius.value = r.coreRadius, n.coreSoftness.value = r.coreSoftness, n.dispersion.value = r.dispersion, n.dogSpread.value = r.dogSpread, n.dogStrength.value = r.dogStrength, n.dogStretch.value = r.dogStretch, n.glareSize.value = r.glareSize, n.glareStrength.value = r.glareStrength, n.glowSize.value = r.glowSize, n.glowStrength.value = r.glowStrength, n.haloInnerWidth.value = r.haloInnerWidth, n.haloOuterWidth.value = r.haloOuterWidth, n.haloRadius.value = r.haloRadius, n.haloStrength.value = r.haloStrength, n.lightColor.value.copy(r.lightColor), n.mode.value = r.mode, n.radius.value = r.radius, n.stops.forEach((e, t) => {
 		let n = r.stops[t] ?? {
 			color: "#000000",
@@ -2791,12 +2535,12 @@ function Aa(e, t) {
 			opacity: 0,
 			t: 0
 		};
-		e.color.value.copy(pa(n)), e.midpoint.value = n.midpoint, e.t.value = n.t;
+		e.color.value.copy(Ji(n)), e.midpoint.value = n.midpoint, e.t.value = n.t;
 	});
 }
-function ja(e) {
+function fa(e) {
 	return Object.fromEntries(e.flatMap((e) => {
-		let t = Oa(e.layer.params);
+		let t = la(e.layer.params);
 		return [
 			[`${e.parameterPrefix}CenterDirection`, { value: t.centerDirection }],
 			[`${e.parameterPrefix}Radius`, { value: t.radius }],
@@ -2825,7 +2569,7 @@ function ja(e) {
 					t: 0
 				};
 				return [
-					[`${e.parameterPrefix}StopColor${r}`, { value: pa(i) }],
+					[`${e.parameterPrefix}StopColor${r}`, { value: Ji(i) }],
 					[`${e.parameterPrefix}StopMidpoint${r}`, { value: i.midpoint }],
 					[`${e.parameterPrefix}StopT${r}`, { value: i.t }]
 				];
@@ -2833,10 +2577,10 @@ function ja(e) {
 		];
 	}));
 }
-function Ma(e, t, n) {
+function pa(e, t, n) {
 	let r = n.find((e) => e.layer.id === t.id);
 	if (!r) return;
-	let i = Oa(t.params);
+	let i = la(t.params);
 	e.uniforms[`${r.parameterPrefix}CenterDirection`]?.value.copy(i.centerDirection), e.uniforms[`${r.parameterPrefix}Radius`] && (e.uniforms[`${r.parameterPrefix}Radius`].value = i.radius), e.uniforms[`${r.parameterPrefix}Mode`] && (e.uniforms[`${r.parameterPrefix}Mode`].value = i.mode), e.uniforms[`${r.parameterPrefix}LightColor`]?.value.copy(i.lightColor), e.uniforms[`${r.parameterPrefix}Brightness`] && (e.uniforms[`${r.parameterPrefix}Brightness`].value = i.brightness), [
 		["CoreRadius", i.coreRadius],
 		["CoreSoftness", i.coreSoftness],
@@ -2861,127 +2605,94 @@ function Ma(e, t, n) {
 			opacity: 0,
 			t: 0
 		};
-		e.uniforms[`${r.parameterPrefix}StopColor${n}`]?.value.copy(pa(a)), e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`] && (e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`].value = a.midpoint), e.uniforms[`${r.parameterPrefix}StopT${n}`] && (e.uniforms[`${r.parameterPrefix}StopT${n}`].value = a.t);
+		e.uniforms[`${r.parameterPrefix}StopColor${n}`]?.value.copy(Ji(a)), e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`] && (e.uniforms[`${r.parameterPrefix}StopMidpoint${n}`].value = a.midpoint), e.uniforms[`${r.parameterPrefix}StopT${n}`] && (e.uniforms[`${r.parameterPrefix}StopT${n}`].value = a.t);
 	});
 }
-function Na(e) {
+function ma(e) {
 	return e.map((e) => {
-		let t = _a(e.node);
+		let t = Qi(e.node);
 		return {
-			blendMode: N(t.blendMode),
+			blendMode: j(t.blendMode),
 			nodeId: e.node.id,
-			opacity: N(t.opacity)
+			opacity: j(t.opacity)
 		};
 	});
 }
-function Pa(e, t) {
+function ha(e, t) {
 	for (let n of e) if (n.enabled) {
 		if (n.id === t) return n;
 		if (n.type === "group") {
-			let e = Pa(n.children, t);
+			let e = ha(n.children, t);
 			if (e) return e;
 		}
 	}
 	return null;
 }
-function Fa(e, t) {
+function ga(e, t) {
 	e.forEach((e) => {
-		let n = Pa(t.nodes, e.nodeId);
+		let n = ha(t.nodes, e.nodeId);
 		if (!n) return;
-		let r = _a(n);
+		let r = Qi(n);
 		e.opacity.value = r.opacity, e.blendMode.value = r.blendMode;
 	});
 }
-function Ia(e, t) {
+function _a(e, t) {
 	let n = e.find((e) => e.nodeId === t.id);
 	if (!n) return;
-	let r = _a(t);
+	let r = Qi(t);
 	n.opacity.value = r.opacity, n.blendMode.value = r.blendMode;
 }
-function La(e) {
+function va(e) {
 	return Object.fromEntries(e.flatMap((e) => {
-		let t = _a(e.node);
+		let t = Qi(e.node);
 		return [[`${e.parameterPrefix}Opacity`, { value: t.opacity }], [`${e.parameterPrefix}BlendMode`, { value: t.blendMode }]];
 	}));
 }
-function Ra(e, t, n) {
+function ya(e, t, n) {
 	t.forEach((t) => {
-		let r = Pa(n.nodes, t.node.id);
+		let r = ha(n.nodes, t.node.id);
 		if (!r) return;
-		let i = _a(r), a = e.uniforms[`${t.parameterPrefix}Opacity`], o = e.uniforms[`${t.parameterPrefix}BlendMode`];
+		let i = Qi(r), a = e.uniforms[`${t.parameterPrefix}Opacity`], o = e.uniforms[`${t.parameterPrefix}BlendMode`];
 		a && (a.value = i.opacity), o && (o.value = i.blendMode);
 	});
 }
-function za(e, t, n) {
+function ba(e, t, n) {
 	let r = t.find((e) => e.node.id === n.id);
 	if (!r) return;
-	let i = _a(n), a = e.uniforms[`${r.parameterPrefix}Opacity`], o = e.uniforms[`${r.parameterPrefix}BlendMode`];
+	let i = Qi(n), a = e.uniforms[`${r.parameterPrefix}Opacity`], o = e.uniforms[`${r.parameterPrefix}BlendMode`];
 	a && (a.value = i.opacity), o && (o.value = i.blendMode);
 }
-function Ba(e, t) {
-	e.forEach((e) => {
-		if (e.enabled) {
-			if (e.type === "group") {
-				Ba(e.children, t);
-				return;
-			}
-			e.type === "gradient" && t(e);
-		}
-	});
-}
-function Va(e, t) {
-	e.forEach((e) => {
-		if (e.enabled) {
-			if (e.type === "group") {
-				Va(e.children, t);
-				return;
-			}
-			e.type === "field-gradient" && t(e);
-		}
-	});
-}
-function Ha(e, t) {
-	e.forEach((e) => {
-		if (e.enabled) {
-			if (e.type === "group") {
-				Ha(e.children, t);
-				return;
-			}
-			e.type === "spot" && t(e);
-		}
-	});
-}
-function Ua(e, t) {
+function xa(e, t) {
 	e.userData.applyGradientLayerParams = t;
 }
-function Wa(e, t) {
+function Sa(e, t) {
 	e.userData.applyGradientLayerParam = t;
 }
-function Ga(e, t) {
+function Ca(e, t) {
 	e.userData.applyFieldGradientLayerParams = t;
 }
-function Ka(e, t) {
+function wa(e, t) {
 	e.userData.applyFieldGradientLayerParam = t;
 }
-function qa(e, t) {
+function Ta(e, t) {
 	e.userData.applySpotLayerParams = t;
 }
-function Ja(e, t) {
+function Ea(e, t) {
 	e.userData.applySpotLayerParam = t;
 }
-function Ya(e, t) {
+function Da(e, t) {
 	e.userData.applyCompositionParams = t;
 }
-function Xa(e, t) {
+function Oa(e, t) {
 	e.userData.applyLayerComposition = t;
 }
-function Za(e) {
-	return e ?? B;
+function ka(e) {
+	return e ?? R;
 }
-function Qa(t = B) {
-	return Za(t).type === "sphere" ? new e.SphereGeometry(1, 64, 32) : new e.BoxGeometry(1, 1, 1);
+function Aa(t = R) {
+	return ka(t).type === "sphere" ? new e.SphereGeometry(1, 64, 32) : new e.BoxGeometry(1, 1, 1);
 }
-function $a(t = 1, n = 25, r = 25) {
+function ja(t = 1, n = 25, r = 25) {
 	let i = [], a = (e, n) => {
 		i.push(t * Math.sin(n) * Math.cos(e), t * Math.cos(n), t * Math.sin(n) * Math.sin(e));
 	};
@@ -3001,24 +2712,15 @@ function $a(t = 1, n = 25, r = 25) {
 	}
 	return new e.BufferGeometry().setAttribute("position", new e.Float32BufferAttribute(i, 3));
 }
-function eo(t = B) {
-	if (Za(t).type === "sphere") return $a();
+function Ma(t = R) {
+	if (ka(t).type === "sphere") return ja();
 	let n = new e.BoxGeometry(1, 1, 1), r = new e.EdgesGeometry(n);
 	return n.dispose(), r;
 }
-function $(e) {
-	return Number.isFinite(e) ? e.toFixed(8) : "0.0";
-}
-function to(e, t) {
-	return t === "wgsl" ? `vec3<f32>(${$(e)})` : `vec3(${$(e)})`;
-}
-function no(e, t, n, r) {
-	return r === "wgsl" ? `var ${e}: ${t} = ${n};` : `${t} ${e} = ${n};`;
-}
-function ro(e) {
+function Na(e) {
 	return e.filter((e) => e.enabled).reverse();
 }
-function io(e) {
+function Pa(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -3041,7 +2743,7 @@ function io(e) {
 	}
 	return n(e), t;
 }
-function ao(e) {
+function Fa(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -3064,7 +2766,7 @@ function ao(e) {
 	}
 	return n(e), t;
 }
-function oo(e) {
+function Ia(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -3086,7 +2788,7 @@ function oo(e) {
 	}
 	return n(e), t;
 }
-function so(e) {
+function La(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -3109,7 +2811,7 @@ function so(e) {
 	}
 	return n(e), t;
 }
-function co(e) {
+function Ra(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -3131,10 +2833,10 @@ function co(e) {
 	}
 	return n(e), t;
 }
-function lo(e) {
+function za(e) {
 	let t = [];
 	function n(e) {
-		ro(e).forEach((e) => {
+		Na(e).forEach((e) => {
 			let r = t.length;
 			t.push({
 				index: r,
@@ -3145,25 +2847,25 @@ function lo(e) {
 	}
 	return n(e), t;
 }
-function uo(e) {
+function Ba(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function fo(e) {
+function Va(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function po(e) {
+function Ha(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function mo(e) {
+function Ua(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function ho(e) {
+function Wa(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function go(e) {
+function Ga(e) {
 	return new Map(e.map((e) => [e.node.id, e]));
 }
-function _o(e, t, n) {
+function Ka(e, t, n) {
 	let { width: r, height: i } = e.layer.params, a = t === "wgsl" ? "vec4<f32>" : "vec4", o = t === "wgsl" ? "let" : "float", s = t === "wgsl" ? "let" : "float";
 	return r <= 0 || i <= 0 ? `return ${a}(0.0, 0.0, 0.0, 0.0);` : `
       ${t === "wgsl" ? "let" : "vec3"} imageDirection = normalize(direction);
@@ -3174,8 +2876,8 @@ function _o(e, t, n) {
       ${o} imageU = projectedX / max(${n.halfSize}.x * 2.0, 0.000001) + 0.5;
       ${o} imageV = 0.5 - projectedY / max(${n.halfSize}.y * 2.0, 0.000001);
       ${o} imageEdgeDistance = min(min(imageU, 1.0 - imageU), min(imageV, 1.0 - imageV));
-      ${o} imageEdgeWidth = clamp(fwidth(imageEdgeDistance), 0.000001, ${$(Ki)});
-      ${o} imageHardInside = step(${$(Gi)}, imageDenom) *
+      ${o} imageEdgeWidth = clamp(fwidth(imageEdgeDistance), 0.000001, ${Q(Oi)});
+      ${o} imageHardInside = step(${Q(Di)}, imageDenom) *
         step(0.0, ${n.halfSize}.x) *
         step(0.0, ${n.halfSize}.y);
       ${o} imageNearRect = step(-imageEdgeWidth, imageEdgeDistance);
@@ -3185,7 +2887,7 @@ function _o(e, t, n) {
       return ${a}(imageU, imageV, imageValid, 0.0);
     `;
 }
-function vo(e, t, n) {
+function qa(e, t, n) {
 	let r = t.get(e.id);
 	return r ? n === "wgsl" ? `effectColor = ${r.parameterName};` : `{
     vec4 imageSampleInfo = skyboxStudioImageSampleInfo${r.index}(direction);
@@ -3193,15 +2895,15 @@ function vo(e, t, n) {
     effectColor = vec4(imageSampleColor.rgb, imageSampleColor.a * imageSampleInfo.z);
   }` : `effectColor = ${n === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
 }
-function yo(e, t, n) {
+function Ja(e, t, n) {
 	let r = t.get(e.id);
 	return r ? n === "wgsl" ? `effectColor = ${r.parameterName};` : `effectColor = texture2D(starfieldTexture${r.index}, directionToSourceStarfieldUv(direction));` : `effectColor = ${n === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
 }
-function bo() {
+function Ya() {
 	return "\n      const float SKYBOX_STUDIO_PI = 3.141592653589793;\n\n      vec2 directionToEquirectUv(vec3 direction) {\n        vec3 normalizedDirection = normalize(direction);\n        float longitude = atan(normalizedDirection.z, normalizedDirection.x);\n        float latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n        return vec2(longitude / (2.0 * SKYBOX_STUDIO_PI) + 0.5, latitude / SKYBOX_STUDIO_PI + 0.5);\n      }\n\n      vec2 directionToSourceStarfieldUv(vec3 direction) {\n        vec3 normalizedDirection = normalize(direction);\n        float theta = atan(normalizedDirection.x, normalizedDirection.z);\n        float u = fract(theta / (2.0 * SKYBOX_STUDIO_PI) + 0.5);\n        float v = acos(clamp(normalizedDirection.y, -1.0, 1.0)) / SKYBOX_STUDIO_PI;\n\n        return vec2(u, v);\n      }\n    ";
 }
-function xo(e) {
-	return ie(`
+function Xa(e) {
+	return F(`
     fn skyboxStudioImageSampleInfo${e.index}(
       direction: vec3<f32>,
       imageCenterDirection: vec3<f32>,
@@ -3209,7 +2911,7 @@ function xo(e) {
       imageTangentY: vec3<f32>,
       imageHalfSize: vec2<f32>
     ) -> vec4<f32> {
-      ${_o(e, "wgsl", {
+      ${Ka(e, "wgsl", {
 		centerDirection: "imageCenterDirection",
 		halfSize: "imageHalfSize",
 		tangentX: "imageTangentX",
@@ -3218,7 +2920,7 @@ function xo(e) {
     }
   `);
 }
-var So = ie("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> vec4<f32> {\n    return vec4<f32>(color.rgb, color.a * valid);\n  }\n"), Co = ie(`
+var Za = F("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> vec4<f32> {\n    return vec4<f32>(color.rgb, color.a * valid);\n  }\n"), Qa = F(`
   fn skyboxStudioApplyImageEditorRectOverlay(
     color: vec4<f32>,
     uv: vec2<f32>,
@@ -3228,22 +2930,22 @@ var So = ie("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> 
     let activeAmount = clamp(activeValue, 0.0, 1.0);
     let rectCoverage = valid * activeAmount;
     let edgeDistance = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-    let edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${$(Ki)});
+    let edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${Q(Oi)});
     let bounds = rectCoverage * (
       1.0 - smoothstep(
-        edgeWidth * ${$(Ui)},
-        edgeWidth * ${$(Wi)},
+        edgeWidth * ${Q(Ti)},
+        edgeWidth * ${Q(Ei)},
         edgeDistance
       )
     );
-    let rectAlpha = rectCoverage * ${$(Hi)};
+    let rectAlpha = rectCoverage * ${Q(wi)};
     let overlayAlpha = max(rectAlpha, bounds);
     return vec4<f32>(
       mix(color.rgb, vec3<f32>(1.0, 0.0, 0.0), overlayAlpha),
       color.a
     );
   }
-`), wo = ie(`
+`), $a = F(`
   fn skyboxStudioSpotEditorRectInfo(
     direction: vec3<f32>,
     spotCenterDirection: vec3<f32>,
@@ -3260,18 +2962,18 @@ var So = ie("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> 
     let spotU = spotLocalX * 0.5 + 0.5;
     let spotV = 0.5 - spotLocalY * 0.5;
     let spotEdgeDistance = min(min(spotU, 1.0 - spotU), min(spotV, 1.0 - spotV));
-    let spotEdgeWidth = clamp(fwidth(spotEdgeDistance), 0.000001, ${$(Ki)});
-    let spotValid = step(${$(Gi)}, spotDenom) *
+    let spotEdgeWidth = clamp(fwidth(spotEdgeDistance), 0.000001, ${Q(Oi)});
+    let spotValid = step(${Q(Di)}, spotDenom) *
       step(-spotEdgeWidth, spotEdgeDistance) *
       smoothstep(-spotEdgeWidth, spotEdgeWidth, spotEdgeDistance);
 
     return vec4<f32>(spotU, spotV, spotValid, 0.0);
   }
 `);
-function To(e) {
+function eo(e) {
 	return e.map((e) => `
         vec4 skyboxStudioImageSampleInfo${e.index}(vec3 direction) {
-          ${_o(e, "glsl", {
+          ${Ka(e, "glsl", {
 		centerDirection: `imageCenterDirection${e.index}`,
 		halfSize: `imageHalfSize${e.index}`,
 		tangentX: `imageTangentX${e.index}`,
@@ -3280,28 +2982,28 @@ function To(e) {
         }
       `).join("\n");
 }
-function Eo(e) {
+function to(e) {
 	return e.map((e) => `
         {
           vec4 imageEditorInfo = skyboxStudioImageSampleInfo${e.index}(direction);
           float activeAmount = clamp(imageActive${e.index}, 0.0, 1.0);
           float rectCoverage = imageEditorInfo.z * activeAmount;
           float edgeDistance = min(min(imageEditorInfo.x, 1.0 - imageEditorInfo.x), min(imageEditorInfo.y, 1.0 - imageEditorInfo.y));
-          float edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${$(Ki)});
+          float edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${Q(Oi)});
           float bounds = rectCoverage * (
             1.0 - smoothstep(
-              edgeWidth * ${$(Ui)},
-              edgeWidth * ${$(Wi)},
+              edgeWidth * ${Q(Ti)},
+              edgeWidth * ${Q(Ei)},
               edgeDistance
             )
           );
-          float rectAlpha = rectCoverage * ${$(Hi)};
+          float rectAlpha = rectCoverage * ${Q(wi)};
           float overlayAlpha = max(rectAlpha, bounds);
           composedColor = mix(composedColor, vec3(1.0, 0.0, 0.0), overlayAlpha);
         }
       `).join("\n");
 }
-function Do(e) {
+function no(e) {
 	return e.map((e) => `
         {
           vec3 spotEditorCenter = normalize(${e.parameterPrefix}CenterDirection);
@@ -3314,64 +3016,112 @@ function Do(e) {
           vec2 spotEditorUv = vec2(spotEditorLocalX * 0.5 + 0.5, 0.5 - spotEditorLocalY * 0.5);
           float activeAmount = clamp(spotActive${e.index}, 0.0, 1.0);
           float edgeDistance = min(min(spotEditorUv.x, 1.0 - spotEditorUv.x), min(spotEditorUv.y, 1.0 - spotEditorUv.y));
-          float edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${$(Ki)});
-          float rectCoverage = step(${$(Gi)}, spotEditorDenom) *
+          float edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${Q(Oi)});
+          float rectCoverage = step(${Q(Di)}, spotEditorDenom) *
             step(-edgeWidth, edgeDistance) *
             smoothstep(-edgeWidth, edgeWidth, edgeDistance) *
             activeAmount;
           float bounds = rectCoverage * (
             1.0 - smoothstep(
-              edgeWidth * ${$(Ui)},
-              edgeWidth * ${$(Wi)},
+              edgeWidth * ${Q(Ti)},
+              edgeWidth * ${Q(Ei)},
               edgeDistance
             )
           );
-          float rectAlpha = rectCoverage * ${$(Hi)};
+          float rectAlpha = rectCoverage * ${Q(wi)};
           float overlayAlpha = max(rectAlpha, bounds);
           composedColor = mix(composedColor, vec3(1.0, 0.0, 0.0), overlayAlpha);
         }
       `).join("\n");
 }
-function Oo(e, t) {
-	return e.get(t.id) ?? Ji;
+function ro(e) {
+	return e.map((e) => `uniform vec3 ${e.parameterPrefix}Axis;
+      ${Array.from({ length: e.stopCount }, (t, n) => `uniform vec4 ${e.parameterPrefix}StopColor${n};
+      uniform float ${e.parameterPrefix}StopMidpoint${n};
+      uniform float ${e.parameterPrefix}StopT${n};`).join("\n")}`).join("\n");
 }
-function ko(e, t) {
-	return Object.fromEntries(e.map((e) => [`imageTexture${e.index}`, { value: Oo(t, e.layer) }]));
+function io(e) {
+	return e.map((e) => `uniform float ${e.parameterPrefix}Amplitude;
+      uniform float ${e.parameterPrefix}Frequency;
+      uniform float ${e.parameterPrefix}Mode;
+      uniform float ${e.parameterPrefix}Power;
+      ${Array.from({ length: e.anchorCount }, (t, n) => `uniform vec3 ${e.parameterPrefix}AnchorDirection${n};
+      uniform vec3 ${e.parameterPrefix}AnchorColor${n};`).join("\n")}`).join("\n");
 }
-function Ao(e, t, n) {
+function ao(e, t) {
+	return e.map((e) => `uniform vec3 ${e.parameterPrefix}CenterDirection;
+      uniform float ${e.parameterPrefix}Radius;
+      uniform float ${e.parameterPrefix}Mode;
+      uniform vec3 ${e.parameterPrefix}LightColor;
+      uniform float ${e.parameterPrefix}Brightness;
+      uniform float ${e.parameterPrefix}CoreRadius;
+      uniform float ${e.parameterPrefix}CoreSoftness;
+      uniform float ${e.parameterPrefix}Dispersion;
+      uniform float ${e.parameterPrefix}DogSpread;
+      uniform float ${e.parameterPrefix}DogStrength;
+      uniform float ${e.parameterPrefix}DogStretch;
+      uniform float ${e.parameterPrefix}GlareSize;
+      uniform float ${e.parameterPrefix}GlareStrength;
+      uniform float ${e.parameterPrefix}GlowSize;
+      uniform float ${e.parameterPrefix}GlowStrength;
+      uniform float ${e.parameterPrefix}HaloInnerWidth;
+      uniform float ${e.parameterPrefix}HaloOuterWidth;
+      uniform float ${e.parameterPrefix}HaloRadius;
+      uniform float ${e.parameterPrefix}HaloStrength;
+      ${t ? `uniform float spotActive${e.index};` : ""}
+      ${Array.from({ length: e.stopCount }, (t, n) => `uniform vec4 ${e.parameterPrefix}StopColor${n};
+      uniform float ${e.parameterPrefix}StopMidpoint${n};
+      uniform float ${e.parameterPrefix}StopT${n};`).join("\n")}`).join("\n");
+}
+function oo(e, t) {
+	return e.map((e) => `uniform sampler2D imageTexture${e.index};
+      uniform vec3 imageCenterDirection${e.index};
+      uniform vec3 imageTangentX${e.index};
+      uniform vec3 imageTangentY${e.index};
+      uniform vec2 imageHalfSize${e.index};${t ? `
+      uniform float imageActive${e.index};` : ""}`).join("\n");
+}
+function so(e) {
+	return e.map((e) => `uniform sampler2D starfieldTexture${e.index};`).join("\n");
+}
+function co(e, t) {
+	return e.get(t.id) ?? Ai;
+}
+function lo(e, t) {
+	return Object.fromEntries(e.map((e) => [`imageTexture${e.index}`, { value: co(t, e.layer) }]));
+}
+function uo(e, t, n) {
 	t.forEach((t) => {
 		let r = `imageTexture${t.index}`;
-		e.uniforms[r] && (e.uniforms[r].value = Oo(n, t.layer));
+		e.uniforms[r] && (e.uniforms[r].value = co(n, t.layer));
 	});
 }
-function jo(e, t) {
+function fo(e, t) {
 	e.forEach((e, n) => {
-		e.textureNode.value = t.get(n) ?? Ji;
+		e.textureNode.value = t.get(n) ?? Ai;
 	});
 }
-function Mo(e) {
+function po(e) {
 	e.userData.starfieldRenderTarget || e.dispose();
 }
-function No(e, t) {
-	return e.get(t.id) ?? Ji;
+function mo(e, t) {
+	return e.get(t.id) ?? Ai;
 }
-function Po(e, t) {
-	return Object.fromEntries(e.map((e) => [`starfieldTexture${e.index}`, { value: No(t, e.layer) }]));
+function ho(e, t) {
+	return Object.fromEntries(e.map((e) => [`starfieldTexture${e.index}`, { value: mo(t, e.layer) }]));
 }
-function Fo(e, t, n) {
+function go(e, t, n) {
 	t.forEach((t) => {
 		let r = `starfieldTexture${t.index}`;
-		e.uniforms[r] && (e.uniforms[r].value = No(n, t.layer));
+		e.uniforms[r] && (e.uniforms[r].value = mo(n, t.layer));
 	});
 }
-function Io(e, t) {
-	e.forEach((e) => {
-		e.textureNodes.forEach((e) => {
-			e.value = e.value ?? Ji;
-		});
+function _o(e, t) {
+	e.forEach((e, n) => {
+		e.textureNode.value = t.get(n) ?? Ai;
 	});
 }
-function Lo(e, t) {
+function vo(e, t) {
 	let n = t === "wgsl" ? "vec4<f32>" : "vec4", r = t === "wgsl" ? "let" : "float";
 	if (e.stopCount === 0) return `effectColor = ${n}(0.0, 0.0, 0.0, 0.0);`;
 	let i = Array.from({ length: Math.max(0, e.stopCount - 1) }, (n, i) => {
@@ -3392,7 +3142,7 @@ function Lo(e, t) {
     }
   }`;
 }
-function Ro(e, t) {
+function yo(e, t) {
 	let n = t === "wgsl" ? "vec4<f32>" : "vec4", r = t === "wgsl" ? "vec3<f32>" : "vec3", i = t === "wgsl" ? "let" : "float";
 	if (e.anchorCount === 0) return `effectColor = ${n}(0.0, 0.0, 0.0, 0.0);`;
 	let a = Array.from({ length: e.anchorCount }, (n, r) => `{
@@ -3408,16 +3158,16 @@ function Ro(e, t) {
 	return `{
     ${i} warpAmplitude = clamp(${e.parameterPrefix}Amplitude, 0.0, 0.6);
     ${i} warpFrequency = max(${e.parameterPrefix}Frequency, 0.0001);
-    ${no("fieldDirection", r, "direction", t)}
+    ${$("fieldDirection", r, "direction", t)}
     ${i} warpScale = warpAmplitude;
     if (warpScale > 0.0) {
-      ${i} warpX = sin((direction.y * warpFrequency + 0.23) * ${$(Math.PI * 2)}) * cos((direction.z * warpFrequency + 0.41) * ${$(Math.PI * 2)});
-      ${i} warpY = cos((direction.z * warpFrequency + 0.17) * ${$(Math.PI * 2)}) * sin((direction.x * warpFrequency + 0.37) * ${$(Math.PI * 2)});
-      ${i} warpZ = sin((direction.x * warpFrequency - 0.31) * ${$(Math.PI * 2)}) * cos((direction.y * warpFrequency + 0.29) * ${$(Math.PI * 2)});
+      ${i} warpX = sin((direction.y * warpFrequency + 0.23) * ${Q(Math.PI * 2)}) * cos((direction.z * warpFrequency + 0.41) * ${Q(Math.PI * 2)});
+      ${i} warpY = cos((direction.z * warpFrequency + 0.17) * ${Q(Math.PI * 2)}) * sin((direction.x * warpFrequency + 0.37) * ${Q(Math.PI * 2)});
+      ${i} warpZ = sin((direction.x * warpFrequency - 0.31) * ${Q(Math.PI * 2)}) * cos((direction.y * warpFrequency + 0.29) * ${Q(Math.PI * 2)});
       fieldDirection = normalize(direction + ${r}(warpX, warpY, warpZ) * warpScale);
     }
-    ${no("weightedColor", r, `${r}(0.0)`, t)}
-    ${no("weightSum", t === "wgsl" ? "f32" : "float", "0.0", t)}
+    ${$("weightedColor", r, `${r}(0.0)`, t)}
+    ${$("weightSum", t === "wgsl" ? "f32" : "float", "0.0", t)}
     ${a}
     if (weightSum > 0.0) {
       effectColor = ${n}(weightedColor / weightSum, 1.0);
@@ -3426,7 +3176,7 @@ function Ro(e, t) {
     }
   }`;
 }
-function zo(e, t) {
+function bo(e, t) {
 	let n = t === "wgsl" ? "let" : "float", r = Array.from({ length: Math.max(0, e.stopCount - 1) }, (r, i) => {
 		let a = `${e.parameterPrefix}StopT${i}`, o = `${e.parameterPrefix}StopT${i + 1}`, s = `spotLocalT${i}`, c = `spotSegmentMidpoint${i}`, l = `spotMidpointT${i}`, u = `${e.parameterPrefix}StopMidpoint${i}`, d = `${s} / max(${c} * 2.0, 0.00001)`, f = `0.5 + (${s} - ${c}) / max((1.0 - ${c}) * 2.0, 0.00001)`, p = t === "wgsl" ? `select(${f}, ${d}, ${s} <= ${c})` : `(${s} <= ${c} ? ${d} : ${f})`, m = t === "wgsl" ? ": f32" : "";
 		return `${i === 0 ? "if" : "else if"} (spotT <= ${o}) {
@@ -3443,8 +3193,8 @@ function zo(e, t) {
       }
     }`;
 }
-function Bo(e, t) {
-	let n = t === "wgsl" ? "vec4<f32>" : "vec4", r = t === "wgsl" ? "vec3<f32>" : "vec3", i = t === "wgsl" ? "let" : "float", a = `${e.parameterPrefix}Mode > 0.5`, o = zo(e, t);
+function xo(e, t) {
+	let n = t === "wgsl" ? "vec4<f32>" : "vec4", r = t === "wgsl" ? "vec3<f32>" : "vec3", i = t === "wgsl" ? "let" : "float", a = `${e.parameterPrefix}Mode > 0.5`, o = bo(e, t);
 	return `{
     ${t === "wgsl" ? "let" : "vec3"} spotCenter = normalize(${e.parameterPrefix}CenterDirection);
     ${i} spotDot = clamp(dot(normalize(direction), spotCenter), -1.0, 1.0);
@@ -3463,7 +3213,7 @@ function Bo(e, t) {
       ${i} spotGlow = pow(clamp(1.0 - spotD / ${e.parameterPrefix}GlowSize, 0.0, 1.0), 2.0) * ${e.parameterPrefix}GlowStrength;
       ${i} spotGlare = pow(clamp(1.0 - spotD / ${e.parameterPrefix}GlareSize, 0.0, 1.0), 1.15) * ${e.parameterPrefix}GlareStrength;
       ${i} spotMonoLight = (spotCore + spotGlow + spotGlare) * ${e.parameterPrefix}Brightness;
-      ${no("spotColor", r, `${e.parameterPrefix}LightColor * spotMonoLight + ${r}(max(spotMonoLight - 1.0, 0.0))`, t)}
+      ${$("spotColor", r, `${e.parameterPrefix}LightColor * spotMonoLight + ${r}(max(spotMonoLight - 1.0, 0.0))`, t)}
 
       ${i} spotHaloInner = max(${e.parameterPrefix}HaloInnerWidth, 0.0001);
       ${i} spotHaloOuter = max(${e.parameterPrefix}HaloOuterWidth, 0.0001);
@@ -3471,7 +3221,7 @@ function Bo(e, t) {
       ${i} spotHaloWidth = ${t === "wgsl" ? "select(spotHaloOuter, spotHaloInner, spotHaloDelta < 0.0)" : "(spotHaloDelta < 0.0 ? spotHaloInner : spotHaloOuter)"};
       ${i} spotHaloEnvelope = exp(-pow(spotHaloDelta / spotHaloWidth, 2.0));
       ${i} spotHaloT = clamp((spotD - (${e.parameterPrefix}HaloRadius - spotHaloInner)) / (spotHaloInner + spotHaloOuter), 0.0, 1.0);
-      ${no("spotSpectrum", r, `${r}(1.0, 0.12, 0.05)`, t)}
+      ${$("spotSpectrum", r, `${r}(1.0, 0.12, 0.05)`, t)}
       spotSpectrum = mix(spotSpectrum, ${r}(1.0, 0.55, 0.10), smoothstep(0.00, 0.28, spotHaloT));
       spotSpectrum = mix(spotSpectrum, ${r}(1.0, 0.93, 0.60), smoothstep(0.22, 0.45, spotHaloT));
       spotSpectrum = mix(spotSpectrum, ${r}(1.0), smoothstep(0.42, 0.60, spotHaloT));
@@ -3491,7 +3241,7 @@ function Bo(e, t) {
         (1.0 - smoothstep(${e.parameterPrefix}HaloRadius + max(${e.parameterPrefix}DogStretch, 0.0001), ${e.parameterPrefix}HaloRadius + max(${e.parameterPrefix}DogStretch * 2.2, 0.0001), spotDogX)) *
         exp(-pow(spotAxisDistance / max(${e.parameterPrefix}DogSpread * 0.9, 0.0001), 2.0));
       ${i} spotDogT = clamp((spotDogX - (${e.parameterPrefix}HaloRadius - ${e.parameterPrefix}DogSpread * 1.4)) / max(${e.parameterPrefix}DogSpread * 3.5, 0.0001), 0.0, 1.0);
-      ${no("spotDogSpectrum", r, `${r}(1.0, 0.12, 0.05)`, t)}
+      ${$("spotDogSpectrum", r, `${r}(1.0, 0.12, 0.05)`, t)}
       spotDogSpectrum = mix(spotDogSpectrum, ${r}(1.0, 0.55, 0.10), smoothstep(0.00, 0.28, spotDogT));
       spotDogSpectrum = mix(spotDogSpectrum, ${r}(1.0, 0.93, 0.60), smoothstep(0.22, 0.45, spotDogT));
       spotDogSpectrum = mix(spotDogSpectrum, ${r}(1.0), smoothstep(0.42, 0.60, spotDogT));
@@ -3508,25 +3258,12 @@ function Bo(e, t) {
     }
   }`;
 }
-function Vo(e, t, n, r, i, a, o = /* @__PURE__ */ new Map()) {
-	if (e.type === "gradient") {
-		let r = n.get(e.id);
-		return r ? Lo(r, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
-	}
-	if (e.type === "field-gradient") {
-		let n = r.get(e.id);
-		return n ? Ro(n, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
-	}
-	if (e.type === "spot") {
-		let n = a.get(e.id);
-		return n ? Bo(n, t) : `effectColor = ${t === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
-	}
-	return e.type === "starfield" ? yo(e, o, t) : vo(e, i, t);
+var So = /* @__PURE__ */ new Map();
+function Co(e, t, n) {
+	let r = _e(e.type);
+	return r?.glsl ? r.glsl.sampleExpression(e, n.get(e.type) ?? So, t) : Si(t);
 }
-function Ho(e, t, n, r) {
-	return r === "wgsl" ? `select(${n}, ${t}, ${e})` : `((${e}) ? ${t} : ${n})`;
-}
-function Uo(e, t) {
+function wo(e, t) {
 	if (t === "glsl") switch (e) {
 		case "darken": return "min(composedColor, effectColor.rgb)";
 		case "multiply": return "composedColor * effectColor.rgb";
@@ -3541,32 +3278,32 @@ function Uo(e, t) {
 		case "exclusion": return "composedColor + effectColor.rgb - 2.0 * composedColor * effectColor.rgb";
 		default: return "effectColor.rgb";
 	}
-	let n = to(1, t), r = to(.5, t), i = to(0, t), a = "effectColor.rgb", o = "composedColor";
+	let n = bi(1, t), r = bi(.5, t), i = bi(0, t), a = "effectColor.rgb", o = "composedColor";
 	switch (e) {
 		case "darken": return `min(${o}, ${a})`;
 		case "multiply": return `${o} * ${a}`;
-		case "color-burn": return Ho(`${o} == ${n}`, n, Ho(`${a} == ${i}`, i, `${n} - min(${n}, (${n} - ${o}) / ${a})`, t), t);
+		case "color-burn": return xi(`${o} == ${n}`, n, xi(`${a} == ${i}`, i, `${n} - min(${n}, (${n} - ${o}) / ${a})`, t), t);
 		case "lighten": return `max(${o}, ${a})`;
 		case "screen": return `${o} + ${a} - ${o} * ${a}`;
-		case "color-dodge": return Ho(`${o} == ${i}`, i, Ho(`${a} == ${n}`, n, `min(${n}, ${o} / (${n} - ${a}))`, t), t);
-		case "overlay": return Ho(`${o} <= ${r}`, `2.0 * ${o} * ${a}`, `${n} - 2.0 * (${n} - ${o}) * (${n} - ${a})`, t);
-		case "soft-light": return Ho(`${a} <= ${r}`, `${o} - (${n} - 2.0 * ${a}) * ${o} * (${n} - ${o})`, `${o} + (2.0 * ${a} - ${n}) * (softLightD - ${o})`, t);
-		case "hard-light": return Ho(`${a} <= ${r}`, `2.0 * ${o} * ${a}`, `${o} + (2.0 * ${a} - ${n}) - ${o} * (2.0 * ${a} - ${n})`, t);
+		case "color-dodge": return xi(`${o} == ${i}`, i, xi(`${a} == ${n}`, n, `min(${n}, ${o} / (${n} - ${a}))`, t), t);
+		case "overlay": return xi(`${o} <= ${r}`, `2.0 * ${o} * ${a}`, `${n} - 2.0 * (${n} - ${o}) * (${n} - ${a})`, t);
+		case "soft-light": return xi(`${a} <= ${r}`, `${o} - (${n} - 2.0 * ${a}) * ${o} * (${n} - ${o})`, `${o} + (2.0 * ${a} - ${n}) * (softLightD - ${o})`, t);
+		case "hard-light": return xi(`${a} <= ${r}`, `2.0 * ${o} * ${a}`, `${o} + (2.0 * ${a} - ${n}) - ${o} * (2.0 * ${a} - ${n})`, t);
 		case "difference": return `abs(${o} - ${a})`;
 		case "exclusion": return `${o} + ${a} - 2.0 * ${o} * ${a}`;
 		default: return a;
 	}
 }
-function Wo(e) {
+function To(e) {
 	if (e === "glsl") return "";
 	let t = e === "wgsl" ? "vec3<f32>" : "vec3";
-	return `${e === "wgsl" ? "let" : "vec3"} softLightD = ${Ho(`composedColor <= ${t}(0.25)`, `((16.0 * composedColor - ${t}(12.0)) * composedColor + ${t}(4.0)) * composedColor`, "sqrt(composedColor)", e)};`;
+	return `${e === "wgsl" ? "let" : "vec3"} softLightD = ${xi(`composedColor <= ${t}(0.25)`, `((16.0 * composedColor - ${t}(12.0)) * composedColor + ${t}(4.0)) * composedColor`, "sqrt(composedColor)", e)};`;
 }
-function Go(e, t) {
-	let n = ga(t);
-	return `${e} >= ${$(n - .5)} && ${e} < ${$(n + .5)}`;
+function Eo(e, t) {
+	let n = Zi(t);
+	return `${e} >= ${Q(n - .5)} && ${e} < ${Q(n + .5)}`;
 }
-function Ko(e, t) {
+function Do(e, t) {
 	let n = t === "wgsl" ? "vec3<f32>" : "vec3", r = [
 		"darken",
 		"multiply",
@@ -3579,52 +3316,49 @@ function Ko(e, t) {
 		"hard-light",
 		"difference",
 		"exclusion"
-	].map((n, r) => `${r === 0 ? "if" : "else if"} (${Go(e, n)}) {
-          blendedColor = ${Uo(n, t)};
+	].map((n, r) => `${r === 0 ? "if" : "else if"} (${Eo(e, n)}) {
+          blendedColor = ${wo(n, t)};
         }`).join("\n");
-	return `${Wo(t)}
-        ${no("blendedColor", n, "effectColor.rgb", t)}
+	return `${To(t)}
+        ${$("blendedColor", n, "effectColor.rgb", t)}
         ${r}
         blendedColor = clamp(blendedColor, ${n}(0.0), ${n}(1.0));`;
 }
-function qo(e, t, n, r, i, a, o, s, c, l = 0) {
-	let u = t === "wgsl" ? "vec3<f32>" : "vec3", d = t === "wgsl" ? "vec4<f32>" : "vec4";
-	return ro(e).map((e, f) => {
-		let p = e.type === "group" ? `effectColor = ${d}(${`groupColor${l}_${f}`}, 1.0);` : t === "wgsl" && c ? Xo(e, c) : Vo(e, t, n, r, i, a, o), m = `groupColor${l}_${f}`, h = s.get(e.id), g = h ? `${h.parameterPrefix}Opacity` : $(e.opacity / 100), _ = h ? `${h.parameterPrefix}BlendMode` : $(ga(e.blendMode));
+function Oo(e, t, n, r, i, a = 0) {
+	let o = t === "wgsl" ? "vec3<f32>" : "vec3", s = t === "wgsl" ? "vec4<f32>" : "vec4";
+	return Na(e).map((e, c) => {
+		let l = e.type === "group" ? `effectColor = ${s}(${`groupColor${a}_${c}`}, 1.0);` : t === "wgsl" && i ? Ao(e, i) : Co(e, t, n), u = `groupColor${a}_${c}`, d = r.get(e.id), f = d ? `${d.parameterPrefix}Opacity` : Q(e.opacity / 100), p = d ? `${d.parameterPrefix}BlendMode` : Q(Zi(e.blendMode));
 		return `{
-        ${e.type === "group" ? `${no(m, u, `${u}(0.0)`, t)}
+        ${e.type === "group" ? `${$(u, o, `${o}(0.0)`, t)}
         {
-          ${no("previousComposedColor", u, "composedColor", t)}
-          composedColor = ${u}(0.0);
-          ${qo(e.children, t, n, r, i, a, o, s, c, l + 1)}
-          ${m} = composedColor;
+          ${$("previousComposedColor", o, "composedColor", t)}
+          composedColor = ${o}(0.0);
+          ${Oo(e.children, t, n, r, i, a + 1)}
+          ${u} = composedColor;
           composedColor = previousComposedColor;
         }` : ""}
-        ${no("effectColor", d, `${d}(0.0)`, t)}
-        ${p}
-        ${t === "wgsl" ? "let" : "float"} sourceAlpha = clamp(effectColor.a * ${g}, 0.0, 1.0);
-        ${Ko(_, t)}
+        ${$("effectColor", s, `${s}(0.0)`, t)}
+        ${l}
+        ${t === "wgsl" ? "let" : "float"} sourceAlpha = clamp(effectColor.a * ${f}, 0.0, 1.0);
+        ${Do(p, t)}
         composedColor = clamp(
           blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha),
-          ${u}(0.0),
-          ${u}(1.0)
+          ${o}(0.0),
+          ${o}(1.0)
         );
       }`;
 	}).join("\n");
 }
-function Jo(e) {
-	return `effectColor = ${e === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
-}
-function Yo(e) {
+function ko(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function Xo(e, t) {
+function Ao(e, t) {
 	let n = t.adapters.get(e.type);
-	return n ? n.adapter.createSampleExpression(e, "wgsl", { bindingsByLayerId: n.bindingsByLayerId }) : Jo("wgsl");
+	return n ? n.adapter.createSampleExpression(e, "wgsl", { bindingsByLayerId: n.bindingsByLayerId }) : Si("wgsl");
 }
-var Zo = Bi([
+var jo = yi([
 	{
-		collect: io,
+		collect: Pa,
 		createParameterDeclarations: (e) => e.flatMap((e) => [`,
       ${e.parameterPrefix}Axis: vec3<f32>`, ...Array.from({ length: e.stopCount }, (t, n) => [
 			`,
@@ -3636,7 +3370,7 @@ var Zo = Bi([
 		]).flat()]).join(""),
 		createSampleExpression: (e, t, n) => {
 			let r = n.bindingsByLayerId.get(e.id);
-			return r ? Lo(r, t) : Jo(t);
+			return r ? vo(r, t) : Si(t);
 		},
 		createSampleParameters: (e, t) => Object.fromEntries(e.flatMap((e) => {
 			let n = t[e.index];
@@ -3646,16 +3380,16 @@ var Zo = Bi([
 				[`${e.parameterPrefix}StopT${r}`, n.stops[r].t]
 			]).flat()];
 		})),
-		createUniforms: ba,
+		createUniforms: ta,
 		getTopologyKey: (e) => ({
 			mode: e.params.mode,
 			stopCount: e.params.stops.length
 		}),
 		type: "gradient",
-		updateUniforms: xa
+		updateUniforms: na
 	},
 	{
-		collect: ao,
+		collect: Fa,
 		createParameterDeclarations: (e) => e.flatMap((e) => [
 			`,
       ${e.parameterPrefix}Amplitude: f32`,
@@ -3671,7 +3405,7 @@ var Zo = Bi([
 		]).join(""),
 		createSampleExpression: (e, t, n) => {
 			let r = n.bindingsByLayerId.get(e.id);
-			return r ? Ro(r, t) : Jo(t);
+			return r ? yo(r, t) : Si(t);
 		},
 		createSampleParameters: (e, t) => Object.fromEntries(e.flatMap((e) => {
 			let n = t[e.index];
@@ -3683,24 +3417,24 @@ var Zo = Bi([
 				...Array.from({ length: e.anchorCount }, (t, r) => [[`${e.parameterPrefix}AnchorDirection${r}`, n.anchors[r].direction], [`${e.parameterPrefix}AnchorColor${r}`, n.anchors[r].color]]).flat()
 			];
 		})),
-		createUniforms: wa,
+		createUniforms: aa,
 		getTopologyKey: (e) => ({ anchorCount: e.params.anchors.length }),
 		type: "field-gradient",
-		updateUniforms: Ta
+		updateUniforms: oa
 	},
 	{
-		collect: oo,
+		collect: Ia,
 		createParameterDeclarations: (e) => e.map((e) => `,
       ${e.parameterName}: vec4<f32>`).join(""),
 		createSampleExpression: (e, t, n) => {
 			let r = n.bindingsByLayerId.get(e.id);
-			return r ? `effectColor = ${r.parameterName};` : Jo(t);
+			return r ? `effectColor = ${r.parameterName};` : Si(t);
 		},
 		createSampleNodes: ({ bindings: e, direction: t, imageTextures: n, uniforms: r }) => {
-			let i = rs(e, t, n, r);
+			let i = zo(e, t, n, r);
 			return {
 				editorProjectionByLayerId: new Map(Array.from(i.sampleData.entries()).map(([e, t]) => [e, {
-					uv: F(t.sampleInfo.x, t.sampleInfo.y),
+					uv: N(t.sampleInfo.x, t.sampleInfo.y),
 					valid: t.sampleInfo.z
 				}])),
 				sampleData: i.sampleData,
@@ -3710,7 +3444,7 @@ var Zo = Bi([
 			};
 		},
 		createSampleParameters: (e, t, n) => n?.sampleNodesByParameterName ?? {},
-		createUniforms: oa,
+		createUniforms: Vi,
 		getTopologyKey: (e) => ({
 			hasPlacement: !!e.params.placement,
 			hasSrc: !!e.params.src,
@@ -3718,10 +3452,10 @@ var Zo = Bi([
 			width: e.params.width
 		}),
 		type: "image",
-		updateUniforms: (e, t) => sa(e, t.id, t.params.placement)
+		updateUniforms: (e, t) => Hi(e, t.id, t.params.placement)
 	},
 	{
-		collect: so,
+		collect: La,
 		createParameterDeclarations: (e) => e.flatMap((e) => [
 			`,
       ${e.parameterPrefix}CenterDirection: vec3<f32>`,
@@ -3772,16 +3506,16 @@ var Zo = Bi([
 		]).join(""),
 		createSampleExpression: (e, t, n) => {
 			let r = n.bindingsByLayerId.get(e.id);
-			return r ? Bo(r, t) : Jo(t);
+			return r ? xo(r, t) : Si(t);
 		},
 		createSampleNodes: ({ bindings: e, direction: t, uniforms: n }) => ({ editorProjectionByLayerId: new Map(e.map((e) => {
-			let r = n[e.index], i = wo({
+			let r = n[e.index], i = $a({
 				direction: t,
 				spotCenterDirection: r.centerDirection,
 				spotRadius: r.radius
 			});
 			return [e.layer.id, {
-				uv: F(i.x, i.y),
+				uv: N(i.x, i.y),
 				valid: i.z
 			}];
 		})) }),
@@ -3814,32 +3548,32 @@ var Zo = Bi([
 				]).flat()
 			];
 		})),
-		createUniforms: ka,
+		createUniforms: ua,
 		getTopologyKey: (e) => ({ stopCount: e.params.stops.length }),
 		type: "spot",
-		updateUniforms: Aa
+		updateUniforms: da
 	},
 	{
-		collect: co,
+		collect: Ra,
 		createParameterDeclarations: (e) => e.map((e) => `,
       ${e.parameterName}: vec4<f32>`).join(""),
 		createSampleExpression: (e, t, n) => {
 			let r = n.bindingsByLayerId.get(e.id);
-			return r ? `effectColor = ${r.parameterName};` : Jo(t);
+			return r ? `effectColor = ${r.parameterName};` : Si(t);
 		},
 		createSampleNodes: ({ bindings: e, direction: t, imageTextures: n }) => {
-			let r = /* @__PURE__ */ new Map(), i = Object.fromEntries(e.map((e) => {
-				let t = re(0, 0, 0, 0);
-				return r.set(e.layer.id, {
-					sampleNode: t,
-					textureNodes: []
-				}), [e.parameterName, t];
+			let r = n, i = /* @__PURE__ */ new Map(), a = Object.fromEntries(e.map((e) => {
+				let n = Ho({ direction: t }), a = A(mo(r, e.layer), n).setName(`starfieldTexture${e.index}`);
+				return a.getUniformHash = () => `skybox-starfield-texture:${e.layer.id}`, i.set(e.layer.id, {
+					sampleNode: a,
+					textureNode: a
+				}), [e.parameterName, a];
 			}));
 			return {
-				sampleData: r,
-				sampleNodesByLayerId: Object.fromEntries(e.map((e) => [e.layer.id, i[e.parameterName]])),
-				sampleNodesByParameterName: i,
-				textureSlots: Object.fromEntries(Array.from(r.entries()).map(([e, t]) => [e, t.textureNodes]))
+				sampleData: i,
+				sampleNodesByLayerId: Object.fromEntries(e.map((e) => [e.layer.id, a[e.parameterName]])),
+				sampleNodesByParameterName: a,
+				textureSlots: Object.fromEntries(Array.from(i.entries()).map(([e, t]) => [e, t.textureNode]))
 			};
 		},
 		createSampleParameters: (e, t, n) => n?.sampleNodesByParameterName ?? {},
@@ -3848,25 +3582,99 @@ var Zo = Bi([
 		type: "starfield",
 		updateUniforms: () => {}
 	}
-]);
-function Qo(e, t, n, r, i) {
+]), Mo = new Set(["image", "spot"]);
+jo.forEach((e) => {
+	ge({
+		type: e.type,
+		wgsl: e,
+		wgslEditorOverlay: Mo.has(e.type),
+		getTopologyKey: (t) => e.getTopologyKey(t)
+	});
+}), Object.entries({
+	gradient: {
+		collectBindings: (e) => Pa(e),
+		createBindingMap: (e) => Ba(e),
+		uniformDeclarations: (e) => ro(e),
+		shaderUniforms: (e) => ra(e),
+		applyParams: (e, t, n) => ia(e, t, n),
+		sampleExpression: (e, t, n) => {
+			let r = t.get(e.id);
+			return r ? vo(r, n) : Si(n);
+		}
+	},
+	"field-gradient": {
+		collectBindings: (e) => Fa(e),
+		createBindingMap: (e) => Va(e),
+		uniformDeclarations: (e) => io(e),
+		shaderUniforms: (e) => sa(e),
+		applyParams: (e, t, n) => ca(e, t, n),
+		sampleExpression: (e, t, n) => {
+			let r = t.get(e.id);
+			return r ? yo(r, n) : Si(n);
+		}
+	},
+	spot: {
+		collectBindings: (e) => La(e),
+		createBindingMap: (e) => Ua(e),
+		uniformDeclarations: (e, t) => ao(e, t.editorPresentationEnabled),
+		shaderUniforms: (e, t) => ({
+			...fa(e),
+			...t.editorPresentationEnabled ? Li(e, t.editorLayerState) : {}
+		}),
+		editorOverlayExpression: (e) => no(e),
+		applyParams: (e, t, n) => pa(e, t, n),
+		sampleExpression: (e, t, n) => {
+			let r = t.get(e.id);
+			return r ? xo(r, n) : Si(n);
+		}
+	},
+	starfield: {
+		collectBindings: (e) => Ra(e),
+		createBindingMap: (e) => Wa(e),
+		uniformDeclarations: (e) => so(e),
+		shaderUniforms: (e, t) => ho(e, t.starfieldTextures),
+		sampleExpression: (e, t, n) => Ja(e, t, n)
+	},
+	image: {
+		collectBindings: (e) => Ia(e),
+		createBindingMap: (e) => Ha(e),
+		uniformDeclarations: (e, t) => oo(e, t.editorPresentationEnabled),
+		fragmentHelpers: (e) => eo(e),
+		shaderUniforms: (e, t) => ({
+			...Ui(e),
+			...lo(e, t.imageTextures),
+			...t.editorPresentationEnabled ? Ii(e, t.editorLayerState) : {}
+		}),
+		editorOverlayExpression: (e) => to(e),
+		sampleExpression: (e, t, n) => qa(e, t, n)
+	}
+}).forEach(([e, t]) => {
+	ge({
+		type: e,
+		glsl: t
+	});
+});
+function No() {
+	return ve().map((e) => e.wgsl).filter((e) => !!e);
+}
+function Po(e, t, n, r, i) {
 	let a = /* @__PURE__ */ new Map(), o = /* @__PURE__ */ new Map(), s = {}, c = {};
-	return Zo.forEach((r) => {
-		let l = r.collect(e.nodes), u = r.createUniforms(l), d = r.createSampleNodes?.({
+	return No().forEach((i) => {
+		let l = i.collect(e.nodes), u = i.createUniforms(l), d = i.createSampleNodes?.({
 			bindings: l,
 			direction: t,
-			imageTextures: r.type === "starfield" ? i : n,
+			imageTextures: i.type === "starfield" ? r : n,
 			uniforms: u
 		}), f = {
-			adapter: r,
+			adapter: i,
 			bindings: l,
-			bindingsByLayerId: Yo(l),
+			bindingsByLayerId: ko(l),
 			samples: d,
 			uniforms: u
 		};
 		d?.editorProjectionByLayerId && d.editorProjectionByLayerId.forEach((e, t) => {
 			o.set(t, e);
-		}), d?.textureSlots && Object.assign(c, d.textureSlots), Object.assign(s, r.createSampleParameters?.(l, u, d) ?? {}), a.set(r.type, f);
+		}), d?.textureSlots && Object.assign(c, d.textureSlots), Object.assign(s, i.createSampleParameters?.(l, u, d) ?? {}), a.set(i.type, f);
 	}), {
 		adapters: a,
 		editorProjectionByLayerId: o,
@@ -3874,27 +3682,27 @@ function Qo(e, t, n, r, i) {
 		textureSlotsByLayerId: c
 	};
 }
-function $o(e, t) {
+function Fo(e, t) {
 	return e.adapters.get(t);
 }
-function es(e, t) {
+function Io(e, t) {
 	e.forEach((e) => {
 		if (e.enabled) {
 			if (e.type === "group") {
-				es(e.children, t);
+				Io(e.children, t);
 				return;
 			}
 			t(e);
 		}
 	});
 }
-function ts(e, t) {
+function Lo(e, t) {
 	let n = e.adapters.get(t.type);
 	n && n.adapter.updateUniforms(n.uniforms, t);
 }
-function ns(e, t, n) {
-	let r = go(n), i = qo(e.nodes, "wgsl", /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), r, t);
-	return ie(`
+function Ro(e, t, n) {
+	let r = Ga(n), i = Oo(e.nodes, "wgsl", /* @__PURE__ */ new Map(), r, t);
+	return F(`
     fn skyboxStudioSample(
       direction: vec3<f32>${Array.from(t.adapters.values()).map((e) => e.adapter.createParameterDeclarations(e.bindings)).join("")}${n.flatMap((e) => [`,
       ${e.parameterPrefix}Opacity: f32`, `,
@@ -3906,20 +3714,20 @@ function ns(e, t, n) {
     }
   `);
 }
-function rs(e, t, n, r) {
+function zo(e, t, n, r) {
 	let i = /* @__PURE__ */ new Map();
 	return {
 		sampleData: i,
 		sampleNodes: Object.fromEntries(e.map((e) => {
-			let a = r[e.index], o = xo(e)({
+			let a = r[e.index], o = Xa(e)({
 				direction: t,
 				imageCenterDirection: a.centerDirection,
 				imageHalfSize: a.halfSize,
 				imageTangentX: a.tangentX,
 				imageTangentY: a.tangentY
-			}), s = F(o.x, o.y), c = M(Oo(n, e.layer), s).setName(`imageTexture${e.index}`);
+			}), s = N(o.x, o.y), c = A(co(n, e.layer), s).setName(`imageTexture${e.index}`);
 			c.getUniformHash = () => `skybox-image-texture:${e.layer.id}`;
-			let l = So({
+			let l = Za({
 				color: c,
 				valid: o.z
 			});
@@ -3931,13 +3739,21 @@ function rs(e, t, n, r) {
 		}))
 	};
 }
-function is(t, i, a, o, s, c) {
-	let l = new n(), d = lo(t.nodes), f = Na(d), p = r(() => {
+function Bo(t, i, a, o, s, c) {
+	let l = new n(), d = za(t.nodes), f = ma(d), p = r(() => {
 		let e = S;
 		return e.z.assign(e.w), e;
 	})();
 	l.side = e.BackSide, l.depthTest = !1, l.depthWrite = !1, l.vertexNode = p;
-	let m = w(E.sub(u)), h = Qo(t, m, a, o, s), g = $o(h, "image"), _ = $o(h, "spot"), v = g?.bindings ?? [], y = _?.bindings ?? [], b = g?.uniforms ?? [], x = g?.samples, C = $o(h, "starfield")?.samples, T = ns(t, h, d), D = c ? Qi(v, i) : null, O = c ? $i(y, i) : null, k = T({
+	let m = w(T.sub(u)), h = Po(t, m, a, o, s), g = Fo(h, "image"), _ = g?.uniforms ?? [], v = g?.samples, y = Fo(h, "starfield")?.samples, b = Ro(t, h, d), x = c ? ve().flatMap((e) => {
+		let t = h.adapters.get(e.type);
+		if (!e.wgslEditorOverlay || !t) return [];
+		let n = t.bindings;
+		return [{
+			bindings: n,
+			editorUniforms: Pi(n, i)
+		}];
+	}) : [], C = b({
 		direction: m,
 		...h.sampleParameters,
 		...Object.fromEntries(d.flatMap((e) => {
@@ -3945,47 +3761,42 @@ function is(t, i, a, o, s, c) {
 			return [[`${e.parameterPrefix}Opacity`, t.opacity], [`${e.parameterPrefix}BlendMode`, t.blendMode]];
 		}))
 	});
-	return D && v.forEach((e) => {
-		let t = h.editorProjectionByLayerId.get(e.layer.id);
-		t && (k = Co({
-			color: k,
-			activeValue: D[e.index].active,
-			uv: t.uv,
-			valid: t.valid
-		}));
-	}), O && y.forEach((e) => {
-		let t = h.editorProjectionByLayerId.get(e.layer.id);
-		t && (k = Co({
-			color: k,
-			activeValue: O[e.index].active,
-			uv: t.uv,
-			valid: t.valid
-		}));
-	}), l.colorNode = k, (D || O) && ia(l, (e) => {
-		D && ea(D, e), O && ea(O, e);
-	}), l.userData.webGpuLayerRuntime = h, l.userData.applyLayerParams = (e) => ts(h, e), Ua(l, (e) => es(e.nodes, l.userData.applyLayerParams)), Wa(l, l.userData.applyLayerParams), Ga(l, (e) => es(e.nodes, l.userData.applyLayerParams)), Ka(l, l.userData.applyLayerParams), qa(l, (e) => es(e.nodes, l.userData.applyLayerParams)), Ja(l, l.userData.applyLayerParams), Ya(l, (e) => Fa(f, e)), Xa(l, (e) => Ia(f, e)), ua(l, (e, t) => sa(b, e, t)), l.userData.applyImageTextures = (e) => jo(x?.sampleData ?? /* @__PURE__ */ new Map(), e), l.userData.applyStarfieldTextures = (e) => Io(C?.sampleData ?? /* @__PURE__ */ new Map(), e), l.userData.debugImageTextureSlots = h.textureSlotsByLayerId, l;
+	return x.forEach(({ bindings: e, editorUniforms: t }) => {
+		e.forEach((e, n) => {
+			let r = h.editorProjectionByLayerId.get(e.layer.id);
+			r && (C = Qa({
+				color: C,
+				activeValue: t[n].active,
+				uv: r.uv,
+				valid: r.valid
+			}));
+		});
+	}), l.colorNode = C, x.length > 0 && zi(l, (e) => {
+		x.forEach(({ editorUniforms: t }) => Fi(t, e));
+	}), l.userData.webGpuLayerRuntime = h, l.userData.applyLayerParams = (e) => Lo(h, e), xa(l, (e) => Io(e.nodes, l.userData.applyLayerParams)), Sa(l, l.userData.applyLayerParams), Ca(l, (e) => Io(e.nodes, l.userData.applyLayerParams)), wa(l, l.userData.applyLayerParams), Ta(l, (e) => Io(e.nodes, l.userData.applyLayerParams)), Ea(l, l.userData.applyLayerParams), Da(l, (e) => ga(f, e)), Oa(l, (e) => _a(f, e)), Gi(l, (e, t) => Hi(_, e, t)), l.userData.applyImageTextures = (e) => fo(v?.sampleData ?? /* @__PURE__ */ new Map(), e), l.userData.applyStarfieldTextures = (e) => _o(y?.sampleData ?? /* @__PURE__ */ new Map(), e), l.userData.debugImageTextureSlots = h.textureSlotsByLayerId, l;
 }
-var as = ie("\n  fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let longitude = atan2(normalizedDirection.z, normalizedDirection.x);\n    let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n    return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);\n  }\n");
-ie("\n  fn skyboxStudioDirectionToSourceStarfieldUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let theta = atan2(normalizedDirection.x, normalizedDirection.z);\n    let u = fract(theta / 6.283185307179586 + 0.5);\n    let v = acos(clamp(normalizedDirection.y, -1.0, 1.0)) / 3.141592653589793;\n\n    return vec2<f32>(u, v);\n  }\n");
-function os(t) {
+var Vo = F("\n  fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let longitude = atan2(normalizedDirection.z, normalizedDirection.x);\n    let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n    return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);\n  }\n"), Ho = F("\n  fn skyboxStudioDirectionToSourceStarfieldUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let theta = atan2(normalizedDirection.x, normalizedDirection.z);\n    let u = fract(theta / 6.283185307179586 + 0.5);\n    let v = acos(clamp(normalizedDirection.y, -1.0, 1.0)) / 3.141592653589793;\n\n    return vec2<f32>(u, v);\n  }\n");
+function Uo(t) {
 	let i = new n(), a = r(() => {
 		let e = S;
 		return e.z.assign(e.w), e;
-	})(), o = w(E.sub(u));
-	return i.side = e.BackSide, i.depthTest = !1, i.depthWrite = !1, i.vertexNode = a, i.colorNode = M(t, as({ direction: o })), i;
+	})(), o = w(T.sub(u));
+	return i.side = e.BackSide, i.depthTest = !1, i.depthWrite = !1, i.vertexNode = a, i.colorNode = A(t, Vo({ direction: o })), i;
 }
-function ss(t, n, r, i, a) {
-	let o = io(t.nodes), s = ao(t.nodes), c = oo(t.nodes), l = so(t.nodes), u = co(t.nodes), d = lo(t.nodes), f = uo(o), p = fo(s), m = po(c), h = mo(l), g = ho(u), _ = go(d), v = qo(t.nodes, "glsl", f, p, m, h, g, _), y = new e.ShaderMaterial({
+function Wo(t, n, r, i, a) {
+	let o = za(t.nodes), s = Ga(o), c = {
+		editorPresentationEnabled: a,
+		editorLayerState: n,
+		imageTextures: r,
+		starfieldTextures: i
+	}, l = ve().flatMap((e) => e.glsl ? [{
+		type: e.type,
+		glsl: e.glsl,
+		bindings: e.glsl.collectBindings(t.nodes)
+	}] : []), u = l.find((e) => e.type === "image")?.bindings ?? [], d = l.find((e) => e.type === "spot")?.bindings ?? [], f = l.find((e) => e.type === "starfield")?.bindings ?? [], p = new Map(l.map((e) => [e.type, e.glsl.createBindingMap(e.bindings)])), m = Object.assign({}, ...l.map((e) => e.glsl.shaderUniforms(e.bindings, c))), h = l.map((e) => e.glsl.uniformDeclarations(e.bindings, c)).join("\n"), g = l.map((e) => e.glsl.fragmentHelpers?.(e.bindings) ?? "").join("\n"), _ = a ? l.map((e) => e.glsl.editorOverlayExpression?.(e.bindings, c) ?? "").join("\n") : "", v = l.some((e) => !!e.glsl.fragmentHelpers && e.bindings.length > 0 || a && !!e.glsl.editorOverlayExpression && e.bindings.length > 0), y = Oo(t.nodes, "glsl", p, s), b = new e.ShaderMaterial({
 		uniforms: {
-			...Sa(o),
-			...Ea(s),
-			...ja(l),
-			...Po(u, i),
-			...La(d),
-			...a ? ta(c, n) : {},
-			...a ? na(l, n) : {},
-			...ca(c),
-			...ko(c, r)
+			...m,
+			...va(o)
 		},
 		depthTest: !1,
 		depthWrite: !1,
@@ -3993,51 +3804,12 @@ function ss(t, n, r, i, a) {
 		vertexShader: "\n      varying vec3 vDirection;\n      void main() {\n        vec4 worldPosition = modelMatrix * vec4(position, 1.0);\n        vDirection = worldPosition.xyz - cameraPosition;\n        vec4 clipPosition = projectionMatrix * modelViewMatrix * vec4(position, 1.0);\n        gl_Position = clipPosition.xyww;\n      }\n    ",
 		fragmentShader: `
       precision highp float;
-      ${o.map((e) => `uniform vec3 ${e.parameterPrefix}Axis;
-      ${Array.from({ length: e.stopCount }, (t, n) => `uniform vec4 ${e.parameterPrefix}StopColor${n};
-      uniform float ${e.parameterPrefix}StopMidpoint${n};
-      uniform float ${e.parameterPrefix}StopT${n};`).join("\n")}`).join("\n")}
-      ${s.map((e) => `uniform float ${e.parameterPrefix}Amplitude;
-      uniform float ${e.parameterPrefix}Frequency;
-      uniform float ${e.parameterPrefix}Mode;
-      uniform float ${e.parameterPrefix}Power;
-      ${Array.from({ length: e.anchorCount }, (t, n) => `uniform vec3 ${e.parameterPrefix}AnchorDirection${n};
-      uniform vec3 ${e.parameterPrefix}AnchorColor${n};`).join("\n")}`).join("\n")}
-      ${l.map((e) => `uniform vec3 ${e.parameterPrefix}CenterDirection;
-      uniform float ${e.parameterPrefix}Radius;
-      uniform float ${e.parameterPrefix}Mode;
-      uniform vec3 ${e.parameterPrefix}LightColor;
-      uniform float ${e.parameterPrefix}Brightness;
-      uniform float ${e.parameterPrefix}CoreRadius;
-      uniform float ${e.parameterPrefix}CoreSoftness;
-      uniform float ${e.parameterPrefix}Dispersion;
-      uniform float ${e.parameterPrefix}DogSpread;
-      uniform float ${e.parameterPrefix}DogStrength;
-      uniform float ${e.parameterPrefix}DogStretch;
-      uniform float ${e.parameterPrefix}GlareSize;
-      uniform float ${e.parameterPrefix}GlareStrength;
-      uniform float ${e.parameterPrefix}GlowSize;
-      uniform float ${e.parameterPrefix}GlowStrength;
-      uniform float ${e.parameterPrefix}HaloInnerWidth;
-      uniform float ${e.parameterPrefix}HaloOuterWidth;
-      uniform float ${e.parameterPrefix}HaloRadius;
-      uniform float ${e.parameterPrefix}HaloStrength;
-      ${a ? `uniform float spotActive${e.index};` : ""}
-      ${Array.from({ length: e.stopCount }, (t, n) => `uniform vec4 ${e.parameterPrefix}StopColor${n};
-      uniform float ${e.parameterPrefix}StopMidpoint${n};
-      uniform float ${e.parameterPrefix}StopT${n};`).join("\n")}`).join("\n")}
-      ${c.map((e) => `uniform sampler2D imageTexture${e.index};
-      uniform vec3 imageCenterDirection${e.index};
-      uniform vec3 imageTangentX${e.index};
-      uniform vec3 imageTangentY${e.index};
-      uniform vec2 imageHalfSize${e.index};${a ? `
-      uniform float imageActive${e.index};` : ""}`).join("\n")}
-      ${u.map((e) => `uniform sampler2D starfieldTexture${e.index};`).join("\n")}
-      ${d.map((e) => `uniform float ${e.parameterPrefix}Opacity;
+      ${h}
+      ${o.map((e) => `uniform float ${e.parameterPrefix}Opacity;
       uniform float ${e.parameterPrefix}BlendMode;`).join("\n")}
       varying vec3 vDirection;
-      ${bo()}
-      ${To(c)}
+      ${Ya()}
+      ${g}
 
       float softLightDChannel(float backdrop) {
         return backdrop <= 0.25
@@ -4130,30 +3902,32 @@ function ss(t, n, r, i, a) {
       void main() {
         vec3 direction = normalize(vDirection);
         vec3 composedColor = vec3(0.0);
-        ${v}
-        ${a ? Eo(c) : ""}
-        ${a ? Do(l) : ""}
+        ${y}
+        ${_}
         gl_FragColor = vec4(composedColor, 1.0);
       }
     `
 	});
-	return (c.length > 0 || a && l.length > 0) && (y.extensions.derivatives = !0), a && ia(y, (e) => ra(y, c, l, e)), Ua(y, (e) => Ba(e.nodes, (e) => Ca(y, e, o))), Wa(y, (e) => Ca(y, e, o)), Ga(y, (e) => Va(e.nodes, (e) => Da(y, e, s))), Ka(y, (e) => Da(y, e, s)), qa(y, (e) => Ha(e.nodes, (e) => Ma(y, e, l))), Ja(y, (e) => Ma(y, e, l)), Ya(y, (e) => Ra(y, d, e)), Xa(y, (e) => za(y, d, e)), ua(y, (e, t) => la(y, c, e, t)), y.userData.applyImageTextures = (e) => Ao(y, c, e), y.userData.applyStarfieldTextures = (e) => Fo(y, u, e), y;
+	return v && (b.extensions.derivatives = !0), a && zi(b, (e) => Ri(b, u, d, e)), Da(b, (e) => ya(b, o, e)), Oa(b, (e) => ba(b, o, e)), Gi(b, (e, t) => Wi(b, u, e, t)), b.userData.applyImageTextures = (e) => uo(b, u, e), b.userData.applyStarfieldTextures = (e) => go(b, f, e), b.userData.applyLayerParams = (e) => {
+		let t = l.find((t) => t.type === e.type);
+		t?.glsl.applyParams?.(b, e, t.bindings);
+	}, b;
 }
-function cs(e, t) {
+function Go(e, t) {
 	if (typeof document < "u") {
 		let n = document.createElement("canvas");
 		return n.width = e, n.height = t, n;
 	}
 	return new OffscreenCanvas(e, t);
 }
-function ls(t, n = {}) {
-	let r = Rr(t, n), i = cs(r.width, r.height), a = i.getContext("2d");
+function Ko(t, n = {}) {
+	let r = vr(t, n), i = Go(r.width, r.height), a = i.getContext("2d");
 	if (!a || !("putImageData" in a)) throw Error("Skybox runtime: unable to create a 2D canvas context for baking.");
 	a.putImageData(new ImageData(r.data, r.width, r.height), 0, 0);
 	let o = new e.CanvasTexture(i);
 	return o.mapping = e.EquirectangularReflectionMapping, o.wrapS = e.RepeatWrapping, o.wrapT = e.ClampToEdgeWrapping, o.colorSpace = e.SRGBColorSpace, o.flipY = !1, o.needsUpdate = !0, o;
 }
-function us(t) {
+function qo(t) {
 	return new e.ShaderMaterial({
 		depthTest: !1,
 		depthWrite: !1,
@@ -4163,102 +3937,78 @@ function us(t) {
 		fragmentShader: "\n      precision highp float;\n      uniform sampler2D skyboxTexture;\n      varying vec3 vDirection;\n\n      const float PI = 3.141592653589793;\n\n      vec2 directionToEquirectUv(vec3 direction) {\n        vec3 normalizedDirection = normalize(direction);\n        float longitude = atan(normalizedDirection.z, normalizedDirection.x);\n        float latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n        return vec2(longitude / (2.0 * PI) + 0.5, latitude / PI + 0.5);\n      }\n\n      void main() {\n        vec3 direction = normalize(vDirection);\n        vec4 sampledColor = texture2D(skyboxTexture, directionToEquirectUv(direction));\n        gl_FragColor = vec4(sampledColor.rgb, sampledColor.a);\n      }\n    "
 	});
 }
-function ds(e, t) {
-	return fs(t) ? os(e) : us(e);
+function Jo(e, t) {
+	return Yo(t) ? Uo(e) : qo(e);
 }
-function fs(e) {
+function Yo(e) {
 	return !!(e && "isWebGPURenderer" in e && e.isWebGPURenderer);
 }
-function ps(e, t) {
-	return e === "auto" ? fs(t) ? "live-webgpu" : "live-webgl" : e;
+function Xo(e, t) {
+	return e === "auto" ? Yo(t) ? "live-webgpu" : "live-webgl" : e;
 }
-function ms(e, t, n) {
-	let r = (e) => {
-		if (e.type === "group") return {
-			children: e.children.map(r),
-			enabled: e.enabled,
-			id: e.id,
-			type: e.type
-		};
-		if (t === "live-webgpu") {
-			let t = Zo.find((t) => t.type === e.type);
-			return {
-				enabled: e.enabled,
-				id: e.id,
-				topology: t?.getTopologyKey(e) ?? null,
-				type: e.type
-			};
-		}
-		return e.type === "gradient" ? {
-			enabled: e.enabled,
-			id: e.id,
-			mode: e.params.mode,
-			stopCount: e.params.stops.length,
-			type: e.type
-		} : e.type === "image" ? {
-			enabled: e.enabled,
-			hasPlacement: !!e.params.placement,
-			hasSrc: !!e.params.src,
-			height: e.params.height,
-			id: e.id,
-			type: e.type,
-			width: e.params.width
-		} : e.type === "spot" ? {
-			enabled: e.enabled,
-			id: e.id,
-			stopCount: e.params.stops.length,
-			type: e.type
-		} : e.type === "starfield" ? {
-			enabled: e.enabled,
-			id: e.id,
-			type: e.type
-		} : {
-			anchorCount: e.params.anchors.length,
-			enabled: e.enabled,
-			id: e.id,
-			type: e.type
-		};
+function Zo(e, t, n) {
+	let r = (e) => e.type === "group" ? {
+		children: e.children.map(r),
+		enabled: e.enabled,
+		id: e.id,
+		type: e.type
+	} : {
+		enabled: e.enabled,
+		id: e.id,
+		topology: _e(e.type)?.getTopologyKey?.(e) ?? null,
+		type: e.type
 	};
 	return JSON.stringify({
 		editorPresentationEnabled: n,
-		geometry: e.geometry?.type ?? B.type,
+		geometry: e.geometry?.type ?? R.type,
 		nodes: e.nodes.map(r),
 		renderMode: t
 	});
 }
-function hs(e, t) {
+function Qo(e, t) {
 	for (let n of e) {
 		if (n.id === t) return n;
 		if (n.type === "group") {
-			let e = hs(n.children, t);
+			let e = Qo(n.children, t);
 			if (e) return e;
 		}
 	}
 	return null;
 }
-var gs = class extends e.Mesh {
+var $o = class extends e.Mesh {
 	#e = {};
-	#t = { ...qi };
+	#t = { ...ki };
 	#n = !1;
-	#r = B;
+	#r = R;
 	#i = /* @__PURE__ */ new Map();
 	#a = /* @__PURE__ */ new Map();
-	#o = Vi;
-	#s = null;
+	#o = {
+		applyLayerParams: (e) => {
+			this.material.userData.applyLayerParams?.(e);
+		},
+		applyImagePlacement: (e, t) => {
+			this.#i.set(e, t), this.material.userData.applyImageLayerPlacement?.(e, t);
+		},
+		scheduleResourceBake: (e, t) => {
+			this.scheduleStarfieldTextureBake(e, t);
+		}
+	};
+	#s = Ci;
 	#c = null;
-	#l = "auto";
-	#u = null;
+	#l = null;
+	#u = "auto";
 	#d = null;
-	#f = /* @__PURE__ */ new Map();
-	#p = new e.Group();
-	#m = /* @__PURE__ */ new Map();
+	#f = null;
+	#p = /* @__PURE__ */ new Map();
+	#m = new e.Group();
 	#h = /* @__PURE__ */ new Map();
 	#g = /* @__PURE__ */ new Map();
+	#_ = /* @__PURE__ */ new Map();
 	constructor() {
-		super(Qa(B), is(Vi, qi, /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), !1)), this.frustumCulled = !1, this.renderOrder = -1, this.#p.name = "Skybox live starfield patches", this.add(this.#p);
+		super(Aa(R), Bo(Ci, ki, /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), !1)), this.frustumCulled = !1, this.renderOrder = -1, this.#m.name = "Skybox live starfield patches", this.add(this.#m);
 	}
 	fromManifest(e) {
-		return this.#o = fe(e), this.applyGeometry(this.#o.geometry ?? B), this;
+		return this.#s = me(e), this.applyGeometry(this.#s.geometry ?? R), this;
 	}
 	setGeometry(e) {
 		return this.applyGeometry(e), this;
@@ -4270,10 +4020,10 @@ var gs = class extends e.Mesh {
 		}, this;
 	}
 	setRenderer(e) {
-		return this.#u = e, this.#d?.dispose(), this.#d = zi(e), this;
+		return this.#d = e, this.#f?.dispose(), this.#f = vi(e), this;
 	}
 	setRenderMode(e) {
-		return this.#l = e, this;
+		return this.#u = e, this;
 	}
 	setImageTexture(e, t) {
 		return t ? this.#a.set(e, t) : this.#a.delete(e), this.material.userData.applyImageTextures?.(this.#a), this;
@@ -4284,107 +4034,96 @@ var gs = class extends e.Mesh {
 		}), this.material.userData.applyImageTextures?.(this.#a), this;
 	}
 	refreshImageTextureBindings() {
-		return this.#s = null, this.setManifest(this.#o), this;
+		return this.#c = null, this.setManifest(this.#s), this;
 	}
 	refreshStarfieldTextureBindings() {
-		if (ps(this.#l, this.#u) === "live-webgpu") {
-			this.syncStarfieldPatchOverlay();
-			return;
-		}
-		this.material.userData.applyStarfieldTextures?.(this.#g);
+		this.material.userData.applyStarfieldTextures?.(this.#_);
 	}
 	otherOverridingSetup() {
 		return this;
 	}
 	load(e) {
-		return e && (this.#u = e), this.setManifest(this.#o), this;
+		return e && (this.#d = e), this.setManifest(this.#s), this;
 	}
 	applyGeometry(e) {
-		let t = Za(e);
+		let t = ka(e);
 		if (this.#r.type === t.type && this.geometry) return;
 		let n = this.geometry;
-		this.#r = t, this.geometry = Qa(t), n.dispose();
+		this.#r = t, this.geometry = Aa(t), n.dispose();
 	}
 	disposeOwnedTexture() {
-		this.#c?.dispose(), this.#c = null;
+		this.#l?.dispose(), this.#l = null;
 	}
 	clearStarfieldPatchOverlay() {
-		this.#p.children.forEach((t) => {
-			t instanceof e.Group && ki(t);
-		}), this.#p.clear();
+		this.#m.children.forEach((t) => {
+			t instanceof e.Group && ci(t);
+		}), this.#m.clear();
 	}
 	syncStarfieldPatchOverlay() {
 		this.clearStarfieldPatchOverlay();
 		let e = this.material.userData.debugImageTextureSlots;
-		ps(this.#l, this.#u) === "live-webgpu" && es(this.#o.nodes, (t) => {
+		Xo(this.#u, this.#d) === "live-webgpu" && Io(this.#s.nodes, (t) => {
 			if (t.type !== "starfield") return;
-			let n = this.#m.get(t.id);
+			let n = this.#h.get(t.id);
 			if (!n) return;
 			e && (e[t.id] = { value: n });
-			let r = Oi(n, t.params);
-			r.renderOrder = 0, this.#p.add(r);
+			let r = si(n, t.params);
+			r.renderOrder = 0, this.#m.add(r);
 		});
 	}
 	disposeStarfieldTextures() {
-		this.#f.forEach((e) => {
+		this.#p.forEach((e) => {
 			clearTimeout(e);
-		}), this.#f.clear(), this.#g.forEach((e) => Mo(e)), this.#g.clear(), this.clearStarfieldPatchOverlay(), this.#m.clear(), this.#h.clear(), this.#d?.dispose(), this.#d = null;
+		}), this.#p.clear(), this.#_.forEach((e) => po(e)), this.#_.clear(), this.clearStarfieldPatchOverlay(), this.#h.clear(), this.#g.clear(), this.#f?.dispose(), this.#f = null;
 	}
 	syncStarfieldTextures() {
 		let e = /* @__PURE__ */ new Set();
-		es(this.#o.nodes, (t) => {
+		Io(this.#s.nodes, (t) => {
 			if (t.type !== "starfield") return;
 			e.add(t.id);
-			let n = this.#d?.createBakeKey(t.params) ?? Un(t.params, 8192, 4096);
-			this.#h.get(t.id) !== n && this.scheduleStarfieldTextureBake(t.id, t.params);
-		}), Array.from(this.#g.keys()).forEach((t) => {
+			let n = this.#f?.createBakeKey(t.params) ?? $n(t.params, 8192, 4096);
+			this.#g.get(t.id) !== n && this.scheduleStarfieldTextureBake(t.id, t.params);
+		}), Array.from(this.#_.keys()).forEach((t) => {
 			if (e.has(t)) return;
-			let n = this.#g.get(t);
-			n && Mo(n), this.#g.delete(t), this.#m.delete(t), this.#h.delete(t);
-		}), Array.from(this.#f.entries()).forEach(([t, n]) => {
-			e.has(t) || (clearTimeout(n), this.#f.delete(t));
+			let n = this.#_.get(t);
+			n && po(n), this.#_.delete(t), this.#h.delete(t), this.#g.delete(t);
+		}), Array.from(this.#p.entries()).forEach(([t, n]) => {
+			e.has(t) || (clearTimeout(n), this.#p.delete(t));
 		}), this.syncStarfieldPatchOverlay();
 	}
 	scheduleStarfieldTextureBake(e, t) {
-		let n = this.#d?.createBakeKey(t) ?? Un(t, 8192, 4096);
-		if (this.#h.get(e) === n) return;
-		let r = this.#f.get(e);
+		let n = this.#f?.createBakeKey(t) ?? $n(t, 8192, 4096);
+		if (this.#g.get(e) === n) return;
+		let r = this.#p.get(e);
 		r && clearTimeout(r);
 		let i = setTimeout(() => {
-			this.#f.delete(e);
-			let t = hs(this.#o.nodes, e);
+			this.#p.delete(e);
+			let t = Qo(this.#s.nodes, e);
 			if (t?.type !== "starfield") return;
-			let r = this.#d?.createBakeKey(t.params) ?? Un(t.params, 8192, 4096);
+			let r = this.#f?.createBakeKey(t.params) ?? $n(t.params, 8192, 4096);
 			if (r !== n) {
 				this.scheduleStarfieldTextureBake(e, t.params);
 				return;
 			}
-			if (this.#d?.canBake()) {
-				if (ps(this.#l, this.#u) === "live-webgpu") {
-					let n = this.#d.bakePatchTextures(t.params, r);
-					this.#m.set(e, n), this.#h.set(e, r);
-				} else {
-					let n = this.#d.bakeTexture(t.params, r), i = this.#g.get(e);
-					i && i !== n && Mo(i), this.#g.set(e, n), this.#h.set(e, r);
-				}
-				this.refreshStarfieldTextureBindings(), this.dispatchEvent({ type: "starfieldtexturechange" });
-			}
+			if (!this.#f?.canBake()) return;
+			let i = this.#f.bakeTexture(t.params, r), a = this.#_.get(e);
+			a && a !== i && po(a), this.#_.set(e, i), this.#g.set(e, r), this.refreshStarfieldTextureBindings(), this.dispatchEvent({ type: "starfieldtexturechange" });
 		}, 150);
-		this.#f.set(e, i);
+		this.#p.set(e, i);
 	}
 	replaceMaterial(e, t = null) {
 		let n = this.material;
 		this.material = e, e.userData.applyEditorLayerState?.(this.#t), this.#i.forEach((t, n) => {
 			e.userData.applyImageLayerPlacement?.(n, t);
-		}), e.userData.applyStarfieldTextures?.(this.#g), n.dispose(), this.disposeOwnedTexture(), this.#c = t;
+		}), e.userData.applyStarfieldTextures?.(this.#_), n.dispose(), this.disposeOwnedTexture(), this.#l = t;
 	}
 	applyLiveManifestUniformUpdates() {
-		this.material.userData.applyCompositionParams?.(this.#o), this.material.userData.applyLayerParams ? es(this.#o.nodes, this.material.userData.applyLayerParams) : (this.material.userData.applyGradientLayerParams?.(this.#o), this.material.userData.applyFieldGradientLayerParams?.(this.#o), this.material.userData.applySpotLayerParams?.(this.#o)), this.material.userData.applyImageTextures?.(this.#a), this.material.userData.applyStarfieldTextures?.(this.#g), this.material.userData.applyEditorLayerState?.(this.#t), this.#i.forEach((e, t) => {
+		this.material.userData.applyCompositionParams?.(this.#s), this.material.userData.applyLayerParams ? Io(this.#s.nodes, this.material.userData.applyLayerParams) : (this.material.userData.applyGradientLayerParams?.(this.#s), this.material.userData.applyFieldGradientLayerParams?.(this.#s), this.material.userData.applySpotLayerParams?.(this.#s)), this.material.userData.applyImageTextures?.(this.#a), this.material.userData.applyStarfieldTextures?.(this.#_), this.material.userData.applyEditorLayerState?.(this.#t), this.#i.forEach((e, t) => {
 			this.material.userData.applyImageLayerPlacement?.(t, e);
 		});
 	}
 	setEditorPresentationEnabled(e) {
-		return this.#n === e ? this : (this.#n = e, this.#s = null, this.setManifest(this.#o), this);
+		return this.#n === e ? this : (this.#n = e, this.#c = null, this.setManifest(this.#s), this);
 	}
 	setEditorLayerState(e) {
 		let t = {
@@ -4404,54 +4143,54 @@ var gs = class extends e.Mesh {
 		return this.updateImageLayerPlacement(e, t);
 	}
 	updateImageLayerPlacement(e, t) {
-		let n = hs(this.#o.nodes, e);
+		let n = Qo(this.#s.nodes, e);
 		return n?.type === "image" && (n.params = {
 			...n.params,
 			placement: t
 		}), this.#i.set(e, t), this.material.userData.applyImageLayerPlacement?.(e, t), this;
 	}
 	updateLayerComposition(e, t) {
-		let n = hs(this.#o.nodes, e);
+		let n = Qo(this.#s.nodes, e);
 		return n ? (t.blendMode !== void 0 && (n.blendMode = t.blendMode), t.opacity !== void 0 && (n.opacity = t.opacity), this.material.userData.applyLayerComposition?.(n), this) : this;
 	}
+	updateLayer(e, t) {
+		let n = Qo(this.#s.nodes, e);
+		return !n || n.type === "group" ? this : (n.params = t, _e(n.type)?.updateLive?.(this.#o, n), this);
+	}
 	updateGradientLayer(e, t) {
-		let n = hs(this.#o.nodes, e);
-		return n?.type === "gradient" ? (n.params = t, this.material.userData.applyGradientLayerParam?.(n), this) : this;
+		return this.updateLayer(e, t);
 	}
 	updateFieldGradientLayer(e, t) {
-		let n = hs(this.#o.nodes, e);
-		return n?.type === "field-gradient" ? (n.params = t, this.material.userData.applyFieldGradientLayerParam?.(n), this) : this;
+		return this.updateLayer(e, t);
 	}
 	updateSpotLayer(e, t) {
-		let n = hs(this.#o.nodes, e);
-		return n?.type === "spot" ? (n.params = t, this.material.userData.applySpotLayerParam?.(n), this) : this;
+		return this.updateLayer(e, t);
 	}
 	updateStarfieldLayer(e, t) {
-		let n = hs(this.#o.nodes, e);
-		return n?.type === "starfield" ? (n.params = t, this.scheduleStarfieldTextureBake(e, t), this) : this;
+		return this.updateLayer(e, t);
 	}
 	setManifest(e) {
-		let t = fe(e);
-		this.#o = t, this.applyGeometry(this.#o.geometry ?? this.#r), this.syncStarfieldTextures();
-		let n = ps(this.#l, this.#u), r = ms(this.#o, n, this.#n);
-		if (this.#s === r && (n === "live-webgpu" || n === "live-webgl")) return this.applyLiveManifestUniformUpdates(), this;
-		if (n === "live-webgpu") this.replaceMaterial(is(this.#o, this.#t, this.#a, this.#g, this.#m, this.#n));
-		else if (n === "live-webgl") this.replaceMaterial(ss(this.#o, this.#t, this.#a, this.#g, this.#n));
+		let t = me(e);
+		this.#s = t, this.applyGeometry(this.#s.geometry ?? this.#r), this.syncStarfieldTextures();
+		let n = Xo(this.#u, this.#d), r = Zo(this.#s, n, this.#n);
+		if (this.#c === r && (n === "live-webgpu" || n === "live-webgl")) return this.applyLiveManifestUniformUpdates(), this;
+		if (n === "live-webgpu") this.replaceMaterial(Bo(this.#s, this.#t, this.#a, this.#_, this.#h, this.#n));
+		else if (n === "live-webgl") this.replaceMaterial(Wo(this.#s, this.#t, this.#a, this.#_, this.#n));
 		else {
-			let e = ls(this.#o, this.#e);
-			this.replaceMaterial(ds(e, this.#u), e);
+			let e = Ko(this.#s, this.#e);
+			this.replaceMaterial(Jo(e, this.#d), e);
 		}
-		return this.#s = r, this;
+		return this.#c = r, this;
 	}
 	setBakedTexture(e) {
-		return this.replaceMaterial(ds(e, this.#u)), this.#s = null, this;
+		return this.replaceMaterial(Jo(e, this.#d)), this.#c = null, this;
 	}
 	invalidateBakeCache() {
-		return Pr(), this;
+		return mr(), this;
 	}
 	dispose() {
 		this.geometry.dispose(), this.material.dispose(), this.disposeOwnedTexture(), this.disposeStarfieldTextures();
 	}
 };
 //#endregion
-export { Or as DEFAULT_BAKE_WIDTH, Be as DEFAULT_SPOT_BASE_ANGULAR_RADIUS, Ct as DEFAULT_STARFIELD_CLIP, G as DEFAULT_STARFIELD_NEBULA, K as DEFAULT_STARFIELD_NEBULA_FIELD, wt as DEFAULT_STARFIELD_PARAMS, bt as DEFAULT_STARFIELD_QUALITY, W as DEFAULT_STARFIELD_STARS, _e as IMAGE_PLACEMENT_ELEVATION_LIMIT, yt as STARFIELD_PREVIEW_BAKE_WIDTH, xt as STARFIELD_QUALITY_PRESETS, gs as Skybox, Ri as StarfieldGpuBakeService, Rr as bakeSkyboxImageData, qn as bakeStarfieldImageData, ce as blendChannel, L as clamp, le as compositeBlendChannel, ue as compositeOver, Ae as createAngularDecalPlacement, Nr as createBakeCacheKey, ls as createBakedSkyboxTexture, Ue as createDefaultSpotParams, ke as createImagePlacementTangents, Qa as createSkyboxGeometry, eo as createSkyboxWireGeometry, bn as createStarCatalogForCoverage, xn as createStarCatalogForDescriptor, Un as createStarfieldBakeCacheKey, zi as createStarfieldGpuBakeService, qt as createStarfieldPatchLayout, Ne as directionFromPosition, lr as equirectPointToDirection, ur as equirectUvToDirection, Dr as evaluateSkyboxDirection, Dt as getStarfieldQualityPreset, Pr as invalidateBakeCache, z as linearChannelToSrgb, oe as linearRgbToSrgbBytes, fe as migrateManifestToV2, je as normalizeImagePlacement, We as normalizeSpotParams, Lt as normalizeStarfieldCoverage, Zt as normalizeStarfieldParams, Et as normalizeStarfieldQuality, V as normalizeVector, ae as parseHexColor, Pe as placementFromPosition, Re as placementFromRotation, Ie as placementFromScale, Me as positionFromPlacement, Ge as positionFromSpot, ze as projectDirectionToImageUv, fn as qFromV, qe as radiusScaleFromSpot, Mr as resolveBakeOptions, Le as rotationFromPlacement, Hn as sampleStarfieldLayer, Fe as scaleFromPlacement, Nt as sourceDirectionFromUv, Pt as sourceFoldEquirectUv, Ft as sourceUvFromDirection, Ye as spotContainsDirection, Ke as spotFromPosition, Je as spotFromRadiusScale, R as srgbChannelToLinear, sn as starfieldClipContainsDirection, jn as starfieldFieldGradientToSourceField };
+export { cr as DEFAULT_BAKE_WIDTH, Xe as DEFAULT_SPOT_BASE_ANGULAR_RADIUS, Nt as DEFAULT_STARFIELD_CLIP, U as DEFAULT_STARFIELD_NEBULA, W as DEFAULT_STARFIELD_NEBULA_FIELD, Pt as DEFAULT_STARFIELD_PARAMS, At as DEFAULT_STARFIELD_QUALITY, H as DEFAULT_STARFIELD_STARS, De as IMAGE_PLACEMENT_ELEVATION_LIMIT, kt as STARFIELD_PREVIEW_BAKE_WIDTH, jt as STARFIELD_QUALITY_PRESETS, $o as Skybox, _i as StarfieldGpuBakeService, vr as bakeSkyboxImageData, rr as bakeStarfieldImageData, ue as blendChannel, I as clamp, de as compositeBlendChannel, fe as compositeOver, Be as createAngularDecalPlacement, pr as createBakeCacheKey, Ko as createBakedSkyboxTexture, $e as createDefaultSpotParams, ze as createImagePlacementTangents, Aa as createSkyboxGeometry, Ma as createSkyboxWireGeometry, An as createStarCatalogForCoverage, jn as createStarCatalogForDescriptor, $n as createStarfieldBakeCacheKey, vi as createStarfieldGpuBakeService, rn as createStarfieldPatchLayout, Ue as directionFromPosition, xe as equirectPointToDirection, Se as equirectUvToDirection, sr as evaluateSkyboxDirection, _e as getLayerRuntimeAdapter, ve as getLayerRuntimeAdapters, Lt as getStarfieldQualityPreset, mr as invalidateBakeCache, ye as isRegisteredLayerType, L as linearChannelToSrgb, ce as linearRgbToSrgbBytes, me as migrateManifestToV2, Ve as normalizeImagePlacement, et as normalizeSpotParams, qt as normalizeStarfieldCoverage, cn as normalizeStarfieldParams, It as normalizeStarfieldQuality, z as normalizeVector, se as parseHexColor, We as placementFromPosition, Je as placementFromRotation, Ke as placementFromScale, He as positionFromPlacement, tt as positionFromSpot, Ye as projectDirectionToImageUv, Sn as qFromV, rt as radiusScaleFromSpot, ge as registerLayerRuntimeAdapter, fr as resolveBakeOptions, qe as rotationFromPlacement, Qn as sampleStarfieldLayer, Ge as scaleFromPlacement, Ut as sourceDirectionFromUv, Wt as sourceFoldEquirectUv, Gt as sourceUvFromDirection, at as spotContainsDirection, nt as spotFromPosition, it as spotFromRadiusScale, oe as srgbChannelToLinear, _n as starfieldClipContainsDirection, Vn as starfieldFieldGradientToSourceField };

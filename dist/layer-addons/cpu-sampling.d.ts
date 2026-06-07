@@ -1,0 +1,36 @@
+import { type Rgb, type Rgba } from "../math";
+import type { SkyboxGradientStop, SkyboxImageParams } from "../manifest";
+import type { StarfieldBakeData } from "../starfield-static";
+export declare const TWO_PI: number;
+export type LinearStop = {
+    alpha: number;
+    color: Rgb;
+    midpoint: number;
+    t: number;
+};
+export declare function mix(firstValue: number, secondValue: number, amount: number): number;
+export declare function prepareStops(stops: SkyboxGradientStop[]): LinearStop[];
+export declare function sampleGradient(stops: LinearStop[], t: number): Rgba;
+export declare function smoothstep(edge0: number, edge1: number, value: number): number;
+export declare function sq(value: number): number;
+export declare function mixRgb(first: Rgb, second: Rgb, amount: number): Rgb;
+export declare function spectrum(t: number): Rgb;
+export declare function multiplyRgb(first: Rgb, second: Rgb): Rgb;
+export declare function scaleRgb(color: Rgb, amount: number): Rgb;
+export declare function addRgb(first: Rgb, second: Rgb): Rgb;
+export declare function colorizeLight(layerColor: Rgb, lightColor: Rgb): Rgb;
+export declare function equirectPointToDirection(x: number, y: number): Rgb;
+export declare function equirectUvToDirection(x: number, y: number): Rgb;
+export declare function normalizeDirection(direction: Rgb): Rgb;
+export declare function dotDirection(firstDirection: Rgb, secondDirection: Rgb): number;
+export declare function crossDirection(firstDirection: Rgb, secondDirection: Rgb): Rgb;
+export declare function projectDirectionToSpotLocal(direction: Rgb, centerDirection: Rgb, radius: number): {
+    x: number;
+    y: number;
+    d: number;
+};
+export declare function warpDirection(direction: Rgb, amplitude: number, frequency: number): Rgb;
+export declare function angularFieldDistance(firstDirection: Rgb, secondDirection: Rgb): number;
+export declare function mixRgba(first: Rgba, second: Rgba, amount: number): Rgba;
+export declare function sampleStarfieldBakedPixel(bakedImage: StarfieldBakeData, x: number, y: number): Rgba;
+export declare function sampleImagePixel(params: SkyboxImageParams, x: number, y: number): Rgba;

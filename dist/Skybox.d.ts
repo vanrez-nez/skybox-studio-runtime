@@ -51,6 +51,12 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     setImageLayerPlacement(layerId: string, placement: SkyboxImagePlacement | null): this;
     updateImageLayerPlacement(layerId: string, placement: SkyboxImagePlacement | null): this;
     updateLayerComposition(layerId: string, composition: LayerCompositionUpdate): this;
+    /**
+     * Direct-pipeline live update for one layer's params (editor tweaks). Layer-
+     * agnostic: delegates the per-type live behavior to the registered adapter's
+     * `updateLive`. Never rebuilds the material (no setManifest).
+     */
+    updateLayer(layerId: string, params: unknown): this;
     updateGradientLayer(layerId: string, params: SkyboxGradientParams): this;
     updateFieldGradientLayer(layerId: string, params: SkyboxFieldGradientParams): this;
     updateSpotLayer(layerId: string, params: SkyboxSpotParams): this;

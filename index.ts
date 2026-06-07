@@ -83,7 +83,18 @@ export {
   type StarfieldPatchLayout,
 } from "./starfield-static";
 export { evaluateSkyboxDirection, equirectPointToDirection, equirectUvToDirection } from "./evaluator";
+export {
+  getLayerRuntimeAdapter,
+  getLayerRuntimeAdapters,
+  isRegisteredLayerType,
+  registerLayerRuntimeAdapter,
+} from "./layer-addons";
 export type {
+  LayerCpuSampleContext,
+  LayerGlslAdapter,
+  LayerGlslBuildContext,
+  LayerLiveUpdateContext,
+  LayerRuntimeAdapter,
   WebGpuCompositionRuntime,
   WebGpuLayerAdapter,
   WebGpuLayerAdapterRuntime,
