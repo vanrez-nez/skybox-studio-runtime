@@ -55,10 +55,28 @@ import type {
   WebGpuLayerSampleNodes,
 } from "./layer-addons";
 import { createBuiltInWebGpuLayerAdapters } from "./layer-addons";
+import {
+  getLayerRuntimeAdapter,
+  getLayerRuntimeAdapters,
+  registerLayerRuntimeAdapter,
+  type LayerGlslAdapter,
+  type LayerGlslBuildContext,
+  type LayerLiveUpdateContext,
+} from "./layer-addons/registry";
+import {
+  colorLiteral,
+  imageVec3Literal,
+  mutableDeclaration,
+  numberLiteral,
+  selectExpression,
+  vec4Literal,
+  vectorLiteral,
+  zeroEffectExpression,
+  type ShaderLanguage,
+} from "./layer-addons/shader-codegen";
 
 type SupportedRenderer = THREE.WebGLRenderer | { isWebGPURenderer?: boolean };
 type RuntimeMaterial = THREE.ShaderMaterial | NodeMaterial;
-type ShaderLanguage = "glsl" | "wgsl";
 type ImageLayerShaderBinding = {
   index: number;
   layer: Extract<SkyboxManifestLayer, { type: "image" }>;
@@ -244,6 +262,16 @@ function createSpotEditorUniformNodes(
   bindings: SpotLayerShaderBinding[],
   editorLayerState: SkyboxEditorLayerState
 ): SpotEditorUniformNodes[] {
+  return bindings.map((binding) => ({
+    active: uniform(editorLayerActiveValue(binding.layer.id, editorLayerState)),
+    layerId: binding.layer.id,
+  }));
+}
+
+function createWgslEditorUniformNodes(
+  bindings: { layer: { id: string } }[],
+  editorLayerState: SkyboxEditorLayerState
+): ImageEditorUniformNodes[] {
   return bindings.map((binding) => ({
     active: uniform(editorLayerActiveValue(binding.layer.id, editorLayerState)),
     layerId: binding.layer.id,
@@ -1222,38 +1250,6 @@ export function createSkyboxWireGeometry(options: SkyboxGeometryOptions = DEFAUL
 
   return wireGeometry;
 }
-function numberLiteral(value: number) {
-  return Number.isFinite(value) ? value.toFixed(8) : "0.0";
-}
-
-function colorLiteral(color: string, language: ShaderLanguage) {
-  const [red, green, blue] = parseHexColor(color);
-  const type = language === "wgsl" ? "vec3<f32>" : "vec3";
-
-  return `${type}(${numberLiteral(red)}, ${numberLiteral(green)}, ${numberLiteral(blue)})`;
-}
-
-function vec4Literal(color: string, alpha: number, language: ShaderLanguage) {
-  const type = language === "wgsl" ? "vec4<f32>" : "vec4";
-
-  return `${type}(${colorLiteral(color, language)}, ${numberLiteral(clamp(alpha))})`;
-}
-
-function vectorLiteral(value: number, language: ShaderLanguage) {
-  return language === "wgsl" ? `vec3<f32>(${numberLiteral(value)})` : `vec3(${numberLiteral(value)})`;
-}
-
-function mutableDeclaration(
-  name: string,
-  type: string,
-  initialValue: string,
-  language: ShaderLanguage
-) {
-  return language === "wgsl"
-    ? `var ${name}: ${type} = ${initialValue};`
-    : `${type} ${name} = ${initialValue};`;
-}
-
 function getRenderableNodes(nodes: SkyboxManifestNode[]) {
   return nodes.filter((node) => node.enabled).reverse();
 }
@@ -1464,11 +1460,6 @@ function createCompositionBindingMap(bindings: CompositionNodeShaderBinding[]) {
   return new Map(bindings.map((binding) => [binding.node.id, binding]));
 }
 
-function imageVec3Literal(value: [number, number, number], language: ShaderLanguage) {
-  const type = language === "wgsl" ? "vec3<f32>" : "vec3";
-
-  return `${type}(${numberLiteral(value[0])}, ${numberLiteral(value[1])}, ${numberLiteral(value[2])})`;
-}
 
 function imageSampleInfoExpression(
   binding: ImageLayerShaderBinding,
@@ -1730,6 +1721,83 @@ function glslSpotEditorRectOverlayExpression(bindings: SpotLayerShaderBinding[])
         }
       `
     )
+    .join("\n");
+}
+
+function glslGradientUniformDeclarations(bindings: GradientLayerShaderBinding[]) {
+  return bindings
+    .map((binding) => `uniform vec3 ${binding.parameterPrefix}Axis;
+      ${Array.from({ length: binding.stopCount }, (_, stopIndex) => `uniform vec4 ${binding.parameterPrefix}StopColor${stopIndex};
+      uniform float ${binding.parameterPrefix}StopMidpoint${stopIndex};
+      uniform float ${binding.parameterPrefix}StopT${stopIndex};`).join("\n")}`)
+    .join("\n");
+}
+
+function glslFieldGradientUniformDeclarations(bindings: FieldGradientLayerShaderBinding[]) {
+  return bindings
+    .map((binding) => `uniform float ${binding.parameterPrefix}Amplitude;
+      uniform float ${binding.parameterPrefix}Frequency;
+      uniform float ${binding.parameterPrefix}Mode;
+      uniform float ${binding.parameterPrefix}Power;
+      ${Array.from({ length: binding.anchorCount }, (_, anchorIndex) => `uniform vec3 ${binding.parameterPrefix}AnchorDirection${anchorIndex};
+      uniform vec3 ${binding.parameterPrefix}AnchorColor${anchorIndex};`).join("\n")}`)
+    .join("\n");
+}
+
+function glslSpotUniformDeclarations(
+  bindings: SpotLayerShaderBinding[],
+  editorPresentationEnabled: boolean
+) {
+  return bindings
+    .map((binding) => `uniform vec3 ${binding.parameterPrefix}CenterDirection;
+      uniform float ${binding.parameterPrefix}Radius;
+      uniform float ${binding.parameterPrefix}Mode;
+      uniform vec3 ${binding.parameterPrefix}LightColor;
+      uniform float ${binding.parameterPrefix}Brightness;
+      uniform float ${binding.parameterPrefix}CoreRadius;
+      uniform float ${binding.parameterPrefix}CoreSoftness;
+      uniform float ${binding.parameterPrefix}Dispersion;
+      uniform float ${binding.parameterPrefix}DogSpread;
+      uniform float ${binding.parameterPrefix}DogStrength;
+      uniform float ${binding.parameterPrefix}DogStretch;
+      uniform float ${binding.parameterPrefix}GlareSize;
+      uniform float ${binding.parameterPrefix}GlareStrength;
+      uniform float ${binding.parameterPrefix}GlowSize;
+      uniform float ${binding.parameterPrefix}GlowStrength;
+      uniform float ${binding.parameterPrefix}HaloInnerWidth;
+      uniform float ${binding.parameterPrefix}HaloOuterWidth;
+      uniform float ${binding.parameterPrefix}HaloRadius;
+      uniform float ${binding.parameterPrefix}HaloStrength;
+      ${editorPresentationEnabled ? `uniform float spotActive${binding.index};` : ""}
+      ${Array.from({ length: binding.stopCount }, (_, stopIndex) => `uniform vec4 ${binding.parameterPrefix}StopColor${stopIndex};
+      uniform float ${binding.parameterPrefix}StopMidpoint${stopIndex};
+      uniform float ${binding.parameterPrefix}StopT${stopIndex};`).join("\n")}`)
+    .join("\n");
+}
+
+function glslImageUniformDeclarations(
+  bindings: ImageLayerShaderBinding[],
+  editorPresentationEnabled: boolean
+) {
+  return bindings
+    .map(
+      (binding) => `uniform sampler2D imageTexture${binding.index};
+      uniform vec3 imageCenterDirection${binding.index};
+      uniform vec3 imageTangentX${binding.index};
+      uniform vec3 imageTangentY${binding.index};
+      uniform vec2 imageHalfSize${binding.index};${
+        editorPresentationEnabled
+          ? `
+      uniform float imageActive${binding.index};`
+          : ""
+      }`
+    )
+    .join("\n");
+}
+
+function glslStarfieldUniformDeclarations(bindings: StarfieldLayerShaderBinding[]) {
+  return bindings
+    .map((binding) => `uniform sampler2D starfieldTexture${binding.index};`)
     .join("\n");
 }
 
@@ -2030,51 +2098,26 @@ function spotSampleExpression(binding: SpotLayerShaderBinding, language: ShaderL
   }`;
 }
 
+const EMPTY_BINDING_MAP: Map<string, unknown> = new Map();
+
 function effectExpression(
   layer: SkyboxManifestLayer,
   language: ShaderLanguage,
-  gradientBindings: Map<string, GradientLayerShaderBinding>,
-  fieldGradientBindings: Map<string, FieldGradientLayerShaderBinding>,
-  imageBindings: Map<string, ImageLayerShaderBinding>,
-  spotBindings: Map<string, SpotLayerShaderBinding>,
-  starfieldBindings: Map<string, StarfieldLayerShaderBinding> = new Map()
+  bindingMapsByType: Map<string, Map<string, unknown>>
 ) {
-  if (layer.type === "gradient") {
-    const binding = gradientBindings.get(layer.id);
+  const adapter = getLayerRuntimeAdapter(layer.type);
 
-    return binding
-      ? gradientSampleExpression(binding, language)
-      : `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
+  if (!adapter?.glsl) {
+    return zeroEffectExpression(language);
   }
 
-  if (layer.type === "field-gradient") {
-    const binding = fieldGradientBindings.get(layer.id);
-
-    return binding
-      ? fieldGradientSampleExpression(binding, language)
-      : `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
-  }
-
-  if (layer.type === "spot") {
-    const binding = spotBindings.get(layer.id);
-
-    return binding
-      ? spotSampleExpression(binding, language)
-      : `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
-  }
-
-  if (layer.type === "starfield") {
-    return starfieldSampleExpression(layer, starfieldBindings, language);
-  }
-
-  return imageSampleExpression(layer, imageBindings, language);
+  return adapter.glsl.sampleExpression(
+    layer,
+    bindingMapsByType.get(layer.type) ?? EMPTY_BINDING_MAP,
+    language
+  );
 }
 
-function selectExpression(condition: string, whenTrue: string, whenFalse: string, language: ShaderLanguage) {
-  return language === "wgsl"
-    ? `select(${whenFalse}, ${whenTrue}, ${condition})`
-    : `((${condition}) ? ${whenTrue} : ${whenFalse})`;
-}
 
 function blendColorExpression(mode: SkyboxLayerBlendMode, language: ShaderLanguage) {
   if (language === "glsl") {
@@ -2229,11 +2272,7 @@ function blendAssignmentBlock(blendModeRef: string, language: ShaderLanguage) {
 function composeNodesExpression(
   nodes: SkyboxManifestNode[],
   language: ShaderLanguage,
-  gradientBindings: Map<string, GradientLayerShaderBinding>,
-  fieldGradientBindings: Map<string, FieldGradientLayerShaderBinding>,
-  imageBindings: Map<string, ImageLayerShaderBinding>,
-  spotBindings: Map<string, SpotLayerShaderBinding>,
-  starfieldBindings: Map<string, StarfieldLayerShaderBinding>,
+  bindingMapsByType: Map<string, Map<string, unknown>>,
   compositionBindings: Map<string, CompositionNodeShaderBinding>,
   webGpuRuntime?: WebGpuCompositionRuntime,
   depth = 0
@@ -2251,15 +2290,7 @@ function composeNodesExpression(
             })()}, 1.0);`
           : language === "wgsl" && webGpuRuntime
             ? webGpuEffectExpression(node, webGpuRuntime)
-          : effectExpression(
-              node,
-              language,
-              gradientBindings,
-              fieldGradientBindings,
-              imageBindings,
-              spotBindings,
-              starfieldBindings
-            );
+          : effectExpression(node, language, bindingMapsByType);
       const groupColorName = `groupColor${depth}_${index}`;
       const compositionBinding = compositionBindings.get(node.id);
       const opacityRef = compositionBinding
@@ -2277,11 +2308,7 @@ function composeNodesExpression(
           ${composeNodesExpression(
             node.children,
             language,
-            gradientBindings,
-            fieldGradientBindings,
-            imageBindings,
-            spotBindings,
-            starfieldBindings,
+            bindingMapsByType,
             compositionBindings,
             webGpuRuntime,
             depth + 1
@@ -2307,9 +2334,6 @@ function composeNodesExpression(
     .join("\n");
 }
 
-function zeroEffectExpression(language: ShaderLanguage) {
-  return `effectColor = ${language === "wgsl" ? "vec4<f32>" : "vec4"}(0.0, 0.0, 0.0, 0.0);`;
-}
 
 function createBindingMapFromLayers<TBinding extends { layer: SkyboxManifestLayer }>(
   bindings: TBinding[]
@@ -2691,6 +2715,162 @@ const WEBGPU_LAYER_ADAPTERS = createBuiltInWebGpuLayerAdapters([
   starfieldWebGpuAdapter,
 ]);
 
+// Register the WebGPU half + structural topology key of each built-in layer into
+// the shared runtime registry. The CPU half is registered by `evaluator.ts`.
+// Layer types that draw an editor selection-rect overlay in the WebGPU path.
+const WGSL_EDITOR_OVERLAY_TYPES = new Set(["image", "spot"]);
+
+WEBGPU_LAYER_ADAPTERS.forEach((adapter) => {
+  registerLayerRuntimeAdapter({
+    type: adapter.type,
+    wgsl: adapter as WebGpuLayerAdapter,
+    wgslEditorOverlay: WGSL_EDITOR_OVERLAY_TYPES.has(adapter.type),
+    getTopologyKey: (layer) => adapter.getTopologyKey(layer as never),
+  });
+});
+
+// GLSL (live-webgl) half of each built-in adapter: binding collection, fragment
+// uniform declarations/helpers, three.js uniforms, sample expression, editor
+// overlays, and live param application. Lets createWebGlMaterial iterate the
+// registry instead of hardcoding each layer type.
+const BUILT_IN_GLSL_ADAPTERS: Record<string, LayerGlslAdapter> = {
+  gradient: {
+    collectBindings: (nodes) => collectGradientLayerBindings(nodes),
+    createBindingMap: (bindings) =>
+      createGradientBindingMap(bindings as GradientLayerShaderBinding[]),
+    uniformDeclarations: (bindings) =>
+      glslGradientUniformDeclarations(bindings as GradientLayerShaderBinding[]),
+    shaderUniforms: (bindings) => gradientShaderUniforms(bindings as GradientLayerShaderBinding[]),
+    applyParams: (material, layer, bindings) =>
+      applyGradientLayerParamsToShaderUniforms(
+        material as THREE.ShaderMaterial,
+        layer as Extract<SkyboxManifestLayer, { type: "gradient" }>,
+        bindings as GradientLayerShaderBinding[]
+      ),
+    sampleExpression: (layer, bindingMap, language) => {
+      const binding = bindingMap.get(layer.id) as GradientLayerShaderBinding | undefined;
+
+      return binding ? gradientSampleExpression(binding, language) : zeroEffectExpression(language);
+    },
+  },
+  "field-gradient": {
+    collectBindings: (nodes) => collectFieldGradientLayerBindings(nodes),
+    createBindingMap: (bindings) =>
+      createFieldGradientBindingMap(bindings as FieldGradientLayerShaderBinding[]),
+    uniformDeclarations: (bindings) =>
+      glslFieldGradientUniformDeclarations(bindings as FieldGradientLayerShaderBinding[]),
+    shaderUniforms: (bindings) =>
+      fieldGradientShaderUniforms(bindings as FieldGradientLayerShaderBinding[]),
+    applyParams: (material, layer, bindings) =>
+      applyFieldGradientLayerParamsToShaderUniforms(
+        material as THREE.ShaderMaterial,
+        layer as Extract<SkyboxManifestLayer, { type: "field-gradient" }>,
+        bindings as FieldGradientLayerShaderBinding[]
+      ),
+    sampleExpression: (layer, bindingMap, language) => {
+      const binding = bindingMap.get(layer.id) as FieldGradientLayerShaderBinding | undefined;
+
+      return binding
+        ? fieldGradientSampleExpression(binding, language)
+        : zeroEffectExpression(language);
+    },
+  },
+  spot: {
+    collectBindings: (nodes) => collectSpotLayerBindings(nodes),
+    createBindingMap: (bindings) => createSpotBindingMap(bindings as SpotLayerShaderBinding[]),
+    uniformDeclarations: (bindings, context) =>
+      glslSpotUniformDeclarations(
+        bindings as SpotLayerShaderBinding[],
+        context.editorPresentationEnabled
+      ),
+    shaderUniforms: (bindings, context) => ({
+      ...spotShaderUniforms(bindings as SpotLayerShaderBinding[]),
+      ...(context.editorPresentationEnabled
+        ? spotEditorShaderUniforms(
+            bindings as SpotLayerShaderBinding[],
+            context.editorLayerState as SkyboxEditorLayerState
+          )
+        : {}),
+    }),
+    editorOverlayExpression: (bindings) =>
+      glslSpotEditorRectOverlayExpression(bindings as SpotLayerShaderBinding[]),
+    applyParams: (material, layer, bindings) =>
+      applySpotLayerParamsToShaderUniforms(
+        material as THREE.ShaderMaterial,
+        layer as Extract<SkyboxManifestLayer, { type: "spot" }>,
+        bindings as SpotLayerShaderBinding[]
+      ),
+    sampleExpression: (layer, bindingMap, language) => {
+      const binding = bindingMap.get(layer.id) as SpotLayerShaderBinding | undefined;
+
+      return binding ? spotSampleExpression(binding, language) : zeroEffectExpression(language);
+    },
+  },
+  starfield: {
+    collectBindings: (nodes) => collectStarfieldLayerBindings(nodes),
+    createBindingMap: (bindings) =>
+      createStarfieldBindingMap(bindings as StarfieldLayerShaderBinding[]),
+    uniformDeclarations: (bindings) =>
+      glslStarfieldUniformDeclarations(bindings as StarfieldLayerShaderBinding[]),
+    shaderUniforms: (bindings, context) =>
+      starfieldTextureUniforms(
+        bindings as StarfieldLayerShaderBinding[],
+        context.starfieldTextures as Map<string, THREE.Texture>
+      ),
+    sampleExpression: (layer, bindingMap, language) =>
+      starfieldSampleExpression(
+        layer as Extract<SkyboxManifestLayer, { type: "starfield" }>,
+        bindingMap as Map<string, StarfieldLayerShaderBinding>,
+        language
+      ),
+  },
+  image: {
+    collectBindings: (nodes) => collectImageLayerBindings(nodes),
+    createBindingMap: (bindings) => createImageBindingMap(bindings as ImageLayerShaderBinding[]),
+    uniformDeclarations: (bindings, context) =>
+      glslImageUniformDeclarations(
+        bindings as ImageLayerShaderBinding[],
+        context.editorPresentationEnabled
+      ),
+    fragmentHelpers: (bindings) =>
+      glslImageSampleInfoFunctions(bindings as ImageLayerShaderBinding[]),
+    shaderUniforms: (bindings, context) => ({
+      ...imagePlacementShaderUniforms(bindings as ImageLayerShaderBinding[]),
+      ...imageTextureUniforms(
+        bindings as ImageLayerShaderBinding[],
+        context.imageTextures as Map<string, THREE.Texture>
+      ),
+      ...(context.editorPresentationEnabled
+        ? imageEditorShaderUniforms(
+            bindings as ImageLayerShaderBinding[],
+            context.editorLayerState as SkyboxEditorLayerState
+          )
+        : {}),
+    }),
+    editorOverlayExpression: (bindings) =>
+      glslImageEditorRectOverlayExpression(bindings as ImageLayerShaderBinding[]),
+    sampleExpression: (layer, bindingMap, language) =>
+      imageSampleExpression(
+        layer as Extract<SkyboxManifestLayer, { type: "image" }>,
+        bindingMap as Map<string, ImageLayerShaderBinding>,
+        language
+      ),
+  },
+};
+
+Object.entries(BUILT_IN_GLSL_ADAPTERS).forEach(([type, glsl]) => {
+  registerLayerRuntimeAdapter({ type, glsl });
+});
+
+// All WebGPU layer adapters known to the registry (built-in + any externally
+// registered). Used by the live-webgpu material + topology builders so adding a
+// layer never edits a hardcoded list.
+function webGpuLayerAdapters(): WebGpuLayerAdapter[] {
+  return getLayerRuntimeAdapters()
+    .map((adapter) => adapter.wgsl)
+    .filter((adapter): adapter is WebGpuLayerAdapter => Boolean(adapter));
+}
+
 function createWebGpuLayerRuntime(
   manifest: SkyboxManifestV2,
   direction: unknown,
@@ -2703,7 +2883,7 @@ function createWebGpuLayerRuntime(
   const sampleParameters: Record<string, unknown> = {};
   const textureSlotsByLayerId: Record<string, unknown> = {};
 
-  WEBGPU_LAYER_ADAPTERS.forEach((adapter) => {
+  webGpuLayerAdapters().forEach((adapter) => {
     const bindings = adapter.collect(manifest.nodes) as { layer: SkyboxManifestLayer }[];
     const uniforms = (adapter as WebGpuLayerAdapter<SkyboxManifestLayer, typeof bindings[number], unknown>)
       .createUniforms(bindings);
@@ -2798,10 +2978,6 @@ function createSkyboxFunction(
   const layerBlocks = composeNodesExpression(
     manifest.nodes,
     "wgsl",
-    new Map(),
-    new Map(),
-    new Map(),
-    new Map(),
     new Map(),
     compositionBindingMap,
     layerRuntime
@@ -2909,12 +3085,6 @@ function createWebGpuMaterial(
     layerRuntime,
     "image"
   );
-  const spotRuntime = getWebGpuAdapterRuntime<"spot", SpotLayerShaderBinding, SpotUniformNodes>(
-    layerRuntime,
-    "spot"
-  );
-  const imageBindings = imageRuntime?.bindings ?? [];
-  const spotBindings = spotRuntime?.bindings ?? [];
   const imageUniforms = imageRuntime?.uniforms ?? [];
   const imageSamples = imageRuntime?.samples as WebGpuImageLayerSampleNodes | undefined;
   const starfieldRuntime = getWebGpuAdapterRuntime<
@@ -2926,12 +3096,21 @@ function createWebGpuMaterial(
     | WebGpuStarfieldLayerSampleNodes
     | undefined;
   const skyboxSample = createSkyboxFunction(manifest, layerRuntime, compositionBindings);
-  const imageEditorUniforms = editorPresentationEnabled
-    ? createImageEditorUniformNodes(imageBindings, editorLayerState)
-    : null;
-  const spotEditorUniforms = editorPresentationEnabled
-    ? createSpotEditorUniformNodes(spotBindings, editorLayerState)
-    : null;
+  // Per-layer editor selection-rect overlays, opted in via the registry's
+  // wgslEditorOverlay flag — no per-type branching here.
+  const editorOverlayLayers = editorPresentationEnabled
+    ? getLayerRuntimeAdapters().flatMap((adapter) => {
+        const runtime = layerRuntime.adapters.get(adapter.type);
+
+        if (!adapter.wgslEditorOverlay || !runtime) {
+          return [];
+        }
+
+        const bindings = runtime.bindings as { layer: { id: string } }[];
+
+        return [{ bindings, editorUniforms: createWgslEditorUniformNodes(bindings, editorLayerState) }];
+      })
+    : [];
   let colorNode = skyboxSample({
     direction,
     ...layerRuntime.sampleParameters,
@@ -2946,8 +3125,8 @@ function createWebGpuMaterial(
       })
     ),
   }) as any;
-  if (imageEditorUniforms) {
-    imageBindings.forEach((binding) => {
+  editorOverlayLayers.forEach(({ bindings, editorUniforms }) => {
+    bindings.forEach((binding, index) => {
       const projection = layerRuntime.editorProjectionByLayerId.get(binding.layer.id);
 
       if (!projection) {
@@ -2956,38 +3135,18 @@ function createWebGpuMaterial(
 
       colorNode = (webGpuImageEditorRectOverlayFunction as any)({
         color: colorNode,
-        activeValue: imageEditorUniforms[binding.index].active,
+        activeValue: editorUniforms[index].active,
         uv: projection.uv,
         valid: projection.valid,
       }) as any;
     });
-  }
-  if (spotEditorUniforms) {
-    spotBindings.forEach((binding) => {
-      const projection = layerRuntime.editorProjectionByLayerId.get(binding.layer.id);
-
-      if (!projection) {
-        return;
-      }
-
-      colorNode = (webGpuImageEditorRectOverlayFunction as any)({
-        color: colorNode,
-        activeValue: spotEditorUniforms[binding.index].active,
-        uv: projection.uv,
-        valid: projection.valid,
-      }) as any;
-    });
-  }
+  });
   material.colorNode = colorNode as any;
-  if (imageEditorUniforms || spotEditorUniforms) {
+  if (editorOverlayLayers.length > 0) {
     attachEditorLayerStateUpdater(material, (nextEditorLayerState) => {
-      if (imageEditorUniforms) {
-        applyEditorLayerStateToUniformNodes(imageEditorUniforms, nextEditorLayerState);
-      }
-
-      if (spotEditorUniforms) {
-        applyEditorLayerStateToUniformNodes(spotEditorUniforms, nextEditorLayerState);
-      }
+      editorOverlayLayers.forEach(({ editorUniforms }) =>
+        applyEditorLayerStateToUniformNodes(editorUniforms, nextEditorLayerState)
+      );
     });
   }
   material.userData.webGpuLayerRuntime = layerRuntime;
@@ -3168,39 +3327,62 @@ function createWebGlMaterial(
   starfieldTextures: Map<string, THREE.Texture>,
   editorPresentationEnabled: boolean
 ) {
-  const gradientBindings = collectGradientLayerBindings(manifest.nodes);
-  const fieldGradientBindings = collectFieldGradientLayerBindings(manifest.nodes);
-  const imageBindings = collectImageLayerBindings(manifest.nodes);
-  const spotBindings = collectSpotLayerBindings(manifest.nodes);
-  const starfieldBindings = collectStarfieldLayerBindings(manifest.nodes);
   const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
-  const gradientBindingMap = createGradientBindingMap(gradientBindings);
-  const fieldGradientBindingMap = createFieldGradientBindingMap(fieldGradientBindings);
-  const imageBindingMap = createImageBindingMap(imageBindings);
-  const spotBindingMap = createSpotBindingMap(spotBindings);
-  const starfieldBindingMap = createStarfieldBindingMap(starfieldBindings);
   const compositionBindingMap = createCompositionBindingMap(compositionBindings);
+  const glslContext: LayerGlslBuildContext = {
+    editorPresentationEnabled,
+    editorLayerState,
+    imageTextures,
+    starfieldTextures,
+  };
+  const glslLayers = getLayerRuntimeAdapters().flatMap((adapter) =>
+    adapter.glsl
+      ? [{ type: adapter.type, glsl: adapter.glsl, bindings: adapter.glsl.collectBindings(manifest.nodes) }]
+      : []
+  );
+  // Built-in image/spot/starfield helpers (editor overlays, placement, textures)
+  // are still wired by type below; pull their bindings out of the generic list.
+  const imageBindings = (glslLayers.find((entry) => entry.type === "image")?.bindings ??
+    []) as ImageLayerShaderBinding[];
+  const spotBindings = (glslLayers.find((entry) => entry.type === "spot")?.bindings ??
+    []) as SpotLayerShaderBinding[];
+  const starfieldBindings = (glslLayers.find((entry) => entry.type === "starfield")?.bindings ??
+    []) as StarfieldLayerShaderBinding[];
+  const bindingMapsByType = new Map<string, Map<string, unknown>>(
+    glslLayers.map((entry) => [entry.type, entry.glsl.createBindingMap(entry.bindings)])
+  );
+  const layerUniforms = Object.assign(
+    {},
+    ...glslLayers.map((entry) => entry.glsl.shaderUniforms(entry.bindings, glslContext))
+  );
+  const layerUniformDeclarations = glslLayers
+    .map((entry) => entry.glsl.uniformDeclarations(entry.bindings, glslContext))
+    .join("\n");
+  const layerFragmentHelpers = glslLayers
+    .map((entry) => entry.glsl.fragmentHelpers?.(entry.bindings) ?? "")
+    .join("\n");
+  const layerEditorOverlays = editorPresentationEnabled
+    ? glslLayers
+        .map((entry) => entry.glsl.editorOverlayExpression?.(entry.bindings, glslContext) ?? "")
+        .join("\n")
+    : "";
+  const needsDerivatives = glslLayers.some(
+    (entry) =>
+      (Boolean(entry.glsl.fragmentHelpers) && entry.bindings.length > 0) ||
+      (editorPresentationEnabled &&
+        Boolean(entry.glsl.editorOverlayExpression) &&
+        entry.bindings.length > 0)
+  );
   const layerBlocks = composeNodesExpression(
     manifest.nodes,
     "glsl",
-    gradientBindingMap,
-    fieldGradientBindingMap,
-    imageBindingMap,
-    spotBindingMap,
-    starfieldBindingMap,
+    bindingMapsByType,
     compositionBindingMap
   );
   const material = new THREE.ShaderMaterial({
     uniforms: {
-      ...gradientShaderUniforms(gradientBindings),
-      ...fieldGradientShaderUniforms(fieldGradientBindings),
-      ...spotShaderUniforms(spotBindings),
-      ...starfieldTextureUniforms(starfieldBindings, starfieldTextures),
+      ...layerUniforms,
       ...compositionShaderUniforms(compositionBindings),
-      ...(editorPresentationEnabled ? imageEditorShaderUniforms(imageBindings, editorLayerState) : {}),
-      ...(editorPresentationEnabled ? spotEditorShaderUniforms(spotBindings, editorLayerState) : {}),
-      ...imagePlacementShaderUniforms(imageBindings),
-      ...imageTextureUniforms(imageBindings, imageTextures),
     },
 
     depthTest: false,
@@ -3217,69 +3399,14 @@ function createWebGlMaterial(
     `,
     fragmentShader: `
       precision highp float;
-      ${gradientBindings
-        .map((binding) => `uniform vec3 ${binding.parameterPrefix}Axis;
-      ${Array.from({ length: binding.stopCount }, (_, stopIndex) => `uniform vec4 ${binding.parameterPrefix}StopColor${stopIndex};
-      uniform float ${binding.parameterPrefix}StopMidpoint${stopIndex};
-      uniform float ${binding.parameterPrefix}StopT${stopIndex};`).join("\n")}`)
-        .join("\n")}
-      ${fieldGradientBindings
-        .map((binding) => `uniform float ${binding.parameterPrefix}Amplitude;
-      uniform float ${binding.parameterPrefix}Frequency;
-      uniform float ${binding.parameterPrefix}Mode;
-      uniform float ${binding.parameterPrefix}Power;
-      ${Array.from({ length: binding.anchorCount }, (_, anchorIndex) => `uniform vec3 ${binding.parameterPrefix}AnchorDirection${anchorIndex};
-      uniform vec3 ${binding.parameterPrefix}AnchorColor${anchorIndex};`).join("\n")}`)
-        .join("\n")}
-      ${spotBindings
-        .map((binding) => `uniform vec3 ${binding.parameterPrefix}CenterDirection;
-      uniform float ${binding.parameterPrefix}Radius;
-      uniform float ${binding.parameterPrefix}Mode;
-      uniform vec3 ${binding.parameterPrefix}LightColor;
-      uniform float ${binding.parameterPrefix}Brightness;
-      uniform float ${binding.parameterPrefix}CoreRadius;
-      uniform float ${binding.parameterPrefix}CoreSoftness;
-      uniform float ${binding.parameterPrefix}Dispersion;
-      uniform float ${binding.parameterPrefix}DogSpread;
-      uniform float ${binding.parameterPrefix}DogStrength;
-      uniform float ${binding.parameterPrefix}DogStretch;
-      uniform float ${binding.parameterPrefix}GlareSize;
-      uniform float ${binding.parameterPrefix}GlareStrength;
-      uniform float ${binding.parameterPrefix}GlowSize;
-      uniform float ${binding.parameterPrefix}GlowStrength;
-      uniform float ${binding.parameterPrefix}HaloInnerWidth;
-      uniform float ${binding.parameterPrefix}HaloOuterWidth;
-      uniform float ${binding.parameterPrefix}HaloRadius;
-      uniform float ${binding.parameterPrefix}HaloStrength;
-      ${editorPresentationEnabled ? `uniform float spotActive${binding.index};` : ""}
-      ${Array.from({ length: binding.stopCount }, (_, stopIndex) => `uniform vec4 ${binding.parameterPrefix}StopColor${stopIndex};
-      uniform float ${binding.parameterPrefix}StopMidpoint${stopIndex};
-      uniform float ${binding.parameterPrefix}StopT${stopIndex};`).join("\n")}`)
-        .join("\n")}
-      ${imageBindings
-        .map(
-          (binding) => `uniform sampler2D imageTexture${binding.index};
-      uniform vec3 imageCenterDirection${binding.index};
-      uniform vec3 imageTangentX${binding.index};
-      uniform vec3 imageTangentY${binding.index};
-      uniform vec2 imageHalfSize${binding.index};${
-        editorPresentationEnabled
-          ? `
-      uniform float imageActive${binding.index};`
-          : ""
-      }`
-        )
-        .join("\n")}
-      ${starfieldBindings
-        .map((binding) => `uniform sampler2D starfieldTexture${binding.index};`)
-        .join("\n")}
+      ${layerUniformDeclarations}
       ${compositionBindings
         .map((binding) => `uniform float ${binding.parameterPrefix}Opacity;
       uniform float ${binding.parameterPrefix}BlendMode;`)
         .join("\n")}
       varying vec3 vDirection;
       ${glslDirectionToEquirectUvFunction()}
-      ${glslImageSampleInfoFunctions(imageBindings)}
+      ${layerFragmentHelpers}
 
       float softLightDChannel(float backdrop) {
         return backdrop <= 0.25
@@ -3373,14 +3500,13 @@ function createWebGlMaterial(
         vec3 direction = normalize(vDirection);
         vec3 composedColor = vec3(0.0);
         ${layerBlocks}
-        ${editorPresentationEnabled ? glslImageEditorRectOverlayExpression(imageBindings) : ""}
-        ${editorPresentationEnabled ? glslSpotEditorRectOverlayExpression(spotBindings) : ""}
+        ${layerEditorOverlays}
         gl_FragColor = vec4(composedColor, 1.0);
       }
     `,
   });
 
-  if (imageBindings.length > 0 || (editorPresentationEnabled && spotBindings.length > 0)) {
+  if (needsDerivatives) {
     (material.extensions as { derivatives?: boolean }).derivatives = true;
   }
 
@@ -3394,30 +3520,6 @@ function createWebGlMaterial(
       )
     );
   }
-  attachGradientUpdater(material, (nextManifest) =>
-    forEachGradientLayer(nextManifest.nodes, (layer) =>
-      applyGradientLayerParamsToShaderUniforms(material, layer, gradientBindings)
-    )
-  );
-  attachGradientLayerUpdater(material, (layer) =>
-    applyGradientLayerParamsToShaderUniforms(material, layer, gradientBindings)
-  );
-  attachFieldGradientUpdater(material, (nextManifest) =>
-    forEachFieldGradientLayer(nextManifest.nodes, (layer) =>
-      applyFieldGradientLayerParamsToShaderUniforms(material, layer, fieldGradientBindings)
-    )
-  );
-  attachFieldGradientLayerUpdater(material, (layer) =>
-    applyFieldGradientLayerParamsToShaderUniforms(material, layer, fieldGradientBindings)
-  );
-  attachSpotUpdater(material, (nextManifest) =>
-    forEachSpotLayer(nextManifest.nodes, (layer) =>
-      applySpotLayerParamsToShaderUniforms(material, layer, spotBindings)
-    )
-  );
-  attachSpotLayerUpdater(material, (layer) =>
-    applySpotLayerParamsToShaderUniforms(material, layer, spotBindings)
-  );
   attachCompositionUpdater(material, (nextManifest) =>
     applyCompositionParamsToShaderUniforms(material, compositionBindings, nextManifest)
   );
@@ -3431,6 +3533,11 @@ function createWebGlMaterial(
     updateImageTextureUniforms(material, imageBindings, textures);
   material.userData.applyStarfieldTextures = (textures: Map<string, THREE.Texture>) =>
     updateStarfieldTextureUniforms(material, starfieldBindings, textures);
+  material.userData.applyLayerParams = (layer: SkyboxManifestLayer) => {
+    const entry = glslLayers.find((candidate) => candidate.type === layer.type);
+
+    entry?.glsl.applyParams?.(material, layer, entry.bindings);
+  };
 
   return material;
 }
@@ -3547,60 +3654,12 @@ function createMaterialTopologyKey(
       };
     }
 
-    if (renderMode === "live-webgpu") {
-      const adapter = WEBGPU_LAYER_ADAPTERS.find((nextAdapter) => nextAdapter.type === node.type);
-
-      return {
-        enabled: node.enabled,
-        id: node.id,
-        topology: adapter?.getTopologyKey(node as never) ?? null,
-        type: node.type,
-      };
-    }
-
-    if (node.type === "gradient") {
-      return {
-        enabled: node.enabled,
-        id: node.id,
-        mode: node.params.mode,
-        stopCount: node.params.stops.length,
-        type: node.type,
-      };
-    }
-
-    if (node.type === "image") {
-      return {
-        enabled: node.enabled,
-        hasPlacement: Boolean(node.params.placement),
-        hasSrc: Boolean(node.params.src),
-        height: node.params.height,
-        id: node.id,
-        type: node.type,
-        width: node.params.width,
-      };
-    }
-
-    if (node.type === "spot") {
-      return {
-        enabled: node.enabled,
-        id: node.id,
-        stopCount: node.params.stops.length,
-        type: node.type,
-      };
-    }
-
-    if (node.type === "starfield") {
-      return {
-        enabled: node.enabled,
-        id: node.id,
-        type: node.type,
-      };
-    }
-
+    // Structural key is identical across render modes; the per-layer specifics
+    // come from the registered adapter (no per-type branching here).
     return {
-      anchorCount: node.params.anchors.length,
       enabled: node.enabled,
       id: node.id,
+      topology: getLayerRuntimeAdapter(node.type)?.getTopologyKey?.(node) ?? null,
       type: node.type,
     };
   };
@@ -3638,6 +3697,18 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #geometryOptions: SkyboxGeometryOptions = DEFAULT_SKYBOX_GEOMETRY;
   #imagePlacementOverrides = new Map<string, SkyboxImagePlacement | null>();
   #imageTextures = new Map<string, THREE.Texture>();
+  #liveUpdateContext: LayerLiveUpdateContext = {
+    applyLayerParams: (layer) => {
+      this.material.userData.applyLayerParams?.(layer);
+    },
+    applyImagePlacement: (layerId, placement) => {
+      this.#imagePlacementOverrides.set(layerId, placement as SkyboxImagePlacement | null);
+      this.material.userData.applyImageLayerPlacement?.(layerId, placement);
+    },
+    scheduleResourceBake: (layerId, params) => {
+      this.scheduleStarfieldTextureBake(layerId, params as SkyboxStarfieldParams);
+    },
+  };
   #manifest: SkyboxManifestV2 = DEFAULT_MANIFEST;
   #materialTopologyKey: string | null = null;
   #ownedTexture: THREE.Texture | null = null;
@@ -4044,56 +4115,38 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     return this;
   }
 
-  updateGradientLayer(layerId: string, params: SkyboxGradientParams) {
+  /**
+   * Direct-pipeline live update for one layer's params (editor tweaks). Layer-
+   * agnostic: delegates the per-type live behavior to the registered adapter's
+   * `updateLive`. Never rebuilds the material (no setManifest).
+   */
+  updateLayer(layerId: string, params: unknown) {
     const node = findManifestNodeById(this.#manifest.nodes, layerId);
 
-    if (node?.type !== "gradient") {
+    if (!node || node.type === "group") {
       return this;
     }
 
-    node.params = params;
-    this.material.userData.applyGradientLayerParam?.(node);
+    (node as { params: unknown }).params = params;
+    getLayerRuntimeAdapter(node.type)?.updateLive?.(this.#liveUpdateContext, node);
 
     return this;
+  }
+
+  updateGradientLayer(layerId: string, params: SkyboxGradientParams) {
+    return this.updateLayer(layerId, params);
   }
 
   updateFieldGradientLayer(layerId: string, params: SkyboxFieldGradientParams) {
-    const node = findManifestNodeById(this.#manifest.nodes, layerId);
-
-    if (node?.type !== "field-gradient") {
-      return this;
-    }
-
-    node.params = params;
-    this.material.userData.applyFieldGradientLayerParam?.(node);
-
-    return this;
+    return this.updateLayer(layerId, params);
   }
 
   updateSpotLayer(layerId: string, params: SkyboxSpotParams) {
-    const node = findManifestNodeById(this.#manifest.nodes, layerId);
-
-    if (node?.type !== "spot") {
-      return this;
-    }
-
-    node.params = params;
-    this.material.userData.applySpotLayerParam?.(node);
-
-    return this;
+    return this.updateLayer(layerId, params);
   }
 
   updateStarfieldLayer(layerId: string, params: SkyboxStarfieldParams) {
-    const node = findManifestNodeById(this.#manifest.nodes, layerId);
-
-    if (node?.type !== "starfield") {
-      return this;
-    }
-
-    node.params = params;
-    this.scheduleStarfieldTextureBake(layerId, params);
-
-    return this;
+    return this.updateLayer(layerId, params);
   }
 
   setManifest(manifest: SkyboxManifest) {
