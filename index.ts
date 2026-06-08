@@ -14,6 +14,8 @@ export {
 } from "./bake";
 export type { BakedSkyboxImageData, BakeCacheKeyOptions, SkyboxImageBakeOptions } from "./bake";
 export { createStarfieldGpuBakeService, StarfieldGpuBakeService } from "./starfield-gpu-bake";
+export { createSkyboxGpuBakeService, SkyboxGpuBakeService } from "./skybox-gpu-bake";
+export type { SkyboxGpuBakeOptions, SkyboxGpuBakeTarget } from "./skybox-gpu-bake";
 export {
   blendChannel,
   clamp,

@@ -57,7 +57,11 @@ import {
 
 const TWO_PI = Math.PI * 2;
 const MAX_ANCHORS = 8;
-const REFERENCE_BAKE_HEIGHT = 2048;
+// Stars are sized at a FIXED angular size anchored to this reference height, so a star covers the
+// same fraction of the sphere at every export/preview resolution (a higher-res bake just samples
+// that same angular size at more texels). Anchored to the editor preview height so the editor and
+// every export match. Only AA/sub-pixel thresholds scale with the actual output resolution.
+const REFERENCE_BAKE_HEIGHT = STARFIELD_PREVIEW_BAKE_WIDTH / 2;
 const MIN_CORE_PIXELS = 1.75;
 const MIN_GLARE_PIXELS = 3.25;
 const SUBPIXEL_DENSITY_THRESHOLD_PX = 1;
@@ -469,7 +473,12 @@ function createStarGeometry(params: SkyboxStarfieldParams, descriptor: Starfield
 function createStarMaterial(
   params: SkyboxStarfieldParams,
   descriptor: StarfieldPatchDescriptor,
-  options: { bakeHeight?: number; bakeWidth?: number; displayPixelAngle?: number } = {}
+  options: {
+    bakeHeight?: number;
+    bakeWidth?: number;
+    displayPixelAngle?: number;
+    screenPixelScale?: number;
+  } = {}
 ) {
   const stars = params.stars;
   const bakeWidth = options.bakeWidth ?? descriptor.storageSize.width;
@@ -485,6 +494,7 @@ function createStarMaterial(
     uLargeStarRarity: { value: stars.uLargeStarRarity },
     uOutputSize: { value: new THREE.Vector2(descriptor.storageSize.width, descriptor.storageSize.height) },
     uDisplayPixelAngle: { value: options.displayPixelAngle ?? Math.PI / REFERENCE_BAKE_HEIGHT },
+    uScreenPixelScale: { value: options.screenPixelScale ?? 1 },
     uSizeVar: { value: stars.uSizeVar },
     uStarSize: { value: stars.uStarSize },
     uTileUvMin: { value: new THREE.Vector2(descriptor.storageUvMin.x, descriptor.storageUvMin.y) },
@@ -494,6 +504,7 @@ function createStarMaterial(
   const uTileUvMin = vec2Uniform(uniforms, "uTileUvMin");
   const uTileUvSize = vec2Uniform(uniforms, "uTileUvSize");
   const uDisplayPixelAngle = numberUniform(uniforms, "uDisplayPixelAngle");
+  const uScreenPixelScale = numberUniform(uniforms, "uScreenPixelScale");
   const uStarSize = numberUniform(uniforms, "uStarSize");
   const uSizeVar = numberUniform(uniforms, "uSizeVar");
   const uLargeStarRarity = numberUniform(uniforms, "uLargeStarRarity");
@@ -523,7 +534,7 @@ function createStarMaterial(
     const bakeTexelAngle = angularPixelNode(uBakeSize, uTileUvSize);
     const scale = sizeMultiplierNode(iRandoms.x, iSizeGate, uLargeStarRarity, uSizeVar);
     const starRadius = uStarSize.mul(scale).mul(uDisplayPixelAngle);
-    const screenRadiusPx = uStarSize.mul(scale);
+    const screenRadiusPx = uStarSize.mul(scale).mul(uScreenPixelScale);
     const pinWeight = smoothstep(SUBPIXEL_DENSITY_THRESHOLD_PX, AA_PIN_THRESHOLD_PX, screenRadiusPx).oneMinus();
     const normalCoreFloor = float(MIN_CORE_PIXELS).mul(uDisplayPixelAngle);
     const pinCoreFloor = uDisplayPixelAngle.mul(0.5);
@@ -559,7 +570,7 @@ function createStarMaterial(
     const rank = sizeRankNode(vRandoms.x, vSizeGate, uLargeStarRarity);
     const scale = sizeMultiplierNode(vRandoms.x, vSizeGate, uLargeStarRarity, uSizeVar);
     const starRadius = uStarSize.mul(scale).mul(uDisplayPixelAngle);
-    const screenRadiusPx = uStarSize.mul(scale);
+    const screenRadiusPx = uStarSize.mul(scale).mul(uScreenPixelScale);
     const subpixelWeight = smoothstep(SUBPIXEL_DENSITY_THRESHOLD_PX * 0.75, SUBPIXEL_DENSITY_THRESHOLD_PX, screenRadiusPx).oneMinus();
     const normalWeight = smoothstep(AA_PIN_THRESHOLD_PX, AA_PIN_THRESHOLD_PX + 0.25, screenRadiusPx);
     const coreRadius = max(starRadius, uDisplayPixelAngle.mul(0.1));
@@ -1364,7 +1375,10 @@ export class StarfieldGpuBakeService {
     const material = createStarMaterial(params, descriptor, {
       bakeHeight: internalHeight,
       bakeWidth: internalWidth,
-      displayPixelAngle: starfieldDisplayPixelAngleForHeight(outputHeight),
+      // Fixed angular size (resolution-independent); only the AA/sub-pixel thresholds track the
+      // actual output resolution so small stars stay anti-aliased at low res and crisp at high res.
+      displayPixelAngle: Math.PI / REFERENCE_BAKE_HEIGHT,
+      screenPixelScale: outputHeight / REFERENCE_BAKE_HEIGHT,
     });
     const mesh = new THREE.Mesh(geometry, material);
     const renderTarget = createRenderTarget(

@@ -5,6 +5,7 @@ import {
   Fn,
   modelViewProjection,
   normalize,
+  positionGeometry,
   positionWorld,
   texture as textureNode,
   uniform,
@@ -3050,30 +3051,20 @@ function createWebGpuImageSampleNodes(
   return { sampleData, sampleNodes };
 }
 
-function createWebGpuMaterial(
+// Shared builder for the WebGPU composition `colorNode`. Both the live viewport material and
+// the offscreen equirect bake material run the SAME per-fragment layer composition
+// (`skyboxStudioSample`); they differ only in how `direction` is derived (viewport geometry vs.
+// equirect UV) and in the vertex stage. Keeping this single source of truth guarantees the
+// exported bake matches the live look.
+function buildSkyboxComposition(
   manifest: SkyboxManifestV2,
-  editorLayerState: SkyboxEditorLayerState,
+  direction: any,
   imageTextures: Map<string, THREE.Texture>,
   starfieldTextures: Map<string, THREE.Texture>,
-  starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
-  editorPresentationEnabled: boolean
+  starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>
 ) {
-  const material = new NodeMaterial();
   const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
   const compositionUniforms = createCompositionUniformNodes(compositionBindings);
-  const vertexNode = Fn(() => {
-    const position = modelViewProjection as any;
-
-    position.z.assign(position.w);
-
-    return position;
-  })();
-
-  material.side = THREE.BackSide;
-  material.depthTest = false;
-  material.depthWrite = false;
-  material.vertexNode = vertexNode as any;
-  const direction = normalize(positionWorld.sub(cameraPosition));
   const layerRuntime = createWebGpuLayerRuntime(
     manifest,
     direction,
@@ -3096,6 +3087,67 @@ function createWebGpuMaterial(
     | WebGpuStarfieldLayerSampleNodes
     | undefined;
   const skyboxSample = createSkyboxFunction(manifest, layerRuntime, compositionBindings);
+  const colorNode = skyboxSample({
+    direction,
+    ...layerRuntime.sampleParameters,
+    ...Object.fromEntries(
+      compositionBindings.flatMap((binding) => {
+        const compositionUniform = compositionUniforms[binding.index];
+
+        return [
+          [`${binding.parameterPrefix}Opacity`, compositionUniform.opacity],
+          [`${binding.parameterPrefix}BlendMode`, compositionUniform.blendMode],
+        ];
+      })
+    ),
+  }) as any;
+
+  return {
+    colorNode,
+    compositionUniforms,
+    imageSamples,
+    imageUniforms,
+    layerRuntime,
+    starfieldSamples,
+  };
+}
+
+function createWebGpuMaterial(
+  manifest: SkyboxManifestV2,
+  editorLayerState: SkyboxEditorLayerState,
+  imageTextures: Map<string, THREE.Texture>,
+  starfieldTextures: Map<string, THREE.Texture>,
+  starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
+  editorPresentationEnabled: boolean
+) {
+  const material = new NodeMaterial();
+  const vertexNode = Fn(() => {
+    const position = modelViewProjection as any;
+
+    position.z.assign(position.w);
+
+    return position;
+  })();
+
+  material.side = THREE.BackSide;
+  material.depthTest = false;
+  material.depthWrite = false;
+  material.vertexNode = vertexNode as any;
+  const direction = normalize(positionWorld.sub(cameraPosition));
+  const {
+    colorNode: compositionColorNode,
+    compositionUniforms,
+    imageSamples,
+    imageUniforms,
+    layerRuntime,
+    starfieldSamples,
+  } = buildSkyboxComposition(
+    manifest,
+    direction,
+    imageTextures,
+    starfieldTextures,
+    starfieldPatchTextures
+  );
   // Per-layer editor selection-rect overlays, opted in via the registry's
   // wgslEditorOverlay flag — no per-type branching here.
   const editorOverlayLayers = editorPresentationEnabled
@@ -3111,20 +3163,7 @@ function createWebGpuMaterial(
         return [{ bindings, editorUniforms: createWgslEditorUniformNodes(bindings, editorLayerState) }];
       })
     : [];
-  let colorNode = skyboxSample({
-    direction,
-    ...layerRuntime.sampleParameters,
-    ...Object.fromEntries(
-      compositionBindings.flatMap((binding) => {
-        const compositionUniform = compositionUniforms[binding.index];
-
-        return [
-          [`${binding.parameterPrefix}Opacity`, compositionUniform.opacity],
-          [`${binding.parameterPrefix}BlendMode`, compositionUniform.blendMode],
-        ];
-      })
-    ),
-  }) as any;
+  let colorNode = compositionColorNode;
   editorOverlayLayers.forEach(({ bindings, editorUniforms }) => {
     bindings.forEach((binding, index) => {
       const projection = layerRuntime.editorProjectionByLayerId.get(binding.layer.id);
@@ -3191,6 +3230,57 @@ const directionToEquirectUv = wgslFn(`
     return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);
   }
 `);
+
+// Exact inverse of `skyboxStudioDirectionToEquirectUv` above (and matches the CPU
+// `equirectUvToDirection`), so a baked equirect PNG round-trips with how the runtime samples
+// equirect textures. Note this is a DIFFERENT convention from starfield-gpu-bake's
+// `equirectDirectionNode` (which flips V), so it must not be reused here.
+const equirectUvToDirection = wgslFn(`
+  fn skyboxStudioEquirectUvToDirection(uv: vec2<f32>) -> vec3<f32> {
+    let lambda = (uv.x - 0.5) * 6.283185307179586;
+    let phi = (uv.y - 0.5) * 3.141592653589793;
+    let cosPhi = cos(phi);
+
+    return normalize(vec3<f32>(cosPhi * cos(lambda), sin(phi), cosPhi * sin(lambda)));
+  }
+`);
+
+// Offscreen material for the single-pass equirect export bake. Renders a full-screen quad
+// (PlaneGeometry(2,2) + ortho camera) where each fragment's direction comes from the equirect
+// UV, then runs the same `buildSkyboxComposition` colorNode the live viewport uses. No editor
+// overlays and no live updaters — this material is one-shot.
+export function createWebGpuEquirectBakeMaterial(
+  manifest: SkyboxManifestV2,
+  imageTextures: Map<string, THREE.Texture>,
+  starfieldTextures: Map<string, THREE.Texture>,
+  options: { flipY?: boolean } = {}
+) {
+  const material = new NodeMaterial();
+
+  material.side = THREE.DoubleSide;
+  material.depthTest = false;
+  material.depthWrite = false;
+
+  // Derive equirect UV from the full-screen quad's local position (PlaneGeometry(2,2) → [-1,1]),
+  // remapped to [0,1]. This mirrors the proven starfield bake; the `uv()` attribute does not sweep
+  // the full quad reliably in this offscreen NodeMaterial setup.
+  // `flipY` pre-flips V for the EXR path: EXRExporter always flips scanlines (assuming WebGL
+  // bottom-up readback), but our WebGPU readback is top-down — so we invert here to cancel it out.
+  const baseUv = (positionGeometry.xy as any).mul(0.5).add(0.5);
+  const sampleUv = options.flipY ? vec2(baseUv.x, baseUv.y.oneMinus()) : baseUv;
+  const direction = normalize(equirectUvToDirection({ uv: sampleUv }) as any);
+  const { colorNode } = buildSkyboxComposition(
+    manifest,
+    direction,
+    imageTextures,
+    starfieldTextures,
+    new Map()
+  );
+
+  material.colorNode = colorNode as any;
+
+  return material;
+}
 
 const directionToSourceStarfieldUv = wgslFn(`
   fn skyboxStudioDirectionToSourceStarfieldUv(direction: vec3<f32>) -> vec2<f32> {
