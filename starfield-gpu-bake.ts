@@ -540,11 +540,14 @@ function createStarMaterial(
     const pinCoreFloor = uDisplayPixelAngle.mul(0.5);
     const coreSupportRadius = max(starRadius, mix(normalCoreFloor, pinCoreFloor, pinWeight));
     const coreSigma = max(coreSupportRadius.mul(0.45), uDisplayPixelAngle.mul(0.5));
-    const normalWeight = smoothstep(AA_PIN_THRESHOLD_PX, AA_PIN_THRESHOLD_PX + 0.25, screenRadiusPx);
     const glareRadius = uGlareSize.mul(mix(1.0, scale, uSizeVar)).mul(uDisplayPixelAngle);
     const glareSupportEdge = max(starRadius.add(glareRadius), float(MIN_GLARE_PIXELS).mul(uDisplayPixelAngle));
+    // Size the support quad from the FULL glare sigma. The fragment renders the glare at this same
+    // (full) sigma and only scales its *amplitude* by normalWeight — so multiplying the support
+    // sigma by normalWeight here shrank the quad to ~2σ while the glare still extended to ~4σ,
+    // hard-clipping bright mid-size stars into squares. Keep the step() gates so the quad collapses
+    // only when glare is fully off.
     const glareSigma = max(glareSupportEdge.mul(0.36), uDisplayPixelAngle.mul(0.5))
-      .mul(normalWeight)
       .mul(step(0.000001, uGlareSize))
       .mul(step(0.000001, uGlareStr));
     const supportSigma = (max as any)(coreSigma, glareSigma);

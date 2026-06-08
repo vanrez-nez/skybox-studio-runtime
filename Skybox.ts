@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import { NodeMaterial } from "three/webgpu";
 import {
-  cameraPosition,
+  cameraProjectionMatrixInverse,
+  cameraWorldMatrix,
   Fn,
   modelViewProjection,
   normalize,
   positionGeometry,
-  positionWorld,
+  screenUV,
   texture as textureNode,
   uniform,
   vec2,
@@ -3112,6 +3113,22 @@ function buildSkyboxComposition(
   };
 }
 
+// Exact per-fragment view ray (TSL/WebGPU). Deriving the sampling direction from the interpolated
+// mesh position (`positionWorld - cameraPosition`) bakes the skybox mesh topology into the equirect
+// UV: the coarse UV-sphere's pole fans + lat/long grid etch a faceted "radial segment" pattern into
+// the high-frequency starfield, and a box's flat faces produce seams. Reconstructing the ray from
+// the screen NDC + inverse projection makes the UV (and its screen-space derivatives) smooth and
+// mesh-independent, so star sampling is identical on any sky geometry.
+function skyboxViewDirectionNode() {
+  const ndc = (screenUV as any).mul(2.0).sub(1.0);
+  // screenUV.y is top-down here, opposite the projection's bottom-up clip Y, so flip it — otherwise
+  // the live view renders vertically mirrored (exports don't use this path, so they look correct).
+  const viewHomogeneous = (cameraProjectionMatrixInverse as any).mul(vec4(ndc.x, ndc.y.negate(), 1.0, 1.0));
+  const viewRay = viewHomogeneous.xyz.div(viewHomogeneous.w);
+  const worldRay = (cameraWorldMatrix as any).mul(vec4(viewRay, 0.0)).xyz;
+  return normalize(worldRay as any);
+}
+
 function createWebGpuMaterial(
   manifest: SkyboxManifestV2,
   editorLayerState: SkyboxEditorLayerState,
@@ -3133,7 +3150,7 @@ function createWebGpuMaterial(
   material.depthTest = false;
   material.depthWrite = false;
   material.vertexNode = vertexNode as any;
-  const direction = normalize(positionWorld.sub(cameraPosition));
+  const direction = skyboxViewDirectionNode();
   const {
     colorNode: compositionColorNode,
     compositionUniforms,
@@ -3399,7 +3416,7 @@ function createWebGpuBakedMaterial(texture: THREE.Texture) {
 
     return position;
   })();
-  const direction = normalize(positionWorld.sub(cameraPosition));
+  const direction = skyboxViewDirectionNode();
 
   material.side = THREE.BackSide;
   material.depthTest = false;
@@ -4076,7 +4093,23 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       }
       this.#starfieldTextures.set(layerId, nextTexture);
       this.#starfieldTextureKeys.set(layerId, currentTextureKey);
-      this.refreshStarfieldTextureBindings();
+
+      // The material is first compiled while this layer's starfield texture is still the 1x1
+      // EMPTY_IMAGE_TEXTURE placeholder (the bake is debounced). Swapping textureNode.value does NOT
+      // recompile the program, so the real baked texture renders under the stale placeholder
+      // compile, producing the radial artifact until any manual rebuild (layer reorder/toggle).
+      // When the placeholder is first replaced, force one material rebuild — the same path a reorder
+      // takes — so the texture is bound under a program compiled against the real texture.
+      if (!previousTexture) {
+        this.#materialTopologyKey = null;
+        this.setManifest(this.#manifest);
+      } else {
+        this.refreshStarfieldTextureBindings();
+      }
+
+      // Dispatch AFTER the rebuild: this event drives the editor's on-demand render, so emitting it
+      // before the rebuild would draw the stale material and leave it on screen until the next
+      // interaction (a drag). Emitting it last renders the freshly-compiled material immediately.
       this.dispatchEvent({ type: "starfieldtexturechange" } as never);
     }, 150);
 
