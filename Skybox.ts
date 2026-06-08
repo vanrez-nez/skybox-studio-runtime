@@ -1552,7 +1552,7 @@ function glslDirectionToEquirectUvFunction() {
 
       vec2 directionToEquirectUv(vec3 direction) {
         vec3 normalizedDirection = normalize(direction);
-        float longitude = atan(normalizedDirection.z, normalizedDirection.x);
+        float longitude = atan(normalizedDirection.x, -normalizedDirection.z);
         float latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));
 
         return vec2(longitude / (2.0 * SKYBOX_STUDIO_PI) + 0.5, latitude / SKYBOX_STUDIO_PI + 0.5);
@@ -3238,10 +3238,13 @@ function createWebGpuMaterial(
   return material;
 }
 
+// Equirect is centered on -Z (the camera's default forward), with +X growing to the right of center
+// and +Y up. uv.x = 0.5 -> -Z, uv.x = 0.75 -> +X. This matches the image/spot placement longitude
+// (atan2(x, -z)) so the exported image is aligned with the editor's default view.
 const directionToEquirectUv = wgslFn(`
   fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {
     let normalizedDirection = normalize(direction);
-    let longitude = atan2(normalizedDirection.z, normalizedDirection.x);
+    let longitude = atan2(normalizedDirection.x, -normalizedDirection.z);
     let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));
 
     return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);
@@ -3251,14 +3254,14 @@ const directionToEquirectUv = wgslFn(`
 // Exact inverse of `skyboxStudioDirectionToEquirectUv` above (and matches the CPU
 // `equirectUvToDirection`), so a baked equirect PNG round-trips with how the runtime samples
 // equirect textures. Note this is a DIFFERENT convention from starfield-gpu-bake's
-// `equirectDirectionNode` (which flips V), so it must not be reused here.
+// `equirectDirectionNode` (which centers +Z and flips V), so it must not be reused here.
 const equirectUvToDirection = wgslFn(`
   fn skyboxStudioEquirectUvToDirection(uv: vec2<f32>) -> vec3<f32> {
     let lambda = (uv.x - 0.5) * 6.283185307179586;
     let phi = (uv.y - 0.5) * 3.141592653589793;
     let cosPhi = cos(phi);
 
-    return normalize(vec3<f32>(cosPhi * cos(lambda), sin(phi), cosPhi * sin(lambda)));
+    return normalize(vec3<f32>(cosPhi * sin(lambda), sin(phi), -cosPhi * cos(lambda)));
   }
 `);
 
@@ -3708,7 +3711,7 @@ function createWebGlBakedMaterial(texture: THREE.Texture) {
 
       vec2 directionToEquirectUv(vec3 direction) {
         vec3 normalizedDirection = normalize(direction);
-        float longitude = atan(normalizedDirection.z, normalizedDirection.x);
+        float longitude = atan(normalizedDirection.x, -normalizedDirection.z);
         float latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));
 
         return vec2(longitude / (2.0 * PI) + 0.5, latitude / PI + 0.5);

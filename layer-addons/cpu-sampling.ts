@@ -131,12 +131,14 @@ export function equirectPointToDirection(x: number, y: number): Rgb {
   return [cosPhi * Math.cos(lambda), Math.sin(phi), cosPhi * Math.sin(lambda)];
 }
 
+// Equirect centered on -Z (camera default forward), +X to the right of center — matches the GPU
+// `skyboxStudioEquirectUvToDirection` so the CPU bake fallback produces the same orientation.
 export function equirectUvToDirection(x: number, y: number): Rgb {
   const lambda = (x - 0.5) * TWO_PI;
   const phi = (y - 0.5) * Math.PI;
   const cosPhi = Math.cos(phi);
 
-  return [cosPhi * Math.cos(lambda), Math.sin(phi), cosPhi * Math.sin(lambda)];
+  return [cosPhi * Math.sin(lambda), Math.sin(phi), -cosPhi * Math.cos(lambda)];
 }
 
 export function normalizeDirection(direction: Rgb): Rgb {

@@ -23,6 +23,9 @@
     "prepublishOnly": "npm run test && npm run build && npm run pack:dry-run",
     "test": "vitest run"
   },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  },
   "peerDependencies": {
     "three": "^0.184.0"
   },
