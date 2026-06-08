@@ -28,6 +28,7 @@ const STARFIELD_RESIDENT_BYTES_PER_PIXEL =
   FINAL_TEXTURE_BYTES_PER_PIXEL + HDR_TEXTURE_BYTES_PER_PIXEL;
 const STARFIELD_ALLOCATION_BUDGET_BYTES = 2048 * 1024 * 1024;
 const STARFIELD_MEDIUM_ALLOCATION_BUDGET_BYTES = 512 * 1024 * 1024;
+const STARFIELD_LOW_ALLOCATION_BUDGET_BYTES = 128 * 1024 * 1024;
 const MAX_AUTO_SUPERSAMPLE = 8;
 const MIN_CORE_PIXELS = 1.75;
 const MIN_GLARE_PIXELS = 3.25;
@@ -51,6 +52,9 @@ export const STARFIELD_QUALITY_PRESETS: Record<
 > = {
   high: {
     budgetBytes: STARFIELD_ALLOCATION_BUDGET_BYTES,
+  },
+  low: {
+    budgetBytes: STARFIELD_LOW_ALLOCATION_BUDGET_BYTES,
   },
   medium: {
     budgetBytes: STARFIELD_MEDIUM_ALLOCATION_BUDGET_BYTES,
@@ -255,7 +259,15 @@ function numberValue(value: unknown, fallback: number, min = -Infinity, max = In
 }
 
 export function normalizeStarfieldQuality(value: unknown): SkyboxStarfieldQuality {
-  return value === "high" ? "high" : DEFAULT_STARFIELD_QUALITY;
+  if (value === "high") {
+    return "high";
+  }
+
+  if (value === "low") {
+    return "low";
+  }
+
+  return DEFAULT_STARFIELD_QUALITY;
 }
 
 export function getStarfieldQualityPreset(quality: unknown) {

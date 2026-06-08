@@ -3,6 +3,8 @@ export type { SkyboxEditorImageState, SkyboxEditorLayerState } from "./Skybox";
 export { bakeSkyboxImageData, createBakeCacheKey, DEFAULT_BAKE_WIDTH, invalidateBakeCache, resolveBakeOptions, } from "./bake";
 export type { BakedSkyboxImageData, BakeCacheKeyOptions, SkyboxImageBakeOptions } from "./bake";
 export { createStarfieldGpuBakeService, StarfieldGpuBakeService } from "./starfield-gpu-bake";
+export { createSkyboxGpuBakeService, SkyboxGpuBakeService } from "./skybox-gpu-bake";
+export type { SkyboxGpuBakeOptions, SkyboxGpuBakeTarget } from "./skybox-gpu-bake";
 export { blendChannel, clamp, compositeBlendChannel, compositeOver, linearChannelToSrgb, linearRgbToSrgbBytes, parseHexColor, srgbChannelToLinear, } from "./math";
 export { createAngularDecalPlacement, createImagePlacementTangents, directionFromPosition, IMAGE_PLACEMENT_ELEVATION_LIMIT, normalizeImagePlacement, normalizeVector, placementFromPosition, placementFromRotation, placementFromScale, positionFromPlacement, projectDirectionToImageUv, rotationFromPlacement, scaleFromPlacement, type ImageProjectionUv, type Point2, type VectorTuple, } from "./image-placement-transform";
 export { createDefaultSpotParams, DEFAULT_SPOT_BASE_ANGULAR_RADIUS, normalizeSpotParams, positionFromSpot, radiusScaleFromSpot, spotContainsDirection, spotFromPosition, spotFromRadiusScale, } from "./spot-transform";

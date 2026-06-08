@@ -6,7 +6,7 @@ export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
 export type SkyboxGeometryType = "box" | "sphere";
 export type SkyboxSpotColorMode = "gradient" | "light";
-export type SkyboxStarfieldQuality = "medium" | "high";
+export type SkyboxStarfieldQuality = "low" | "medium" | "high";
 export type SkyboxGeometryOptions = {
     type: SkyboxGeometryType;
 };

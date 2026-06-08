@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { NodeMaterial } from "three/webgpu";
-import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxLayerBlendMode, SkyboxManifest, SkyboxRenderMode, SkyboxSpotParams, SkyboxStarfieldParams } from "./manifest";
+import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxLayerBlendMode, SkyboxManifest, SkyboxManifestV2, SkyboxRenderMode, SkyboxSpotParams, SkyboxStarfieldParams } from "./manifest";
 type SupportedRenderer = THREE.WebGLRenderer | {
     isWebGPURenderer?: boolean;
 };
@@ -20,6 +20,9 @@ export type SkyboxEditorLayerState = {
 };
 export declare function createSkyboxGeometry(options?: SkyboxGeometryOptions): THREE.SphereGeometry | THREE.BoxGeometry;
 export declare function createSkyboxWireGeometry(options?: SkyboxGeometryOptions): THREE.BufferGeometry<THREE.NormalBufferAttributes, THREE.BufferGeometryEventMap>;
+export declare function createWebGpuEquirectBakeMaterial(manifest: SkyboxManifestV2, imageTextures: Map<string, THREE.Texture>, starfieldTextures: Map<string, THREE.Texture>, options?: {
+    flipY?: boolean;
+}): NodeMaterial;
 export declare function createBakedSkyboxTexture(manifest: SkyboxManifest, options?: SkyboxBakeOptions): THREE.CanvasTexture<HTMLCanvasElement>;
 export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     #private;
