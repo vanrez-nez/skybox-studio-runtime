@@ -2,20 +2,20 @@ import {
   hashString,
   linearRgbToSrgbBytes,
   type Rgb,
-} from "./math";
-import { evaluateSkyboxDirection, equirectUvToDirection } from "./evaluator";
+} from "../math";
+import { evaluateSkyboxDirection, equirectUvToDirection } from "../evaluator";
 import type {
   SkyboxBakeOptions,
   SkyboxManifest,
   SkyboxManifestGroup,
   SkyboxManifestNode,
-} from "./manifest";
-import { migrateManifestToV2 } from "./manifest";
+} from "../manifest";
+import { migrateManifestToV2 } from "../manifest";
 import {
   bakeStarfieldImageData,
   createStarfieldBakeCacheKey,
   type StarfieldBakeData,
-} from "./starfield-static";
+} from "../starfield-static";
 
 export const DEFAULT_BAKE_WIDTH = 1024;
 export const RUNTIME_VERSION = "0.1.0";

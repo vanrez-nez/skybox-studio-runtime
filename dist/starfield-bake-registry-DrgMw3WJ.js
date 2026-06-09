@@ -1,4 +1,4 @@
-//#region math.ts
+//#region src/math.ts
 function e(e, t = 0, n = 1) {
 	return Math.min(n, Math.max(t, e));
 }
@@ -61,7 +61,7 @@ function l(e) {
 	return (t >>> 0).toString(36);
 }
 //#endregion
-//#region layer-addons/registry.ts
+//#region src/layer-addons/registry.ts
 var u = /* @__PURE__ */ new Map();
 function d(e) {
 	let t = u.get(e.type);
@@ -80,7 +80,7 @@ function m(e) {
 	return u.has(e);
 }
 //#endregion
-//#region layer-addons/cpu-sampling.ts
+//#region src/layer-addons/cpu-sampling.ts
 var h = Math.PI * 2;
 function g(e, t, n) {
 	return e + (t - e) * n;
@@ -282,7 +282,7 @@ function le(e, n, r) {
 	];
 }
 //#endregion
-//#region starfield-static.ts
+//#region src/starfield-static.ts
 var k = Math.PI * 2, ue = 8, de = 1e3, A = 2, fe = 128, pe = 64, me = 4, he = 8, ge = 12, _e = 2048 * 1024 * 1024, ve = 512 * 1024 * 1024, ye = 128 * 1024 * 1024, be = 8, xe = 1.75, Se = 3.25, j = 1, Ce = 1.5, M = 8, we = 2048, Te = 5, Ee = 12, De = .35, Oe = .25, ke = [
 	1,
 	2,
@@ -1325,7 +1325,7 @@ function Gt(e, t = N, n = Math.floor(t / 2)) {
 	};
 }
 //#endregion
-//#region starfield-bake-registry.ts
+//#region src/baking/starfield-bake-registry.ts
 var Kt = null;
 function qt(e) {
 	Kt = e;

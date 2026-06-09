@@ -45,7 +45,7 @@ import {
 import {
   createStarfieldFinalPatchGeometryRanges,
   starfieldDisplayPixelAngleForHeight,
-} from "../starfield-gpu-bake";
+} from "../baking/starfield-gpu-bake";
 
 describe("runtime evaluator", () => {
   const createImageManifest = (): SkyboxManifestV2 => ({

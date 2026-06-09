@@ -11,8 +11,8 @@ import { clamp, type Rgb, type Rgba } from "./math";
 import type { SkyboxStarfieldParams } from "./manifest";
 import { mixRgba, sampleStarfieldBakedPixel } from "./layer-addons/cpu-sampling";
 import { registerLayerRuntimeAdapter } from "./layer-addons/registry";
-import { registerStarfieldBakeServiceFactory } from "./starfield-bake-registry";
-import { createStarfieldGpuBakeService } from "./starfield-gpu-bake";
+import { registerStarfieldBakeServiceFactory } from "./baking/starfield-bake-registry";
+import { createStarfieldGpuBakeService } from "./baking/starfield-gpu-bake";
 import {
   sampleStarfieldLayer,
   sourceUvFromDirection,
@@ -67,7 +67,7 @@ registerLayerRuntimeAdapter({
     }),
 });
 
-export { createStarfieldGpuBakeService, StarfieldGpuBakeService } from "./starfield-gpu-bake";
+export { createStarfieldGpuBakeService, StarfieldGpuBakeService } from "./baking/starfield-gpu-bake";
 export {
   bakeStarfieldImageData,
   createStarCatalogForCoverage,

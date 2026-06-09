@@ -1,8 +1,8 @@
-import { $ as e, A as t, D as n, F as r, G as i, H as a, I as o, J as s, K as c, L as l, M as u, N as d, O as f, P as p, Q as m, R as h, U as ee, V as g, W as te, X as ne, Y as _, Z as v, d as y, et as b, it as x, j as re, k as ie, m as ae, nt as oe, q as S, rt as C, t as w, tt as T, z as E } from "./starfield-bake-registry-QfLqfKWX.js";
+import { $ as e, A as t, D as n, F as r, G as i, H as a, I as o, J as s, K as c, L as l, M as u, N as d, O as f, P as p, Q as m, R as h, U as ee, V as g, W as te, X as ne, Y as _, Z as v, d as y, et as b, it as x, j as re, k as ie, m as ae, nt as oe, q as S, rt as C, t as w, tt as T, z as E } from "./starfield-bake-registry-DrgMw3WJ.js";
 import * as D from "three";
 import { NodeMaterial as O } from "three/webgpu";
 import { Fn as se, cameraProjectionMatrixInverse as ce, cameraWorldMatrix as le, modelViewProjection as k, normalize as ue, positionGeometry as de, screenUV as fe, texture as A, uniform as j, vec2 as pe, vec4 as me, wgslFn as M } from "three/tsl";
-//#region manifest.ts
+//#region src/manifest.ts
 var N = { type: "box" };
 function P(e) {
 	return e.version === 2 ? {
@@ -16,7 +16,7 @@ function P(e) {
 	};
 }
 //#endregion
-//#region skybox/geometry.ts
+//#region src/skybox/geometry.ts
 function he(e) {
 	return e ?? N;
 }
@@ -49,7 +49,7 @@ function ve(e = N) {
 	return t.dispose(), n;
 }
 //#endregion
-//#region skybox/stops.ts
+//#region src/skybox/stops.ts
 function ye(e) {
 	return [...e.stops].map((e) => ({
 		color: e.color,
@@ -63,7 +63,7 @@ function F(e) {
 	return new D.Vector4(t, n, r, e.opacity);
 }
 //#endregion
-//#region layer-addons/shader-codegen.ts
+//#region src/layer-addons/shader-codegen.ts
 function I(e) {
 	return Number.isFinite(e) ? e.toFixed(8) : "0.0";
 }
@@ -80,7 +80,7 @@ function z() {
 	return "effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);";
 }
 //#endregion
-//#region layer-addons/builtins/gradient.ts
+//#region src/layer-addons/builtins/gradient.ts
 function xe(e) {
 	let t = e * Math.PI / 180;
 	return [
@@ -215,13 +215,13 @@ _({
 	getTopologyKey: (e) => Oe.getTopologyKey(e)
 });
 //#endregion
-//#region skybox/colors.ts
+//#region src/skybox/colors.ts
 function ke(e) {
 	let [t, n, r] = C(e);
 	return new D.Vector3(t, n, r);
 }
 //#endregion
-//#region layer-addons/builtins/field-gradient.ts
+//#region src/layer-addons/builtins/field-gradient.ts
 function Ae(e, t) {
 	if (t.anchors.length === 0) return [
 		0,
@@ -381,7 +381,7 @@ _({
 	getTopologyKey: (e) => Le.getTopologyKey(e)
 });
 //#endregion
-//#region image-placement-transform.ts
+//#region src/image-placement-transform.ts
 var B = [
 	0,
 	1,
@@ -566,7 +566,7 @@ function at(e, t) {
 	};
 }
 //#endregion
-//#region skybox/empty-texture.ts
+//#region src/skybox/empty-texture.ts
 var K = new D.DataTexture(new Uint8Array([
 	0,
 	0,
@@ -575,10 +575,10 @@ var K = new D.DataTexture(new Uint8Array([
 ]), 1, 1, D.RGBAFormat);
 K.colorSpace = D.SRGBColorSpace, K.needsUpdate = !0;
 //#endregion
-//#region skybox/overlay.ts
+//#region src/skybox/overlay.ts
 var ot = .18, st = .75, ct = 1.75, lt = 1e-4, ut = .01;
 //#endregion
-//#region layer-addons/builtins/image.ts
+//#region src/layer-addons/builtins/image.ts
 function dt(e, t) {
 	let n = t.placement;
 	if (!n || !t.pixels || t.width <= 0 || t.height <= 0) return [
@@ -777,7 +777,7 @@ _({
 	getTopologyKey: (e) => Ct.getTopologyKey(e)
 });
 //#endregion
-//#region spot-transform.ts
+//#region src/spot-transform.ts
 var wt = Math.PI / 12;
 function q(e, t, n) {
 	return Math.min(n, Math.max(t, e));
@@ -894,7 +894,7 @@ function Mt(e, t) {
 	return Math.acos(q(a, -1, 1)) <= n.angularRadius;
 }
 //#endregion
-//#region skybox/editor-presentation.ts
+//#region src/skybox/editor-presentation.ts
 var Nt = {
 	hoveredLayerId: null,
 	selectedLayerId: null
@@ -973,7 +973,7 @@ var Bt = M(`
   }
 `);
 //#endregion
-//#region layer-addons/builtins/spot.ts
+//#region src/layer-addons/builtins/spot.ts
 function Ht(e, i) {
 	let s = J(i), c = r(e), u = r(s.centerDirection), f = t(c, u), p = Math.acos(v(f, -1, 1)), m = Math.max(s.angularRadius, 1e-4), ne = p / m;
 	if (s.colorMode === "gradient") return ne > 1 ? [
@@ -1316,7 +1316,7 @@ _({
 	getTopologyKey: (e) => Xt.getTopologyKey(e)
 });
 //#endregion
-//#region layer-addons/builtins/starfield.ts
+//#region src/layer-addons/builtins/starfield.ts
 function Zt(e) {
 	let t = [];
 	function n(e) {
@@ -1388,7 +1388,7 @@ _({
 	getTopologyKey: () => ({})
 });
 //#endregion
-//#region evaluator.ts
+//#region src/evaluator.ts
 function nn(e, t, n = {}) {
 	let r = c(t.type);
 	return r?.sampleCpu ? r.sampleCpu(e, t.params, {
@@ -1429,7 +1429,7 @@ function on(e, t, n = {}) {
 	return rn(t, n.targetGroupId ? i ? [i] : [] : r.nodes, n);
 }
 //#endregion
-//#region bake.ts
+//#region src/baking/bake.ts
 var sn = 1024, cn = "0.1.0", ln = /* @__PURE__ */ new Map(), un = /* @__PURE__ */ new Map();
 function dn(e = {}) {
 	let t = Math.max(.1, e.dpr ?? 1), n = Math.max(1, Math.floor((e.width ?? 1024) * t)), r = Math.max(1, Math.floor((e.height ?? n / 2) * t));
@@ -1517,7 +1517,7 @@ function _n(e, t = {}) {
 	}), d;
 }
 //#endregion
-//#region skybox/composition.ts
+//#region src/skybox/composition.ts
 function vn(e) {
 	return e.filter((e) => e.enabled).reverse();
 }
@@ -1620,7 +1620,7 @@ function Dn(e, t) {
 	return n ? n.adapter.createSampleExpression(e, "wgsl", { bindingsByLayerId: n.bindingsByLayerId }) : z();
 }
 //#endregion
-//#region skybox/materials.ts
+//#region src/skybox/materials.ts
 function On(e) {
 	return e.map((e) => {
 		let t = bn(e.node);
@@ -1853,7 +1853,7 @@ function Y(e, t) {
 	return null;
 }
 //#endregion
-//#region Skybox.ts
+//#region src/skybox.ts
 var er = {
 	composition: {
 		mode: "alpha-over",
@@ -2060,7 +2060,7 @@ var er = {
 	}
 };
 //#endregion
-//#region skybox-gpu-bake.ts
+//#region src/baking/skybox-gpu-bake.ts
 function nr(e) {
 	let t = e;
 	return !!(t && typeof t.render == "function" && typeof t.setRenderTarget == "function" && typeof t.getRenderTarget == "function");
@@ -2141,7 +2141,7 @@ function ar(e) {
 	return nr(e) ? new ir(e) : null;
 }
 //#endregion
-//#region loader/loader.ts
+//#region src/loader/loader.ts
 var X = class extends Error {
 	constructor(e, t) {
 		super(e), this.name = "LoaderAssetError", this.entry = t.entry ?? null, this.event = t.event, this.id = t.id, this.phase = t.phase, this.src = t.src;
@@ -2319,7 +2319,7 @@ var X = class extends Error {
 	}
 };
 //#endregion
-//#region loader/extensions/texture.ts
+//#region src/loader/extensions/texture.ts
 function sr(e) {
 	return e.colorSpace = D.SRGBColorSpace, e.wrapS = D.ClampToEdgeWrapping, e.wrapT = D.ClampToEdgeWrapping, e.flipY = !1, e.minFilter = D.LinearMipmapLinearFilter, e.magFilter = D.LinearFilter, e.generateMipmaps = !0, e.needsUpdate = !0, e;
 }
@@ -2460,7 +2460,7 @@ async function Cr(e) {
 	return t;
 }
 //#endregion
-//#region loader/skybox-bundle.ts
+//#region src/loader/skybox-bundle.ts
 function wr() {
 	let e = new or();
 	return e.register(Z.type, Z), e;

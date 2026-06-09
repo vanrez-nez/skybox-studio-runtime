@@ -19,7 +19,7 @@ import {
   wgslFn,
 } from "three/tsl";
 
-import { bakeSkyboxImageData } from "../bake";
+import { bakeSkyboxImageData } from "../baking/bake";
 import {
   composeNodesExpression,
   compositionNodeValues,
@@ -49,7 +49,7 @@ import type {
   SkyboxRenderMode,
 } from "../manifest";
 import { DEFAULT_SKYBOX_GEOMETRY } from "../manifest";
-import type { StarfieldGpuPatchTextureSet } from "../starfield-gpu-bake";
+import type { StarfieldGpuPatchTextureSet } from "../baking/starfield-gpu-bake";
 import type {
   WebGpuCompositionRuntime,
   WebGpuLayerAdapter,

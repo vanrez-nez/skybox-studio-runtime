@@ -1,8 +1,8 @@
-import { B as e, C as t, E as n, P as r, S as i, T as a, Y as o, Z as s, _ as c, a as l, b as u, c as d, d as f, f as p, g as m, h, i as g, l as _, m as v, n as y, o as b, p as x, r as S, s as C, u as w, v as T, w as E, x as D, y as O } from "./starfield-bake-registry-QfLqfKWX.js";
+import { B as e, C as t, E as n, P as r, S as i, T as a, Y as o, Z as s, _ as c, a as l, b as u, c as d, d as f, f as p, g as m, h, i as g, l as _, m as v, n as y, o as b, p as x, r as S, s as C, u as w, v as T, w as E, x as D, y as O } from "./starfield-bake-registry-DrgMw3WJ.js";
 import * as k from "three";
 import { MeshBasicNodeMaterial as A } from "three/webgpu";
 import { Fn as j, If as M, Loop as N, PI as P, acos as ee, attribute as F, clamp as I, cos as te, dot as ne, exp as L, float as R, floor as z, int as re, max as B, min as ie, mix as V, mod as ae, mx_fractal_noise_float as oe, normalize as se, positionGeometry as ce, pow as H, select as U, sin as le, smoothstep as W, step as G, texture as ue, uniform as de, uniformArray as fe, uniformTexture as pe, uv as me, varyingProperty as he, vec2 as K, vec3 as q, vec4 as J } from "three/tsl";
-//#region starfield-gpu-bake.ts
+//#region src/baking/starfield-gpu-bake.ts
 Math.PI * 2;
 var ge = 8, _e = _ / 2, ve = 1.75, ye = 3.25, be = 1, xe = 1.5, Se = 8, Ce = .1, we = 5, Te = 12, Ee = .35, De = .25, Oe = new Float32Array([
 	-1,
@@ -500,7 +500,7 @@ function tt(e) {
 	return ke(e) ? new et(e) : null;
 }
 //#endregion
-//#region starfield.ts
+//#region src/starfield.ts
 function nt(t, n, i, a = {}) {
 	let o = a.starfieldBakes?.get(t);
 	if (o) {

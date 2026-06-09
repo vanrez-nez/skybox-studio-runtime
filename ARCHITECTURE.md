@@ -5,15 +5,16 @@ manifest. It is registry-driven: there are no hardcoded `layer.type === …` bra
 every layer is a self-contained addon, so adding a layer is one file + one `register()` call, with
 zero edits to the material builders or composition code.
 
-## Top level (`src/runtime/`)
+## Top level (`src/`)
 
 | File | Responsibility |
 |---|---|
 | `index.ts` | The **public barrel** — the stable API surface (see below). |
-| `Skybox.ts` | The stateful `Skybox extends THREE.Mesh` class: lifecycle, state, starfield-texture sync, Direct-pipeline live `updateLayer*`, and `setManifest` orchestration. Delegates all material building to `skybox/materials.ts`. |
+| `skybox.ts` | The stateful `Skybox extends THREE.Mesh` class: lifecycle, state, starfield-texture sync, Direct-pipeline live `updateLayer*`, and `setManifest` orchestration. Delegates all material building to `skybox/materials.ts`. |
 | `manifest.ts` | Manifest schema + `migrateManifestToV2`. |
 | `evaluator.ts` | CPU evaluator (`evaluateSkyboxDirection`) — composes registered layers' `sampleCpu`. |
-| `bake.ts` / `skybox-gpu-bake.ts` / `starfield-gpu-bake.ts` / `starfield-static.ts` | CPU + GPU texture baking. |
+| `starfield-static.ts` | Procedural star/nebula catalog + CPU sampler (the starfield *generation* source the bakers read). |
+| `baking/` | Texture baking, grouped: `bake.ts` (CPU equirect bake), `skybox-gpu-bake.ts` + `starfield-gpu-bake.ts` (offscreen WebGPU bake services), and `starfield-bake-registry.ts` (the bake-service injection point that keeps starfield generation out of the core chunk). |
 | `image-placement-transform.ts` / `spot-transform.ts` | Pure placement/param math. |
 | `loader/` | Bundle/zip/url loaders (re-uses THREE loaders). |
 | `math.ts` | Color/vector primitives. |
@@ -49,7 +50,7 @@ zero edits to the material builders or composition code.
 2. Call `registerLayerRuntimeAdapter({ type, sampleCpu, updateLive, wgsl?, glsl?, getTopologyKey?, wgslEditorOverlay? })`.
 3. Add it to `builtins/index.ts`.
 
-No edits to `Skybox.ts`, `materials.ts`, `composition.ts`, or the evaluator. See
+No edits to `skybox.ts`, `materials.ts`, `composition.ts`, or the evaluator. See
 `tests/registry.test.ts` for a proof that a brand-new type composes end-to-end.
 
 ## Public API (the `index.ts` barrel)

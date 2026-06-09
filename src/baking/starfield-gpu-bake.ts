@@ -42,7 +42,7 @@ import {
 import type {
   SkyboxFieldGradientParams,
   SkyboxStarfieldParams,
-} from "./manifest";
+} from "../manifest";
 import {
   createStarCatalogForDescriptor,
   createStarfieldPatchLayout,
@@ -53,7 +53,7 @@ import {
   STARFIELD_PREVIEW_BAKE_WIDTH,
   type StarfieldBakeData,
   type StarfieldPatchDescriptor,
-} from "./starfield-static";
+} from "../starfield-static";
 
 const TWO_PI = Math.PI * 2;
 const MAX_ANCHORS = 8;

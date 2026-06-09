@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { BakedSkyboxImageData } from "./bake";
-import { type SkyboxManifest } from "./manifest";
+import { type SkyboxManifest } from "../manifest";
 export type SkyboxGpuBakeOptions = {
     /** When true (and `hdr`), bake into a full 32-bit float target instead of 16-bit half-float. */
     float?: boolean;

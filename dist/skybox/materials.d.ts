@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { NodeMaterial } from "three/webgpu";
 import type { SkyboxBakeOptions, SkyboxManifest, SkyboxManifestLayer, SkyboxManifestNode, SkyboxManifestV2, SkyboxRenderMode } from "../manifest";
-import type { StarfieldGpuPatchTextureSet } from "../starfield-gpu-bake";
+import type { StarfieldGpuPatchTextureSet } from "../baking/starfield-gpu-bake";
 import type { SkyboxEditorLayerState } from "./types";
 export declare function forEachRenderableLayer(nodes: SkyboxManifestNode[], callback: (layer: SkyboxManifestLayer) => void): void;
 export declare function createWebGpuMaterial(manifest: SkyboxManifestV2, editorLayerState: SkyboxEditorLayerState, imageTextures: Map<string, THREE.Texture>, starfieldTextures: Map<string, THREE.Texture>, starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>, editorPresentationEnabled: boolean): NodeMaterial;

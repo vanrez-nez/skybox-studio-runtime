@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-import { invalidateBakeCache as invalidateGlobalBakeCache } from "./bake";
+import { invalidateBakeCache as invalidateGlobalBakeCache } from "./baking/bake";
 import {
   createSkyboxGeometry,
   resolveGeometryOptions,
@@ -22,8 +22,8 @@ import type {
   SkyboxStarfieldParams,
 } from "./manifest";
 import { DEFAULT_SKYBOX_GEOMETRY, migrateManifestToV2 } from "./manifest";
-import { createStarfieldBakeService } from "./starfield-bake-registry";
-import type { StarfieldGpuBakeService } from "./starfield-gpu-bake";
+import { createStarfieldBakeService } from "./baking/starfield-bake-registry";
+import type { StarfieldGpuBakeService } from "./baking/starfield-gpu-bake";
 import {
   getLayerRuntimeAdapter,
   type LayerLiveUpdateContext,

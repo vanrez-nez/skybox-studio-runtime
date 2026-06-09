@@ -1,4 +1,4 @@
-import type { SupportedRenderer } from "./skybox/types";
+import type { SupportedRenderer } from "../skybox/types";
 import type { StarfieldGpuBakeService } from "./starfield-gpu-bake";
 type StarfieldBakeServiceFactory = (renderer: SupportedRenderer | null) => StarfieldGpuBakeService | null;
 /** Called (once) by the `skybox-studio-runtime/starfield` entry to enable starfield baking. */

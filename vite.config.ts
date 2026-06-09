@@ -7,8 +7,8 @@ export default defineConfig({
       // Multiple entries → rolldown code-splits: the heavy starfield-generation code lands in its
       // own chunk (reachable only from the `starfield` entry), keeping the core `index.js` small.
       entry: {
-        index: "index.ts",
-        starfield: "starfield.ts",
+        index: "src/index.ts",
+        starfield: "src/starfield.ts",
       },
       formats: ["es"],
     },

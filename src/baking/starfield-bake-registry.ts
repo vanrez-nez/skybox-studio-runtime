@@ -5,7 +5,7 @@
 // Instead of the core statically importing it, the `skybox-studio-runtime/starfield` entry registers
 // a factory here on import. A consumer that renders starfields imports that entry once; a consumer
 // that never uses starfields never pulls the generation code.
-import type { SupportedRenderer } from "./skybox/types";
+import type { SupportedRenderer } from "../skybox/types";
 import type { StarfieldGpuBakeService } from "./starfield-gpu-bake";
 
 type StarfieldBakeServiceFactory = (

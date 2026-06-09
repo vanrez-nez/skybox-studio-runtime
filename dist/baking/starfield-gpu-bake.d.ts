@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import type { SkyboxStarfieldParams } from "./manifest";
-import { type StarfieldBakeData, type StarfieldPatchDescriptor } from "./starfield-static";
+import type { SkyboxStarfieldParams } from "../manifest";
+import { type StarfieldBakeData, type StarfieldPatchDescriptor } from "../starfield-static";
 type StarfieldGpuRenderer = {
     autoClear: boolean;
     clear: () => void;

@@ -1,5 +1,5 @@
-import type { SkyboxBakeOptions, SkyboxManifest } from "./manifest";
-import { type StarfieldBakeData } from "./starfield-static";
+import type { SkyboxBakeOptions, SkyboxManifest } from "../manifest";
+import { type StarfieldBakeData } from "../starfield-static";
 export declare const DEFAULT_BAKE_WIDTH = 1024;
 export declare const RUNTIME_VERSION = "0.1.0";
 export type BakedSkyboxImageData = {
