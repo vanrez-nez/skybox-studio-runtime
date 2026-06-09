@@ -1,7 +1,5 @@
 // Resolves an editor-produced project bundle (`manifest.json` + `assets/<hash>.png`) from a zip
 // file, a served URL, or an unzipped directory into a `Bundle` (manifest + asset-URL resolver).
-import { unzip } from "fflate";
-
 import {
   migrateManifestToV2,
   type SkyboxManifestLayer,
@@ -67,7 +65,8 @@ function inferMimeType(path: string): string {
 }
 
 function defaultToAssetUrl(bytes: Uint8Array, mimeType: string): string {
-  // Copy into a fresh ArrayBuffer so the Blob owns its bytes (fflate may hand back subarray views).
+  // Copy into a fresh ArrayBuffer so the Blob owns its bytes (the zip reader hands back subarray
+  // views into the source buffer for stored entries).
   const copy = bytes.slice();
   return URL.createObjectURL(new Blob([copy], { type: mimeType }));
 }
@@ -95,17 +94,86 @@ async function toBytes(source: ZipSource): Promise<Uint8Array> {
   return new Uint8Array(await source.arrayBuffer());
 }
 
-function unzipAsync(bytes: Uint8Array): Promise<Record<string, Uint8Array>> {
-  return new Promise((resolve, reject) => {
-    unzip(bytes, (error, files) => {
-      if (error) {
-        reject(error);
-        return;
-      }
+// Inflate a raw DEFLATE stream (ZIP method 8) using the browser-native DecompressionStream — no
+// third-party inflate dependency. Supported in modern browsers (Chrome 80+, Safari 16.4+,
+// Firefox 113+) and Node 18+.
+async function inflateRaw(bytes: Uint8Array): Promise<Uint8Array> {
+  const copy = bytes.slice();
+  const stream = new Blob([copy])
+    .stream()
+    .pipeThrough(new DecompressionStream("deflate-raw"));
 
-      resolve(files);
-    });
-  });
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+const EOCD_SIGNATURE = 0x06054b50;
+const CENTRAL_FILE_SIGNATURE = 0x02014b50;
+const LOCAL_FILE_SIGNATURE = 0x04034b50;
+const EOCD_MIN_SIZE = 22;
+const MAX_COMMENT_SIZE = 0xffff;
+
+function findEndOfCentralDirectory(view: DataView): number {
+  const start = Math.max(0, view.byteLength - EOCD_MIN_SIZE - MAX_COMMENT_SIZE);
+
+  for (let offset = view.byteLength - EOCD_MIN_SIZE; offset >= start; offset -= 1) {
+    if (view.getUint32(offset, true) === EOCD_SIGNATURE) {
+      return offset;
+    }
+  }
+
+  return -1;
+}
+
+// Minimal single-disk ZIP reader: walks the central directory, then inflates each entry's data from
+// its local header. Handles store (method 0) and deflate (method 8). No ZIP64 / encryption (project
+// bundles are small, single-disk, unencrypted).
+async function readZipEntries(bytes: Uint8Array): Promise<Record<string, Uint8Array>> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const eocd = findEndOfCentralDirectory(view);
+
+  if (eocd < 0) {
+    throw new Error("Invalid zip bundle: end-of-central-directory record not found.");
+  }
+
+  const entryCount = view.getUint16(eocd + 10, true);
+  let pointer = view.getUint32(eocd + 16, true);
+  const decoder = new TextDecoder();
+  const tasks: Promise<[string, Uint8Array]>[] = [];
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (view.getUint32(pointer, true) !== CENTRAL_FILE_SIGNATURE) {
+      throw new Error("Invalid zip bundle: malformed central directory.");
+    }
+
+    const method = view.getUint16(pointer + 10, true);
+    const compressedSize = view.getUint32(pointer + 20, true);
+    const nameLength = view.getUint16(pointer + 28, true);
+    const extraLength = view.getUint16(pointer + 30, true);
+    const commentLength = view.getUint16(pointer + 32, true);
+    const localOffset = view.getUint32(pointer + 42, true);
+    const name = decoder.decode(bytes.subarray(pointer + 46, pointer + 46 + nameLength));
+
+    if (view.getUint32(localOffset, true) !== LOCAL_FILE_SIGNATURE) {
+      throw new Error(`Invalid zip bundle: bad local header for "${name}".`);
+    }
+
+    const localNameLength = view.getUint16(localOffset + 26, true);
+    const localExtraLength = view.getUint16(localOffset + 28, true);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    const compressed = bytes.subarray(dataStart, dataStart + compressedSize);
+
+    if (method === 0) {
+      tasks.push(Promise.resolve([name, compressed]));
+    } else if (method === 8) {
+      tasks.push(inflateRaw(compressed).then((data) => [name, data]));
+    } else {
+      throw new Error(`Unsupported zip compression method ${method} for "${name}".`);
+    }
+
+    pointer += 46 + nameLength + extraLength + commentLength;
+  }
+
+  return Object.fromEntries(await Promise.all(tasks));
 }
 
 export async function loadBundleFromZip(
@@ -114,7 +182,7 @@ export async function loadBundleFromZip(
 ): Promise<Bundle> {
   const toAssetUrl = options.toAssetUrl ?? defaultToAssetUrl;
   const bytes = await toBytes(source);
-  const files = await unzipAsync(bytes);
+  const files = await readZipEntries(bytes);
   const manifestBytes = files[MANIFEST_FILE];
 
   if (!manifestBytes) {

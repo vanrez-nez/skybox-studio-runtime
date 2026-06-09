@@ -23,14 +23,12 @@
     "prepublishOnly": "npm run test && npm run build && npm run pack:dry-run",
     "test": "vitest run"
   },
-  "dependencies": {
-    "fflate": "^0.8.3"
-  },
   "peerDependencies": {
     "three": "^0.184.0"
   },
   "devDependencies": {
     "color-blend": "^4.0.0",
+    "fflate": "^0.8.3",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
     "vitest": "^4.1.7"

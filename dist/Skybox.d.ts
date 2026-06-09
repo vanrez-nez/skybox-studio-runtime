@@ -1,29 +1,7 @@
 import * as THREE from "three";
-import { NodeMaterial } from "three/webgpu";
-import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxLayerBlendMode, SkyboxManifest, SkyboxManifestV2, SkyboxRenderMode, SkyboxSpotParams, SkyboxStarfieldParams } from "./manifest";
-type SupportedRenderer = THREE.WebGLRenderer | {
-    isWebGPURenderer?: boolean;
-};
-type RuntimeMaterial = THREE.ShaderMaterial | NodeMaterial;
-type ImageTextureMap = Record<string, THREE.Texture | null | undefined>;
-type LayerCompositionUpdate = {
-    blendMode?: SkyboxLayerBlendMode;
-    opacity?: number;
-};
-export type SkyboxEditorImageState = {
-    hoveredImageLayerId: string | null;
-    selectedImageLayerId: string | null;
-};
-export type SkyboxEditorLayerState = {
-    hoveredLayerId: string | null;
-    selectedLayerId: string | null;
-};
-export declare function createSkyboxGeometry(options?: SkyboxGeometryOptions): THREE.SphereGeometry | THREE.BoxGeometry;
-export declare function createSkyboxWireGeometry(options?: SkyboxGeometryOptions): THREE.BufferGeometry<THREE.NormalBufferAttributes, THREE.BufferGeometryEventMap>;
-export declare function createWebGpuEquirectBakeMaterial(manifest: SkyboxManifestV2, imageTextures: Map<string, THREE.Texture>, starfieldTextures: Map<string, THREE.Texture>, options?: {
-    flipY?: boolean;
-}): NodeMaterial;
-export declare function createBakedSkyboxTexture(manifest: SkyboxManifest, options?: SkyboxBakeOptions): THREE.CanvasTexture<HTMLCanvasElement>;
+import "./layer-addons/builtins";
+import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxManifest, SkyboxRenderMode, SkyboxSpotParams, SkyboxStarfieldParams } from "./manifest";
+import type { ImageTextureMap, LayerCompositionUpdate, RuntimeMaterial, SkyboxEditorImageState, SkyboxEditorLayerState, SupportedRenderer } from "./skybox/types";
 export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     #private;
     constructor();
@@ -69,4 +47,3 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     invalidateBakeCache(): this;
     dispose(): void;
 }
-export {};

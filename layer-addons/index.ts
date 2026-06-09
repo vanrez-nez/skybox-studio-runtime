@@ -1,4 +1,3 @@
-export { createBuiltInWebGpuLayerAdapters } from "./built-ins";
 export {
   getLayerRuntimeAdapter,
   getLayerRuntimeAdapters,

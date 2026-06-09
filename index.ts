@@ -1,10 +1,6 @@
-export {
-  createBakedSkyboxTexture,
-  createSkyboxGeometry,
-  createSkyboxWireGeometry,
-  Skybox,
-} from "./Skybox";
-export type { SkyboxEditorImageState, SkyboxEditorLayerState } from "./Skybox";
+export { createSkyboxGeometry, createSkyboxWireGeometry } from "./skybox/geometry";
+export { createBakedSkyboxTexture } from "./skybox/materials";
+export { Skybox } from "./Skybox";
 export {
   bakeSkyboxImageData,
   createBakeCacheKey,
@@ -12,10 +8,10 @@ export {
   invalidateBakeCache,
   resolveBakeOptions,
 } from "./bake";
-export type { BakedSkyboxImageData, BakeCacheKeyOptions, SkyboxImageBakeOptions } from "./bake";
+export type { BakedSkyboxImageData, SkyboxImageBakeOptions } from "./bake";
 export { createStarfieldGpuBakeService, StarfieldGpuBakeService } from "./starfield-gpu-bake";
 export { createSkyboxGpuBakeService, SkyboxGpuBakeService } from "./skybox-gpu-bake";
-export type { SkyboxGpuBakeOptions, SkyboxGpuBakeTarget } from "./skybox-gpu-bake";
+export type { SkyboxGpuBakeTarget } from "./skybox-gpu-bake";
 export {
   blendChannel,
   clamp,
@@ -84,7 +80,7 @@ export {
   type StarfieldPatchDescriptor,
   type StarfieldPatchLayout,
 } from "./starfield-static";
-export { evaluateSkyboxDirection, equirectPointToDirection, equirectUvToDirection } from "./evaluator";
+export { evaluateSkyboxDirection } from "./evaluator";
 export {
   getLayerRuntimeAdapter,
   getLayerRuntimeAdapters,

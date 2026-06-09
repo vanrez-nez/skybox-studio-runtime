@@ -9,7 +9,7 @@ export default defineConfig({
       formats: ["es"],
     },
     rollupOptions: {
-      external: ["fflate", "three", "three/tsl", "three/webgpu"],
+      external: ["three", "three/tsl", "three/webgpu"],
     },
   },
 });
