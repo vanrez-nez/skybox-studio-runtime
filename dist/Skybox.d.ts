@@ -18,8 +18,6 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     load(renderer?: SupportedRenderer): this;
     private applyGeometry;
     private disposeOwnedTexture;
-    private clearStarfieldPatchOverlay;
-    private syncStarfieldPatchOverlay;
     private disposeStarfieldTextures;
     private syncStarfieldTextures;
     private scheduleStarfieldTextureBake;

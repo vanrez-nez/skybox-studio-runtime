@@ -28,25 +28,18 @@ import {
   type CompositionNodeShaderBinding,
 } from "./composition";
 import {
-  applyEditorLayerStateToShaderUniforms,
   applyEditorLayerStateToUniformNodes,
   attachEditorLayerStateUpdater,
   createWgslEditorUniformNodes,
   webGpuImageEditorRectOverlayFunction,
 } from "./editor-presentation";
 import {
-  applyImageLayerPlacementToShaderUniforms,
   applyImageLayerPlacementToUniformNodes,
   attachImagePlacementUpdater,
   updateImageTextureNodes,
-  updateImageTextureUniforms,
 } from "../layer-addons/builtins/image";
 import type { WebGpuImageLayerSampleNodes, WebGpuStarfieldLayerSampleNodes } from "./types";
-import {
-  updateStarfieldTextureNodes,
-  updateStarfieldTextureUniforms,
-} from "../layer-addons/builtins/starfield";
-import { glslDirectionToEquirectUvFunction } from "./equirect";
+import { updateStarfieldTextureNodes } from "../layer-addons/builtins/starfield";
 import type {
   SkyboxBakeOptions,
   SkyboxManifest,
@@ -65,7 +58,6 @@ import type {
 import {
   getLayerRuntimeAdapter,
   getLayerRuntimeAdapters,
-  type LayerGlslBuildContext,
 } from "../layer-addons/registry";
 
 import type {
@@ -74,9 +66,7 @@ import type {
   ImagePlacementUniformNodes,
   RuntimeMaterial,
   SkyboxEditorLayerState,
-  SpotLayerShaderBinding,
   StarfieldLayerShaderBinding,
-  SupportedRenderer,
 } from "./types";
 
 function createCompositionUniformNodes(bindings: CompositionNodeShaderBinding[]) {
@@ -145,69 +135,6 @@ function applyLayerCompositionToUniformNodes(
 
   (compositionUniforms.opacity as any).value = values.opacity;
   (compositionUniforms.blendMode as any).value = values.blendMode;
-}
-
-function compositionShaderUniforms(bindings: CompositionNodeShaderBinding[]) {
-  return Object.fromEntries(
-    bindings.flatMap((binding) => {
-      const values = compositionNodeValues(binding.node);
-
-      return [
-        [`${binding.parameterPrefix}Opacity`, { value: values.opacity }],
-        [`${binding.parameterPrefix}BlendMode`, { value: values.blendMode }],
-      ];
-    })
-  );
-}
-
-function applyCompositionParamsToShaderUniforms(
-  material: THREE.ShaderMaterial,
-  bindings: CompositionNodeShaderBinding[],
-  manifest: SkyboxManifestV2
-) {
-  bindings.forEach((binding) => {
-    const node = findCompositionNode(manifest.nodes, binding.node.id);
-
-    if (!node) {
-      return;
-    }
-
-    const values = compositionNodeValues(node);
-    const opacityUniform = material.uniforms[`${binding.parameterPrefix}Opacity`];
-    const blendModeUniform = material.uniforms[`${binding.parameterPrefix}BlendMode`];
-
-    if (opacityUniform) {
-      opacityUniform.value = values.opacity;
-    }
-
-    if (blendModeUniform) {
-      blendModeUniform.value = values.blendMode;
-    }
-  });
-}
-
-function applyLayerCompositionToShaderUniforms(
-  material: THREE.ShaderMaterial,
-  bindings: CompositionNodeShaderBinding[],
-  node: SkyboxManifestNode
-) {
-  const binding = bindings.find((nextBinding) => nextBinding.node.id === node.id);
-
-  if (!binding) {
-    return;
-  }
-
-  const values = compositionNodeValues(node);
-  const opacityUniform = material.uniforms[`${binding.parameterPrefix}Opacity`];
-  const blendModeUniform = material.uniforms[`${binding.parameterPrefix}BlendMode`];
-
-  if (opacityUniform) {
-    opacityUniform.value = values.opacity;
-  }
-
-  if (blendModeUniform) {
-    blendModeUniform.value = values.blendMode;
-  }
 }
 
 function attachCompositionUpdater(
@@ -382,8 +309,6 @@ function createSkyboxFunction(
   const compositionBindingMap = createCompositionBindingMap(compositionBindings);
   const layerBlocks = composeNodesExpression(
     manifest.nodes,
-    "wgsl",
-    new Map(),
     compositionBindingMap,
     layerRuntime
   );
@@ -670,228 +595,6 @@ function createWebGpuBakedMaterial(texture: THREE.Texture) {
   return material;
 }
 
-export function createWebGlMaterial(
-  manifest: SkyboxManifestV2,
-  editorLayerState: SkyboxEditorLayerState,
-  imageTextures: Map<string, THREE.Texture>,
-  starfieldTextures: Map<string, THREE.Texture>,
-  editorPresentationEnabled: boolean
-) {
-  const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
-  const compositionBindingMap = createCompositionBindingMap(compositionBindings);
-  const glslContext: LayerGlslBuildContext = {
-    editorPresentationEnabled,
-    editorLayerState,
-    imageTextures,
-    starfieldTextures,
-  };
-  const glslLayers = getLayerRuntimeAdapters().flatMap((adapter) =>
-    adapter.glsl
-      ? [{ type: adapter.type, glsl: adapter.glsl, bindings: adapter.glsl.collectBindings(manifest.nodes) }]
-      : []
-  );
-  // Built-in image/spot/starfield helpers (editor overlays, placement, textures)
-  // are still wired by type below; pull their bindings out of the generic list.
-  const imageBindings = (glslLayers.find((entry) => entry.type === "image")?.bindings ??
-    []) as ImageLayerShaderBinding[];
-  const spotBindings = (glslLayers.find((entry) => entry.type === "spot")?.bindings ??
-    []) as SpotLayerShaderBinding[];
-  const starfieldBindings = (glslLayers.find((entry) => entry.type === "starfield")?.bindings ??
-    []) as StarfieldLayerShaderBinding[];
-  const bindingMapsByType = new Map<string, Map<string, unknown>>(
-    glslLayers.map((entry) => [entry.type, entry.glsl.createBindingMap(entry.bindings)])
-  );
-  const layerUniforms = Object.assign(
-    {},
-    ...glslLayers.map((entry) => entry.glsl.shaderUniforms(entry.bindings, glslContext))
-  );
-  const layerUniformDeclarations = glslLayers
-    .map((entry) => entry.glsl.uniformDeclarations(entry.bindings, glslContext))
-    .join("\n");
-  const layerFragmentHelpers = glslLayers
-    .map((entry) => entry.glsl.fragmentHelpers?.(entry.bindings) ?? "")
-    .join("\n");
-  const layerEditorOverlays = editorPresentationEnabled
-    ? glslLayers
-        .map((entry) => entry.glsl.editorOverlayExpression?.(entry.bindings, glslContext) ?? "")
-        .join("\n")
-    : "";
-  const needsDerivatives = glslLayers.some(
-    (entry) =>
-      (Boolean(entry.glsl.fragmentHelpers) && entry.bindings.length > 0) ||
-      (editorPresentationEnabled &&
-        Boolean(entry.glsl.editorOverlayExpression) &&
-        entry.bindings.length > 0)
-  );
-  const layerBlocks = composeNodesExpression(
-    manifest.nodes,
-    "glsl",
-    bindingMapsByType,
-    compositionBindingMap
-  );
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      ...layerUniforms,
-      ...compositionShaderUniforms(compositionBindings),
-    },
-
-    depthTest: false,
-    depthWrite: false,
-    side: THREE.BackSide,
-    vertexShader: `
-      varying vec3 vDirection;
-      void main() {
-        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-        vDirection = worldPosition.xyz - cameraPosition;
-        vec4 clipPosition = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        gl_Position = clipPosition.xyww;
-      }
-    `,
-    fragmentShader: `
-      precision highp float;
-      ${layerUniformDeclarations}
-      ${compositionBindings
-        .map((binding) => `uniform float ${binding.parameterPrefix}Opacity;
-      uniform float ${binding.parameterPrefix}BlendMode;`)
-        .join("\n")}
-      varying vec3 vDirection;
-      ${glslDirectionToEquirectUvFunction()}
-      ${layerFragmentHelpers}
-
-      float softLightDChannel(float backdrop) {
-        return backdrop <= 0.25
-          ? ((16.0 * backdrop - 12.0) * backdrop + 4.0) * backdrop
-          : sqrt(backdrop);
-      }
-
-      float blendColorBurnChannel(float backdrop, float source) {
-        if (backdrop == 1.0) {
-          return 1.0;
-        }
-
-        if (source == 0.0) {
-          return 0.0;
-        }
-
-        return 1.0 - min(1.0, (1.0 - backdrop) / source);
-      }
-
-      float blendColorDodgeChannel(float backdrop, float source) {
-        if (backdrop == 0.0) {
-          return 0.0;
-        }
-
-        if (source == 1.0) {
-          return 1.0;
-        }
-
-        return min(1.0, backdrop / (1.0 - source));
-      }
-
-      float blendOverlayChannel(float backdrop, float source) {
-        return backdrop <= 0.5
-          ? 2.0 * backdrop * source
-          : 1.0 - 2.0 * (1.0 - backdrop) * (1.0 - source);
-      }
-
-      float blendSoftLightChannel(float backdrop, float source) {
-        return source <= 0.5
-          ? backdrop - (1.0 - 2.0 * source) * backdrop * (1.0 - backdrop)
-          : backdrop + (2.0 * source - 1.0) * (softLightDChannel(backdrop) - backdrop);
-      }
-
-      float blendHardLightChannel(float backdrop, float source) {
-        return source <= 0.5
-          ? 2.0 * backdrop * source
-          : backdrop + (2.0 * source - 1.0) - backdrop * (2.0 * source - 1.0);
-      }
-
-      vec3 blendColorBurn(vec3 backdrop, vec3 source) {
-        return vec3(
-          blendColorBurnChannel(backdrop.r, source.r),
-          blendColorBurnChannel(backdrop.g, source.g),
-          blendColorBurnChannel(backdrop.b, source.b)
-        );
-      }
-
-      vec3 blendColorDodge(vec3 backdrop, vec3 source) {
-        return vec3(
-          blendColorDodgeChannel(backdrop.r, source.r),
-          blendColorDodgeChannel(backdrop.g, source.g),
-          blendColorDodgeChannel(backdrop.b, source.b)
-        );
-      }
-
-      vec3 blendOverlay(vec3 backdrop, vec3 source) {
-        return vec3(
-          blendOverlayChannel(backdrop.r, source.r),
-          blendOverlayChannel(backdrop.g, source.g),
-          blendOverlayChannel(backdrop.b, source.b)
-        );
-      }
-
-      vec3 blendSoftLight(vec3 backdrop, vec3 source) {
-        return vec3(
-          blendSoftLightChannel(backdrop.r, source.r),
-          blendSoftLightChannel(backdrop.g, source.g),
-          blendSoftLightChannel(backdrop.b, source.b)
-        );
-      }
-
-      vec3 blendHardLight(vec3 backdrop, vec3 source) {
-        return vec3(
-          blendHardLightChannel(backdrop.r, source.r),
-          blendHardLightChannel(backdrop.g, source.g),
-          blendHardLightChannel(backdrop.b, source.b)
-        );
-      }
-
-      void main() {
-        vec3 direction = normalize(vDirection);
-        vec3 composedColor = vec3(0.0);
-        ${layerBlocks}
-        ${layerEditorOverlays}
-        gl_FragColor = vec4(composedColor, 1.0);
-      }
-    `,
-  });
-
-  if (needsDerivatives) {
-    (material.extensions as { derivatives?: boolean }).derivatives = true;
-  }
-
-  if (editorPresentationEnabled) {
-    attachEditorLayerStateUpdater(material, (nextEditorLayerState) =>
-      applyEditorLayerStateToShaderUniforms(
-        material,
-        imageBindings,
-        spotBindings,
-        nextEditorLayerState
-      )
-    );
-  }
-  attachCompositionUpdater(material, (nextManifest) =>
-    applyCompositionParamsToShaderUniforms(material, compositionBindings, nextManifest)
-  );
-  attachLayerCompositionUpdater(material, (node) =>
-    applyLayerCompositionToShaderUniforms(material, compositionBindings, node)
-  );
-  attachImagePlacementUpdater(material, (layerId, placement) =>
-    applyImageLayerPlacementToShaderUniforms(material, imageBindings, layerId, placement)
-  );
-  material.userData.applyImageTextures = (textures: Map<string, THREE.Texture>) =>
-    updateImageTextureUniforms(material, imageBindings, textures);
-  material.userData.applyStarfieldTextures = (textures: Map<string, THREE.Texture>) =>
-    updateStarfieldTextureUniforms(material, starfieldBindings, textures);
-  material.userData.applyLayerParams = (layer: SkyboxManifestLayer) => {
-    const entry = glslLayers.find((candidate) => candidate.type === layer.type);
-
-    entry?.glsl.applyParams?.(material, layer, entry.bindings);
-  };
-
-  return material;
-}
-
 function createCanvas(width: number, height: number): HTMLCanvasElement | OffscreenCanvas {
   if (typeof document !== "undefined") {
     const canvas = document.createElement("canvas");
@@ -925,68 +628,13 @@ export function createBakedSkyboxTexture(manifest: SkyboxManifest, options: Skyb
   return texture;
 }
 
-function createWebGlBakedMaterial(texture: THREE.Texture) {
-  const material = new THREE.ShaderMaterial({
-    depthTest: false,
-    depthWrite: false,
-    side: THREE.BackSide,
-    uniforms: {
-      skyboxTexture: { value: texture },
-    },
-    vertexShader: `
-      varying vec3 vDirection;
-      void main() {
-        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-        vDirection = worldPosition.xyz - cameraPosition;
-        vec4 clipPosition = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        gl_Position = clipPosition.xyww;
-      }
-    `,
-    fragmentShader: `
-      precision highp float;
-      uniform sampler2D skyboxTexture;
-      varying vec3 vDirection;
-
-      const float PI = 3.141592653589793;
-
-      vec2 directionToEquirectUv(vec3 direction) {
-        vec3 normalizedDirection = normalize(direction);
-        float longitude = atan(normalizedDirection.x, -normalizedDirection.z);
-        float latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));
-
-        return vec2(longitude / (2.0 * PI) + 0.5, latitude / PI + 0.5);
-      }
-
-      void main() {
-        vec3 direction = normalize(vDirection);
-        vec4 sampledColor = texture2D(skyboxTexture, directionToEquirectUv(direction));
-        gl_FragColor = vec4(sampledColor.rgb, sampledColor.a);
-      }
-    `,
-  });
-
-  return material;
+export function createBakedMaterialFromTexture(texture: THREE.Texture) {
+  return createWebGpuBakedMaterial(texture);
 }
 
-export function createBakedMaterialFromTexture(
-  texture: THREE.Texture,
-  renderer?: SupportedRenderer | null
-) {
-  return isWebGpuRenderer(renderer)
-    ? createWebGpuBakedMaterial(texture)
-    : createWebGlBakedMaterial(texture);
-}
-
-function isWebGpuRenderer(renderer?: SupportedRenderer | null) {
-  return Boolean(renderer && "isWebGPURenderer" in renderer && renderer.isWebGPURenderer);
-}
-
-export function resolveRenderMode(mode: SkyboxRenderMode, renderer?: SupportedRenderer | null): Exclude<SkyboxRenderMode, "auto"> {
-  if (mode !== "auto") {
-    return mode;
-  }
-
-  return isWebGpuRenderer(renderer) ? "live-webgpu" : "live-webgl";
+// WebGPU-only runtime: "auto"/"live-webgl" collapse to the WebGPU live path; "baked-texture" preserved.
+export function resolveRenderMode(mode: SkyboxRenderMode): Exclude<SkyboxRenderMode, "auto"> {
+  return mode === "baked-texture" ? "baked-texture" : "live-webgpu";
 }
 
 export function createMaterialTopologyKey(

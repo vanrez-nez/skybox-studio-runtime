@@ -27,5 +27,3 @@ export declare const webGpuImageEditorRectOverlayFunction: (...params: (number |
 export declare const webGpuSpotEditorRectInfoFunction: (...params: (number | import("three/webgpu").Node)[] | readonly [import("three/tsl").ProxiedObject<{
     [name: string]: number | import("three/webgpu").Node;
 }>]) => import("three/webgpu").Node;
-export declare function glslImageEditorRectOverlayExpression(bindings: ImageLayerShaderBinding[]): string;
-export declare function glslSpotEditorRectOverlayExpression(bindings: SpotLayerShaderBinding[]): string;

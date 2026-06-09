@@ -6,8 +6,6 @@ export {
 } from "./registry";
 export type {
   LayerCpuSampleContext,
-  LayerGlslAdapter,
-  LayerGlslBuildContext,
   LayerLiveUpdateContext,
   LayerRuntimeAdapter,
 } from "./registry";

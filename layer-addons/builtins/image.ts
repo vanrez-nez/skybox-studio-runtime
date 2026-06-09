@@ -13,10 +13,6 @@ import type {
   SkyboxManifestLayer,
   SkyboxManifestNode,
 } from "../../manifest";
-import {
-  glslImageEditorRectOverlayExpression,
-  imageEditorShaderUniforms,
-} from "../../skybox/editor-presentation";
 import { EMPTY_IMAGE_TEXTURE } from "../../skybox/empty-texture";
 import {
   IMAGE_PROJECTION_DENOM_EPSILON,
@@ -27,13 +23,12 @@ import type {
   ImageLayerShaderBinding,
   ImagePlacementUniformNodes,
   RuntimeMaterial,
-  SkyboxEditorLayerState,
   WebGpuImageLayerSampleNodes,
   WebGpuImageSampleNodeData,
 } from "../../skybox/types";
 import { mixRgba, sampleImagePixel } from "../cpu-sampling";
 import { registerLayerRuntimeAdapter } from "../registry";
-import { numberLiteral, zeroEffectExpression, type ShaderLanguage } from "../shader-codegen";
+import { numberLiteral, zeroEffectExpression } from "../shader-codegen";
 import type { WebGpuLayerAdapter } from "../types";
 
 // --- CPU sampling ---
@@ -131,41 +126,6 @@ export function applyImageLayerPlacementToUniformNodes(
   (placementUniforms.halfSize as any).value.copy(placementValues.halfSize);
 }
 
-function imagePlacementShaderUniforms(bindings: ImageLayerShaderBinding[]) {
-  return Object.fromEntries(
-    bindings.flatMap((binding) => {
-      const placement = imagePlacementShaderValues(binding.layer.params.placement);
-
-      return [
-        [`imageCenterDirection${binding.index}`, { value: placement.centerDirection }],
-        [`imageTangentX${binding.index}`, { value: placement.tangentX }],
-        [`imageTangentY${binding.index}`, { value: placement.tangentY }],
-        [`imageHalfSize${binding.index}`, { value: placement.halfSize }],
-      ];
-    })
-  );
-}
-
-export function applyImageLayerPlacementToShaderUniforms(
-  material: THREE.ShaderMaterial,
-  bindings: ImageLayerShaderBinding[],
-  layerId: string,
-  placement: SkyboxImagePlacement | null
-) {
-  const binding = bindings.find((nextBinding) => nextBinding.layer.id === layerId);
-
-  if (!binding) {
-    return;
-  }
-
-  const placementValues = imagePlacementShaderValues(placement);
-
-  material.uniforms[`imageCenterDirection${binding.index}`]?.value.copy(placementValues.centerDirection);
-  material.uniforms[`imageTangentX${binding.index}`]?.value.copy(placementValues.tangentX);
-  material.uniforms[`imageTangentY${binding.index}`]?.value.copy(placementValues.tangentY);
-  material.uniforms[`imageHalfSize${binding.index}`]?.value.copy(placementValues.halfSize);
-}
-
 export function attachImagePlacementUpdater(
   material: RuntimeMaterial,
   updater: (layerId: string, placement: SkyboxImagePlacement | null) => void
@@ -206,15 +166,10 @@ function collectImageLayerBindings(nodes: SkyboxManifestNode[]) {
   return bindings;
 }
 
-function createImageBindingMap(bindings: ImageLayerShaderBinding[]) {
-  return new Map(bindings.map((binding) => [binding.layer.id, binding]));
-}
-
 // --- Sample-info projection (shared GLSL + WGSL) ---
 
 function imageSampleInfoExpression(
   binding: ImageLayerShaderBinding,
-  language: ShaderLanguage,
   refs: {
     centerDirection: string;
     halfSize: string;
@@ -223,57 +178,30 @@ function imageSampleInfoExpression(
   }
 ) {
   const { width, height } = binding.layer.params;
-  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
-  const declare = language === "wgsl" ? "let" : "float";
-  const validDeclare = language === "wgsl" ? "let" : "float";
-  const vecDeclare = language === "wgsl" ? "let" : "vec3";
 
   if (width <= 0 || height <= 0) {
-    return `return ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
+    return `return vec4<f32>(0.0, 0.0, 0.0, 0.0);`;
   }
 
   return `
-      ${vecDeclare} imageDirection = normalize(direction);
-      ${declare} imageDenom = dot(imageDirection, ${refs.centerDirection});
-      ${declare} safeImageDenom = max(imageDenom, 0.000001);
-      ${declare} projectedX = dot(imageDirection, ${refs.tangentX}) / safeImageDenom;
-      ${declare} projectedY = dot(imageDirection, ${refs.tangentY}) / safeImageDenom;
-      ${declare} imageU = projectedX / max(${refs.halfSize}.x * 2.0, 0.000001) + 0.5;
-      ${declare} imageV = 0.5 - projectedY / max(${refs.halfSize}.y * 2.0, 0.000001);
-      ${declare} imageEdgeDistance = min(min(imageU, 1.0 - imageU), min(imageV, 1.0 - imageV));
-      ${declare} imageEdgeWidth = clamp(fwidth(imageEdgeDistance), 0.000001, ${numberLiteral(IMAGE_PROJECTION_MAX_EDGE_WIDTH)});
-      ${declare} imageHardInside = step(${numberLiteral(IMAGE_PROJECTION_DENOM_EPSILON)}, imageDenom) *
+      let imageDirection = normalize(direction);
+      let imageDenom = dot(imageDirection, ${refs.centerDirection});
+      let safeImageDenom = max(imageDenom, 0.000001);
+      let projectedX = dot(imageDirection, ${refs.tangentX}) / safeImageDenom;
+      let projectedY = dot(imageDirection, ${refs.tangentY}) / safeImageDenom;
+      let imageU = projectedX / max(${refs.halfSize}.x * 2.0, 0.000001) + 0.5;
+      let imageV = 0.5 - projectedY / max(${refs.halfSize}.y * 2.0, 0.000001);
+      let imageEdgeDistance = min(min(imageU, 1.0 - imageU), min(imageV, 1.0 - imageV));
+      let imageEdgeWidth = clamp(fwidth(imageEdgeDistance), 0.000001, ${numberLiteral(IMAGE_PROJECTION_MAX_EDGE_WIDTH)});
+      let imageHardInside = step(${numberLiteral(IMAGE_PROJECTION_DENOM_EPSILON)}, imageDenom) *
         step(0.0, ${refs.halfSize}.x) *
         step(0.0, ${refs.halfSize}.y);
-      ${declare} imageNearRect = step(-imageEdgeWidth, imageEdgeDistance);
-      ${validDeclare} imageValid = imageHardInside *
+      let imageNearRect = step(-imageEdgeWidth, imageEdgeDistance);
+      let imageValid = imageHardInside *
         imageNearRect *
         smoothstep(-imageEdgeWidth, imageEdgeWidth, imageEdgeDistance);
-      return ${vec4Type}(imageU, imageV, imageValid, 0.0);
+      return vec4<f32>(imageU, imageV, imageValid, 0.0);
     `;
-}
-
-function imageSampleExpression(
-  layer: Extract<SkyboxManifestLayer, { type: "image" }>,
-  imageBindings: Map<string, ImageLayerShaderBinding>,
-  language: ShaderLanguage
-) {
-  const binding = imageBindings.get(layer.id);
-  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
-
-  if (!binding) {
-    return `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
-  }
-
-  if (language === "wgsl") {
-    return `effectColor = ${binding.parameterName};`;
-  }
-
-  return `{
-    vec4 imageSampleInfo = skyboxStudioImageSampleInfo${binding.index}(direction);
-    vec4 imageSampleColor = texture2D(imageTexture${binding.index}, imageSampleInfo.xy);
-    effectColor = vec4(imageSampleColor.rgb, imageSampleColor.a * imageSampleInfo.z);
-  }`;
 }
 
 // --- WGSL helpers ---
@@ -287,7 +215,7 @@ function webGpuImageSampleInfoFunction(binding: ImageLayerShaderBinding) {
       imageTangentY: vec3<f32>,
       imageHalfSize: vec2<f32>
     ) -> vec4<f32> {
-      ${imageSampleInfoExpression(binding, "wgsl", {
+      ${imageSampleInfoExpression(binding, {
         centerDirection: "imageCenterDirection",
         halfSize: "imageHalfSize",
         tangentX: "imageTangentX",
@@ -303,45 +231,6 @@ const webGpuImageMaskFunction = wgslFn(`
   }
 `);
 
-// --- GLSL helpers ---
-
-function glslImageSampleInfoFunctions(bindings: ImageLayerShaderBinding[]) {
-  return bindings
-    .map(
-      (binding) => `
-        vec4 skyboxStudioImageSampleInfo${binding.index}(vec3 direction) {
-          ${imageSampleInfoExpression(binding, "glsl", {
-            centerDirection: `imageCenterDirection${binding.index}`,
-            halfSize: `imageHalfSize${binding.index}`,
-            tangentX: `imageTangentX${binding.index}`,
-            tangentY: `imageTangentY${binding.index}`,
-          })}
-        }
-      `
-    )
-    .join("\n");
-}
-
-function glslImageUniformDeclarations(
-  bindings: ImageLayerShaderBinding[],
-  editorPresentationEnabled: boolean
-) {
-  return bindings
-    .map(
-      (binding) => `uniform sampler2D imageTexture${binding.index};
-      uniform vec3 imageCenterDirection${binding.index};
-      uniform vec3 imageTangentX${binding.index};
-      uniform vec3 imageTangentY${binding.index};
-      uniform vec2 imageHalfSize${binding.index};${
-        editorPresentationEnabled
-          ? `
-      uniform float imageActive${binding.index};`
-          : ""
-      }`
-    )
-    .join("\n");
-}
-
 // --- Texture binding ---
 
 function getImageTexture(
@@ -349,32 +238,6 @@ function getImageTexture(
   layer: Extract<SkyboxManifestLayer, { type: "image" }>
 ) {
   return imageTextures.get(layer.id) ?? EMPTY_IMAGE_TEXTURE;
-}
-
-function imageTextureUniforms(
-  bindings: ImageLayerShaderBinding[],
-  imageTextures: Map<string, THREE.Texture>
-) {
-  return Object.fromEntries(
-    bindings.map((binding) => [
-      `imageTexture${binding.index}`,
-      { value: getImageTexture(imageTextures, binding.layer) },
-    ])
-  );
-}
-
-export function updateImageTextureUniforms(
-  material: THREE.ShaderMaterial,
-  bindings: ImageLayerShaderBinding[],
-  imageTextures: Map<string, THREE.Texture>
-) {
-  bindings.forEach((binding) => {
-    const uniformName = `imageTexture${binding.index}`;
-
-    if (material.uniforms[uniformName]) {
-      material.uniforms[uniformName].value = getImageTexture(imageTextures, binding.layer);
-    }
-  });
 }
 
 export function updateImageTextureNodes(
@@ -442,10 +305,10 @@ const imageWebGpuAdapter: BuiltInWebGpuLayerAdapter<"image", ImageLayerShaderBin
       .map((binding) => `,
       ${binding.parameterName}: vec4<f32>`)
       .join(""),
-  createSampleExpression: (layer, language, context) => {
+  createSampleExpression: (layer, _language, context) => {
     const binding = context.bindingsByLayerId.get(layer.id);
 
-    return binding ? `effectColor = ${binding.parameterName};` : zeroEffectExpression(language);
+    return binding ? `effectColor = ${binding.parameterName};` : zeroEffectExpression();
   },
   createSampleNodes: ({ bindings, direction, imageTextures, uniforms }) => {
     const imageSamples = createWebGpuImageSampleNodes(
@@ -503,36 +366,4 @@ registerLayerRuntimeAdapter({
   wgsl: imageWebGpuAdapter as WebGpuLayerAdapter,
   wgslEditorOverlay: true,
   getTopologyKey: (layer) => imageWebGpuAdapter.getTopologyKey(layer as never),
-  glsl: {
-    collectBindings: (nodes) => collectImageLayerBindings(nodes),
-    createBindingMap: (bindings) => createImageBindingMap(bindings as ImageLayerShaderBinding[]),
-    uniformDeclarations: (bindings, context) =>
-      glslImageUniformDeclarations(
-        bindings as ImageLayerShaderBinding[],
-        context.editorPresentationEnabled
-      ),
-    fragmentHelpers: (bindings) =>
-      glslImageSampleInfoFunctions(bindings as ImageLayerShaderBinding[]),
-    shaderUniforms: (bindings, context) => ({
-      ...imagePlacementShaderUniforms(bindings as ImageLayerShaderBinding[]),
-      ...imageTextureUniforms(
-        bindings as ImageLayerShaderBinding[],
-        context.imageTextures as Map<string, THREE.Texture>
-      ),
-      ...(context.editorPresentationEnabled
-        ? imageEditorShaderUniforms(
-            bindings as ImageLayerShaderBinding[],
-            context.editorLayerState as SkyboxEditorLayerState
-          )
-        : {}),
-    }),
-    editorOverlayExpression: (bindings) =>
-      glslImageEditorRectOverlayExpression(bindings as ImageLayerShaderBinding[]),
-    sampleExpression: (layer, bindingMap, language) =>
-      imageSampleExpression(
-        layer as Extract<SkyboxManifestLayer, { type: "image" }>,
-        bindingMap as Map<string, ImageLayerShaderBinding>,
-        language
-      ),
-  },
 });

@@ -9,7 +9,6 @@ export {
   resolveBakeOptions,
 } from "./bake";
 export type { BakedSkyboxImageData, SkyboxImageBakeOptions } from "./bake";
-export { createStarfieldGpuBakeService, StarfieldGpuBakeService } from "./starfield-gpu-bake";
 export { createSkyboxGpuBakeService, SkyboxGpuBakeService } from "./skybox-gpu-bake";
 export type { SkyboxGpuBakeTarget } from "./skybox-gpu-bake";
 export {
@@ -50,36 +49,8 @@ export {
   spotFromPosition,
   spotFromRadiusScale,
 } from "./spot-transform";
-export {
-  bakeStarfieldImageData,
-  createStarCatalogForCoverage,
-  createStarCatalogForDescriptor,
-  createStarfieldBakeCacheKey,
-  createStarfieldPatchLayout,
-  DEFAULT_STARFIELD_CLIP,
-  DEFAULT_STARFIELD_NEBULA,
-  DEFAULT_STARFIELD_NEBULA_FIELD,
-  DEFAULT_STARFIELD_PARAMS,
-  DEFAULT_STARFIELD_QUALITY,
-  DEFAULT_STARFIELD_STARS,
-  getStarfieldQualityPreset,
-  normalizeStarfieldCoverage,
-  normalizeStarfieldQuality,
-  qFromV,
-  normalizeStarfieldParams,
-  sampleStarfieldLayer,
-  sourceDirectionFromUv,
-  sourceFoldEquirectUv,
-  sourceUvFromDirection,
-  STARFIELD_PREVIEW_BAKE_WIDTH,
-  STARFIELD_QUALITY_PRESETS,
-  starfieldFieldGradientToSourceField,
-  starfieldClipContainsDirection,
-  type StarfieldBakeData,
-  type StarfieldCoverage,
-  type StarfieldPatchDescriptor,
-  type StarfieldPatchLayout,
-} from "./starfield-static";
+// Starfield generation (procedural catalog + GPU bake + CPU sampler) moved to the
+// `skybox-studio-runtime/starfield` entry to keep it out of the core bundle. See `starfield.ts`.
 export { evaluateSkyboxDirection } from "./evaluator";
 export {
   getLayerRuntimeAdapter,
@@ -89,8 +60,6 @@ export {
 } from "./layer-addons";
 export type {
   LayerCpuSampleContext,
-  LayerGlslAdapter,
-  LayerGlslBuildContext,
   LayerLiveUpdateContext,
   LayerRuntimeAdapter,
   WebGpuCompositionRuntime,

@@ -12,15 +12,10 @@ import type {
 } from "../../manifest";
 import { normalizeSpotParams } from "../../spot-transform";
 import { colorVectorFromHex } from "../../skybox/colors";
-import {
-  glslSpotEditorRectOverlayExpression,
-  spotEditorShaderUniforms,
-  webGpuSpotEditorRectInfoFunction,
-} from "../../skybox/editor-presentation";
+import { webGpuSpotEditorRectInfoFunction } from "../../skybox/editor-presentation";
 import { colorVectorFromStop, sortedGradientStops } from "../../skybox/stops";
 import type {
   BuiltInWebGpuLayerAdapter,
-  SkyboxEditorLayerState,
   SpotLayerShaderBinding,
   SpotUniformNodes,
 } from "../../skybox/types";
@@ -39,7 +34,7 @@ import {
   sq,
 } from "../cpu-sampling";
 import { registerLayerRuntimeAdapter } from "../registry";
-import { mutableDeclaration, zeroEffectExpression, type ShaderLanguage } from "../shader-codegen";
+import { mutableDeclaration, zeroEffectExpression } from "../shader-codegen";
 import type { WebGpuLayerAdapter } from "../types";
 
 // --- CPU sampling ---
@@ -224,137 +219,6 @@ function applySpotLayerParamsToUniformNodes(
   });
 }
 
-// --- WebGL (GLSL) uniforms ---
-
-function spotShaderUniforms(bindings: SpotLayerShaderBinding[]) {
-  return Object.fromEntries(
-    bindings.flatMap((binding) => {
-      const values = spotShaderValues(binding.layer.params);
-
-      return [
-        [`${binding.parameterPrefix}CenterDirection`, { value: values.centerDirection }],
-        [`${binding.parameterPrefix}Radius`, { value: values.radius }],
-        [`${binding.parameterPrefix}Mode`, { value: values.mode }],
-        [`${binding.parameterPrefix}LightColor`, { value: values.lightColor }],
-        [`${binding.parameterPrefix}Brightness`, { value: values.brightness }],
-        [`${binding.parameterPrefix}CoreRadius`, { value: values.coreRadius }],
-        [`${binding.parameterPrefix}CoreSoftness`, { value: values.coreSoftness }],
-        [`${binding.parameterPrefix}Dispersion`, { value: values.dispersion }],
-        [`${binding.parameterPrefix}DogSpread`, { value: values.dogSpread }],
-        [`${binding.parameterPrefix}DogStrength`, { value: values.dogStrength }],
-        [`${binding.parameterPrefix}DogStretch`, { value: values.dogStretch }],
-        [`${binding.parameterPrefix}GlareSize`, { value: values.glareSize }],
-        [`${binding.parameterPrefix}GlareStrength`, { value: values.glareStrength }],
-        [`${binding.parameterPrefix}GlowSize`, { value: values.glowSize }],
-        [`${binding.parameterPrefix}GlowStrength`, { value: values.glowStrength }],
-        [`${binding.parameterPrefix}HaloInnerWidth`, { value: values.haloInnerWidth }],
-        [`${binding.parameterPrefix}HaloOuterWidth`, { value: values.haloOuterWidth }],
-        [`${binding.parameterPrefix}HaloRadius`, { value: values.haloRadius }],
-        [`${binding.parameterPrefix}HaloStrength`, { value: values.haloStrength }],
-        ...Array.from({ length: binding.stopCount }, (_, stopIndex) => {
-          const stop = values.stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
-
-          return [
-            [`${binding.parameterPrefix}StopColor${stopIndex}`, { value: colorVectorFromStop(stop) }],
-            [`${binding.parameterPrefix}StopMidpoint${stopIndex}`, { value: stop.midpoint }],
-            [`${binding.parameterPrefix}StopT${stopIndex}`, { value: stop.t }],
-          ];
-        }).flat(),
-      ];
-    })
-  );
-}
-
-function applySpotLayerParamsToShaderUniforms(
-  material: THREE.ShaderMaterial,
-  layer: Extract<SkyboxManifestLayer, { type: "spot" }>,
-  bindings: SpotLayerShaderBinding[]
-) {
-  const binding = bindings.find((nextBinding) => nextBinding.layer.id === layer.id);
-
-  if (!binding) {
-    return;
-  }
-
-  const values = spotShaderValues(layer.params);
-
-  material.uniforms[`${binding.parameterPrefix}CenterDirection`]?.value.copy(values.centerDirection);
-  if (material.uniforms[`${binding.parameterPrefix}Radius`]) {
-    material.uniforms[`${binding.parameterPrefix}Radius`].value = values.radius;
-  }
-  if (material.uniforms[`${binding.parameterPrefix}Mode`]) {
-    material.uniforms[`${binding.parameterPrefix}Mode`].value = values.mode;
-  }
-  material.uniforms[`${binding.parameterPrefix}LightColor`]?.value.copy(values.lightColor);
-  if (material.uniforms[`${binding.parameterPrefix}Brightness`]) {
-    material.uniforms[`${binding.parameterPrefix}Brightness`].value = values.brightness;
-  }
-  [
-    ["CoreRadius", values.coreRadius],
-    ["CoreSoftness", values.coreSoftness],
-    ["Dispersion", values.dispersion],
-    ["DogSpread", values.dogSpread],
-    ["DogStrength", values.dogStrength],
-    ["DogStretch", values.dogStretch],
-    ["GlareSize", values.glareSize],
-    ["GlareStrength", values.glareStrength],
-    ["GlowSize", values.glowSize],
-    ["GlowStrength", values.glowStrength],
-    ["HaloInnerWidth", values.haloInnerWidth],
-    ["HaloOuterWidth", values.haloOuterWidth],
-    ["HaloRadius", values.haloRadius],
-    ["HaloStrength", values.haloStrength],
-  ].forEach(([suffix, nextValue]) => {
-    if (material.uniforms[`${binding.parameterPrefix}${suffix}`]) {
-      material.uniforms[`${binding.parameterPrefix}${suffix}`].value = nextValue;
-    }
-  });
-  Array.from({ length: binding.stopCount }, (_, stopIndex) => {
-    const stop = values.stops[stopIndex] ?? { color: "#000000", midpoint: 0.5, opacity: 0, t: 0 };
-
-    material.uniforms[`${binding.parameterPrefix}StopColor${stopIndex}`]?.value.copy(
-      colorVectorFromStop(stop)
-    );
-    if (material.uniforms[`${binding.parameterPrefix}StopMidpoint${stopIndex}`]) {
-      material.uniforms[`${binding.parameterPrefix}StopMidpoint${stopIndex}`].value = stop.midpoint;
-    }
-    if (material.uniforms[`${binding.parameterPrefix}StopT${stopIndex}`]) {
-      material.uniforms[`${binding.parameterPrefix}StopT${stopIndex}`].value = stop.t;
-    }
-  });
-}
-
-function glslSpotUniformDeclarations(
-  bindings: SpotLayerShaderBinding[],
-  editorPresentationEnabled: boolean
-) {
-  return bindings
-    .map((binding) => `uniform vec3 ${binding.parameterPrefix}CenterDirection;
-      uniform float ${binding.parameterPrefix}Radius;
-      uniform float ${binding.parameterPrefix}Mode;
-      uniform vec3 ${binding.parameterPrefix}LightColor;
-      uniform float ${binding.parameterPrefix}Brightness;
-      uniform float ${binding.parameterPrefix}CoreRadius;
-      uniform float ${binding.parameterPrefix}CoreSoftness;
-      uniform float ${binding.parameterPrefix}Dispersion;
-      uniform float ${binding.parameterPrefix}DogSpread;
-      uniform float ${binding.parameterPrefix}DogStrength;
-      uniform float ${binding.parameterPrefix}DogStretch;
-      uniform float ${binding.parameterPrefix}GlareSize;
-      uniform float ${binding.parameterPrefix}GlareStrength;
-      uniform float ${binding.parameterPrefix}GlowSize;
-      uniform float ${binding.parameterPrefix}GlowStrength;
-      uniform float ${binding.parameterPrefix}HaloInnerWidth;
-      uniform float ${binding.parameterPrefix}HaloOuterWidth;
-      uniform float ${binding.parameterPrefix}HaloRadius;
-      uniform float ${binding.parameterPrefix}HaloStrength;
-      ${editorPresentationEnabled ? `uniform float spotActive${binding.index};` : ""}
-      ${Array.from({ length: binding.stopCount }, (_, stopIndex) => `uniform vec4 ${binding.parameterPrefix}StopColor${stopIndex};
-      uniform float ${binding.parameterPrefix}StopMidpoint${stopIndex};
-      uniform float ${binding.parameterPrefix}StopT${stopIndex};`).join("\n")}`)
-    .join("\n");
-}
-
 // --- Binding collection ---
 
 function collectSpotLayerBindings(nodes: SkyboxManifestNode[]) {
@@ -389,14 +253,9 @@ function collectSpotLayerBindings(nodes: SkyboxManifestNode[]) {
   return bindings;
 }
 
-function createSpotBindingMap(bindings: SpotLayerShaderBinding[]) {
-  return new Map(bindings.map((binding) => [binding.layer.id, binding]));
-}
-
 // --- Sample expression (shared GLSL + WGSL codegen) ---
 
-function spotGradientSampleExpression(binding: SpotLayerShaderBinding, language: ShaderLanguage) {
-  const declare = language === "wgsl" ? "let" : "float";
+function spotGradientSampleExpression(binding: SpotLayerShaderBinding) {
   const branches = Array.from({ length: Math.max(0, binding.stopCount - 1) }, (_, index) => {
     const currentStopT = `${binding.parameterPrefix}StopT${index}`;
     const nextStopT = `${binding.parameterPrefix}StopT${index + 1}`;
@@ -406,16 +265,13 @@ function spotGradientSampleExpression(binding: SpotLayerShaderBinding, language:
     const midpointUniform = `${binding.parameterPrefix}StopMidpoint${index}`;
     const lowerMidpoint = `${localT} / max(${segmentMidpoint} * 2.0, 0.00001)`;
     const upperMidpoint = `0.5 + (${localT} - ${segmentMidpoint}) / max((1.0 - ${segmentMidpoint}) * 2.0, 0.00001)`;
-    const midpointExpression = language === "wgsl"
-      ? `select(${upperMidpoint}, ${lowerMidpoint}, ${localT} <= ${segmentMidpoint})`
-      : `(${localT} <= ${segmentMidpoint} ? ${lowerMidpoint} : ${upperMidpoint})`;
-    const declarationSuffix = language === "wgsl" ? ": f32" : "";
+    const midpointExpression = `select(${upperMidpoint}, ${lowerMidpoint}, ${localT} <= ${segmentMidpoint})`;
     const keyword = index === 0 ? "if" : "else if";
 
     return `${keyword} (spotT <= ${nextStopT}) {
-        ${declare} ${localT}${declarationSuffix} = clamp((spotT - ${currentStopT}) / max(${nextStopT} - ${currentStopT}, 0.00001), 0.0, 1.0);
-        ${declare} ${segmentMidpoint}${declarationSuffix} = clamp(${midpointUniform}, 0.01, 0.99);
-        ${declare} ${midpointT}${declarationSuffix} = ${midpointExpression};
+        let ${localT}: f32 = clamp((spotT - ${currentStopT}) / max(${nextStopT} - ${currentStopT}, 0.00001), 0.0, 1.0);
+        let ${segmentMidpoint}: f32 = clamp(${midpointUniform}, 0.01, 0.99);
+        let ${midpointT}: f32 = ${midpointExpression};
         effectColor = mix(${binding.parameterPrefix}StopColor${index}, ${binding.parameterPrefix}StopColor${index + 1}, ${midpointT});
       }`;
   });
@@ -433,73 +289,70 @@ function spotGradientSampleExpression(binding: SpotLayerShaderBinding, language:
     }`;
 }
 
-function spotSampleExpression(binding: SpotLayerShaderBinding, language: ShaderLanguage) {
-  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
-  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
-  const declare = language === "wgsl" ? "let" : "float";
+function spotSampleExpression(binding: SpotLayerShaderBinding) {
   const colorModeCondition = `${binding.parameterPrefix}Mode > 0.5`;
-  const gradientBranch = spotGradientSampleExpression(binding, language);
+  const gradientBranch = spotGradientSampleExpression(binding);
 
   return `{
-    ${language === "wgsl" ? "let" : "vec3"} spotCenter = normalize(${binding.parameterPrefix}CenterDirection);
-    ${declare} spotDot = clamp(dot(normalize(direction), spotCenter), -1.0, 1.0);
-    ${declare} spotT = acos(spotDot) / max(${binding.parameterPrefix}Radius, 0.0001);
+    let spotCenter = normalize(${binding.parameterPrefix}CenterDirection);
+    let spotDot = clamp(dot(normalize(direction), spotCenter), -1.0, 1.0);
+    let spotT = acos(spotDot) / max(${binding.parameterPrefix}Radius, 0.0001);
     if (${colorModeCondition}) {
-      ${gradientBranch || `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`}
+      ${gradientBranch || `effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);`}
     } else {
-      ${language === "wgsl" ? "let" : "vec3"} spotTangentX = normalize(cross(${vec3Type}(0.0, 1.0, 0.0), spotCenter));
-      ${language === "wgsl" ? "let" : "vec3"} spotTangentY = normalize(cross(spotCenter, spotTangentX));
-      ${declare} spotDenom = max(dot(normalize(direction), spotCenter), 0.000001);
-      ${declare} spotLocalX = dot(normalize(direction), spotTangentX) / spotDenom / max(${binding.parameterPrefix}Radius, 0.0001);
-      ${declare} spotLocalY = dot(normalize(direction), spotTangentY) / spotDenom / max(${binding.parameterPrefix}Radius, 0.0001);
-      ${declare} spotD = length(${language === "wgsl" ? "vec2<f32>" : "vec2"}(spotLocalX, spotLocalY));
+      let spotTangentX = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), spotCenter));
+      let spotTangentY = normalize(cross(spotCenter, spotTangentX));
+      let spotDenom = max(dot(normalize(direction), spotCenter), 0.000001);
+      let spotLocalX = dot(normalize(direction), spotTangentX) / spotDenom / max(${binding.parameterPrefix}Radius, 0.0001);
+      let spotLocalY = dot(normalize(direction), spotTangentY) / spotDenom / max(${binding.parameterPrefix}Radius, 0.0001);
+      let spotD = length(vec2<f32>(spotLocalX, spotLocalY));
 
-      ${declare} spotCore = pow(clamp(1.0 - spotD / ${binding.parameterPrefix}CoreRadius, 0.0, 1.0), ${binding.parameterPrefix}CoreSoftness);
-      ${declare} spotGlow = pow(clamp(1.0 - spotD / ${binding.parameterPrefix}GlowSize, 0.0, 1.0), 2.0) * ${binding.parameterPrefix}GlowStrength;
-      ${declare} spotGlare = pow(clamp(1.0 - spotD / ${binding.parameterPrefix}GlareSize, 0.0, 1.0), 1.15) * ${binding.parameterPrefix}GlareStrength;
-      ${declare} spotMonoLight = (spotCore + spotGlow + spotGlare) * ${binding.parameterPrefix}Brightness;
-      ${mutableDeclaration("spotColor", vec3Type, `${binding.parameterPrefix}LightColor * spotMonoLight + ${vec3Type}(max(spotMonoLight - 1.0, 0.0))`, language)}
+      let spotCore = pow(clamp(1.0 - spotD / ${binding.parameterPrefix}CoreRadius, 0.0, 1.0), ${binding.parameterPrefix}CoreSoftness);
+      let spotGlow = pow(clamp(1.0 - spotD / ${binding.parameterPrefix}GlowSize, 0.0, 1.0), 2.0) * ${binding.parameterPrefix}GlowStrength;
+      let spotGlare = pow(clamp(1.0 - spotD / ${binding.parameterPrefix}GlareSize, 0.0, 1.0), 1.15) * ${binding.parameterPrefix}GlareStrength;
+      let spotMonoLight = (spotCore + spotGlow + spotGlare) * ${binding.parameterPrefix}Brightness;
+      ${mutableDeclaration("spotColor", "vec3<f32>", `${binding.parameterPrefix}LightColor * spotMonoLight + vec3<f32>(max(spotMonoLight - 1.0, 0.0))`)}
 
-      ${declare} spotHaloInner = max(${binding.parameterPrefix}HaloInnerWidth, 0.0001);
-      ${declare} spotHaloOuter = max(${binding.parameterPrefix}HaloOuterWidth, 0.0001);
-      ${declare} spotHaloDelta = spotD - ${binding.parameterPrefix}HaloRadius;
-      ${declare} spotHaloWidth = ${language === "wgsl" ? "select(spotHaloOuter, spotHaloInner, spotHaloDelta < 0.0)" : "(spotHaloDelta < 0.0 ? spotHaloInner : spotHaloOuter)"};
-      ${declare} spotHaloEnvelope = exp(-pow(spotHaloDelta / spotHaloWidth, 2.0));
-      ${declare} spotHaloT = clamp((spotD - (${binding.parameterPrefix}HaloRadius - spotHaloInner)) / (spotHaloInner + spotHaloOuter), 0.0, 1.0);
-      ${mutableDeclaration("spotSpectrum", vec3Type, `${vec3Type}(1.0, 0.12, 0.05)`, language)}
-      spotSpectrum = mix(spotSpectrum, ${vec3Type}(1.0, 0.55, 0.10), smoothstep(0.00, 0.28, spotHaloT));
-      spotSpectrum = mix(spotSpectrum, ${vec3Type}(1.0, 0.93, 0.60), smoothstep(0.22, 0.45, spotHaloT));
-      spotSpectrum = mix(spotSpectrum, ${vec3Type}(1.0), smoothstep(0.42, 0.60, spotHaloT));
-      spotSpectrum = mix(spotSpectrum, ${vec3Type}(0.55, 0.80, 1.0), smoothstep(0.62, 0.85, spotHaloT));
-      spotSpectrum = mix(spotSpectrum, ${vec3Type}(0.35, 0.50, 1.0), smoothstep(0.85, 1.00, spotHaloT));
-      ${language === "wgsl" ? "let" : "vec3"} spotHaloLayerColor = mix(${vec3Type}(1.0), spotSpectrum, ${binding.parameterPrefix}Dispersion);
-      ${language === "wgsl" ? "let" : "vec3"} spotHaloTinted = spotHaloLayerColor * mix(${vec3Type}(1.0), ${binding.parameterPrefix}LightColor, 0.82);
-      ${language === "wgsl" ? "let" : "vec3"} spotHaloColor = mix(${binding.parameterPrefix}LightColor, spotHaloTinted, 0.82);
-      ${declare} spotHaloLight = spotHaloEnvelope * ${binding.parameterPrefix}HaloStrength * ${binding.parameterPrefix}Brightness;
-      spotColor += spotHaloColor * spotHaloLight + ${vec3Type}(max(spotHaloLight - 1.2, 0.0) * 0.22);
+      let spotHaloInner = max(${binding.parameterPrefix}HaloInnerWidth, 0.0001);
+      let spotHaloOuter = max(${binding.parameterPrefix}HaloOuterWidth, 0.0001);
+      let spotHaloDelta = spotD - ${binding.parameterPrefix}HaloRadius;
+      let spotHaloWidth = select(spotHaloOuter, spotHaloInner, spotHaloDelta < 0.0);
+      let spotHaloEnvelope = exp(-pow(spotHaloDelta / spotHaloWidth, 2.0));
+      let spotHaloT = clamp((spotD - (${binding.parameterPrefix}HaloRadius - spotHaloInner)) / (spotHaloInner + spotHaloOuter), 0.0, 1.0);
+      ${mutableDeclaration("spotSpectrum", "vec3<f32>", `vec3<f32>(1.0, 0.12, 0.05)`)}
+      spotSpectrum = mix(spotSpectrum, vec3<f32>(1.0, 0.55, 0.10), smoothstep(0.00, 0.28, spotHaloT));
+      spotSpectrum = mix(spotSpectrum, vec3<f32>(1.0, 0.93, 0.60), smoothstep(0.22, 0.45, spotHaloT));
+      spotSpectrum = mix(spotSpectrum, vec3<f32>(1.0), smoothstep(0.42, 0.60, spotHaloT));
+      spotSpectrum = mix(spotSpectrum, vec3<f32>(0.55, 0.80, 1.0), smoothstep(0.62, 0.85, spotHaloT));
+      spotSpectrum = mix(spotSpectrum, vec3<f32>(0.35, 0.50, 1.0), smoothstep(0.85, 1.00, spotHaloT));
+      let spotHaloLayerColor = mix(vec3<f32>(1.0), spotSpectrum, ${binding.parameterPrefix}Dispersion);
+      let spotHaloTinted = spotHaloLayerColor * mix(vec3<f32>(1.0), ${binding.parameterPrefix}LightColor, 0.82);
+      let spotHaloColor = mix(${binding.parameterPrefix}LightColor, spotHaloTinted, 0.82);
+      let spotHaloLight = spotHaloEnvelope * ${binding.parameterPrefix}HaloStrength * ${binding.parameterPrefix}Brightness;
+      spotColor += spotHaloColor * spotHaloLight + vec3<f32>(max(spotHaloLight - 1.2, 0.0) * 0.22);
 
-      ${declare} spotAxisDistance = abs(spotLocalY);
-      ${declare} spotDogX = abs(spotLocalX);
-      ${declare} spotDogBody = exp(-pow((spotDogX - ${binding.parameterPrefix}HaloRadius) / max(${binding.parameterPrefix}DogSpread, 0.0001), 2.0)) *
+      let spotAxisDistance = abs(spotLocalY);
+      let spotDogX = abs(spotLocalX);
+      let spotDogBody = exp(-pow((spotDogX - ${binding.parameterPrefix}HaloRadius) / max(${binding.parameterPrefix}DogSpread, 0.0001), 2.0)) *
         exp(-pow(spotAxisDistance / max(${binding.parameterPrefix}DogSpread * 0.72, 0.0001), 2.0));
-      ${declare} spotDogTail = smoothstep(${binding.parameterPrefix}HaloRadius, ${binding.parameterPrefix}HaloRadius + max(${binding.parameterPrefix}DogStretch, 0.0001), spotDogX) *
+      let spotDogTail = smoothstep(${binding.parameterPrefix}HaloRadius, ${binding.parameterPrefix}HaloRadius + max(${binding.parameterPrefix}DogStretch, 0.0001), spotDogX) *
         (1.0 - smoothstep(${binding.parameterPrefix}HaloRadius + max(${binding.parameterPrefix}DogStretch, 0.0001), ${binding.parameterPrefix}HaloRadius + max(${binding.parameterPrefix}DogStretch * 2.2, 0.0001), spotDogX)) *
         exp(-pow(spotAxisDistance / max(${binding.parameterPrefix}DogSpread * 0.9, 0.0001), 2.0));
-      ${declare} spotDogT = clamp((spotDogX - (${binding.parameterPrefix}HaloRadius - ${binding.parameterPrefix}DogSpread * 1.4)) / max(${binding.parameterPrefix}DogSpread * 3.5, 0.0001), 0.0, 1.0);
-      ${mutableDeclaration("spotDogSpectrum", vec3Type, `${vec3Type}(1.0, 0.12, 0.05)`, language)}
-      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(1.0, 0.55, 0.10), smoothstep(0.00, 0.28, spotDogT));
-      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(1.0, 0.93, 0.60), smoothstep(0.22, 0.45, spotDogT));
-      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(1.0), smoothstep(0.42, 0.60, spotDogT));
-      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(0.55, 0.80, 1.0), smoothstep(0.62, 0.85, spotDogT));
-      spotDogSpectrum = mix(spotDogSpectrum, ${vec3Type}(0.35, 0.50, 1.0), smoothstep(0.85, 1.00, spotDogT));
-      ${language === "wgsl" ? "let" : "vec3"} spotDogLayerColor = mix(${vec3Type}(1.0), spotDogSpectrum, ${binding.parameterPrefix}Dispersion);
-      ${language === "wgsl" ? "let" : "vec3"} spotDogTinted = spotDogLayerColor * mix(${vec3Type}(1.0), ${binding.parameterPrefix}LightColor, 0.82);
-      ${language === "wgsl" ? "let" : "vec3"} spotDogColor = mix(${binding.parameterPrefix}LightColor, spotDogTinted, 0.82);
-      ${declare} spotDogLight = (spotDogBody + spotDogTail * 0.28) * ${binding.parameterPrefix}DogStrength * ${binding.parameterPrefix}Brightness;
-      spotColor += spotDogColor * spotDogLight + ${vec3Type}(max(spotDogLight - 1.1, 0.0) * 0.18);
+      let spotDogT = clamp((spotDogX - (${binding.parameterPrefix}HaloRadius - ${binding.parameterPrefix}DogSpread * 1.4)) / max(${binding.parameterPrefix}DogSpread * 3.5, 0.0001), 0.0, 1.0);
+      ${mutableDeclaration("spotDogSpectrum", "vec3<f32>", `vec3<f32>(1.0, 0.12, 0.05)`)}
+      spotDogSpectrum = mix(spotDogSpectrum, vec3<f32>(1.0, 0.55, 0.10), smoothstep(0.00, 0.28, spotDogT));
+      spotDogSpectrum = mix(spotDogSpectrum, vec3<f32>(1.0, 0.93, 0.60), smoothstep(0.22, 0.45, spotDogT));
+      spotDogSpectrum = mix(spotDogSpectrum, vec3<f32>(1.0), smoothstep(0.42, 0.60, spotDogT));
+      spotDogSpectrum = mix(spotDogSpectrum, vec3<f32>(0.55, 0.80, 1.0), smoothstep(0.62, 0.85, spotDogT));
+      spotDogSpectrum = mix(spotDogSpectrum, vec3<f32>(0.35, 0.50, 1.0), smoothstep(0.85, 1.00, spotDogT));
+      let spotDogLayerColor = mix(vec3<f32>(1.0), spotDogSpectrum, ${binding.parameterPrefix}Dispersion);
+      let spotDogTinted = spotDogLayerColor * mix(vec3<f32>(1.0), ${binding.parameterPrefix}LightColor, 0.82);
+      let spotDogColor = mix(${binding.parameterPrefix}LightColor, spotDogTinted, 0.82);
+      let spotDogLight = (spotDogBody + spotDogTail * 0.28) * ${binding.parameterPrefix}DogStrength * ${binding.parameterPrefix}Brightness;
+      spotColor += spotDogColor * spotDogLight + vec3<f32>(max(spotDogLight - 1.1, 0.0) * 0.18);
 
-      ${declare} spotAlpha = clamp(max(max(spotColor.r, spotColor.g), spotColor.b), 0.0, 1.0);
-      effectColor = ${vec4Type}(spotColor / max(spotAlpha, 0.00001), spotAlpha);
+      let spotAlpha = clamp(max(max(spotColor.r, spotColor.g), spotColor.b), 0.0, 1.0);
+      effectColor = vec4<f32>(spotColor / max(spotAlpha, 0.00001), spotAlpha);
     }
   }`;
 }
@@ -559,10 +412,10 @@ const spotWebGpuAdapter: BuiltInWebGpuLayerAdapter<"spot", SpotLayerShaderBindin
         ]).flat(),
       ])
       .join(""),
-  createSampleExpression: (layer, language, context) => {
+  createSampleExpression: (layer, _language, context) => {
     const binding = context.bindingsByLayerId.get(layer.id);
 
-    return binding ? spotSampleExpression(binding, language) : zeroEffectExpression(language);
+    return binding ? spotSampleExpression(binding) : zeroEffectExpression();
   },
   createSampleNodes: ({ bindings, direction, uniforms }) => ({
     editorProjectionByLayerId: new Map(
@@ -632,35 +485,4 @@ registerLayerRuntimeAdapter({
   wgsl: spotWebGpuAdapter as WebGpuLayerAdapter,
   wgslEditorOverlay: true,
   getTopologyKey: (layer) => spotWebGpuAdapter.getTopologyKey(layer as never),
-  glsl: {
-    collectBindings: (nodes) => collectSpotLayerBindings(nodes),
-    createBindingMap: (bindings) => createSpotBindingMap(bindings as SpotLayerShaderBinding[]),
-    uniformDeclarations: (bindings, context) =>
-      glslSpotUniformDeclarations(
-        bindings as SpotLayerShaderBinding[],
-        context.editorPresentationEnabled
-      ),
-    shaderUniforms: (bindings, context) => ({
-      ...spotShaderUniforms(bindings as SpotLayerShaderBinding[]),
-      ...(context.editorPresentationEnabled
-        ? spotEditorShaderUniforms(
-            bindings as SpotLayerShaderBinding[],
-            context.editorLayerState as SkyboxEditorLayerState
-          )
-        : {}),
-    }),
-    editorOverlayExpression: (bindings) =>
-      glslSpotEditorRectOverlayExpression(bindings as SpotLayerShaderBinding[]),
-    applyParams: (material, layer, bindings) =>
-      applySpotLayerParamsToShaderUniforms(
-        material as THREE.ShaderMaterial,
-        layer as Extract<SkyboxManifestLayer, { type: "spot" }>,
-        bindings as SpotLayerShaderBinding[]
-      ),
-    sampleExpression: (layer, bindingMap, language) => {
-      const binding = bindingMap.get(layer.id) as SpotLayerShaderBinding | undefined;
-
-      return binding ? spotSampleExpression(binding, language) : zeroEffectExpression(language);
-    },
-  },
 });

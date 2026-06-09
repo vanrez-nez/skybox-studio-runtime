@@ -4,12 +4,19 @@ export default defineConfig({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: "index.ts",
-      fileName: "index",
+      // Multiple entries → rolldown code-splits: the heavy starfield-generation code lands in its
+      // own chunk (reachable only from the `starfield` entry), keeping the core `index.js` small.
+      entry: {
+        index: "index.ts",
+        starfield: "starfield.ts",
+      },
       formats: ["es"],
     },
     rollupOptions: {
       external: ["three", "three/tsl", "three/webgpu"],
+      output: {
+        chunkFileNames: "[name]-[hash].js",
+      },
     },
   },
 });

@@ -1,38 +1,7 @@
 import type { Rgb, Rgba } from "../math";
 import type { SkyboxManifestLayer, SkyboxManifestNode } from "../manifest";
 import type { StarfieldBakeData } from "../starfield-static";
-import type { ShaderLanguage } from "./shader-codegen";
 import type { WebGpuLayerAdapter } from "./types";
-/**
- * GLSL (live-webgl) half of a layer adapter. `sampleExpression` returns the GLSL
- * statement that assigns this layer's contribution to `effectColor`, looking its
- * binding up from the per-type binding map. (Binding/uniform/declaration assembly
- * remains in the material builder for now and is genericized incrementally.)
- */
-export type LayerGlslBuildContext = {
-    editorPresentationEnabled: boolean;
-    editorLayerState: unknown;
-    imageTextures: Map<string, unknown>;
-    starfieldTextures: Map<string, unknown>;
-};
-export type LayerGlslAdapter = {
-    /** Collect this layer type's GLSL bindings from the manifest nodes. */
-    collectBindings: (nodes: SkyboxManifestNode[]) => unknown[];
-    /** Index the bindings by layer id (used for sample-expression lookup). */
-    createBindingMap: (bindings: unknown[]) => Map<string, unknown>;
-    /** GLSL `uniform` declarations for the fragment shader header. */
-    uniformDeclarations: (bindings: unknown[], context: LayerGlslBuildContext) => string;
-    /** Optional GLSL helper-function declarations (e.g. image sampling). */
-    fragmentHelpers?: (bindings: unknown[]) => string;
-    /** three.js uniform objects for this type (incl. textures/editor). */
-    shaderUniforms: (bindings: unknown[], context: LayerGlslBuildContext) => Record<string, unknown>;
-    /** Optional editor-overlay GLSL appended to `main()` (editor mode only). */
-    editorOverlayExpression?: (bindings: unknown[], context: LayerGlslBuildContext) => string;
-    /** Push a layer's params into the live material's uniforms (Direct update). */
-    applyParams?: (material: unknown, layer: SkyboxManifestLayer, bindings: unknown[]) => void;
-    /** GLSL statement assigning this layer's contribution to `effectColor`. */
-    sampleExpression: (layer: SkyboxManifestLayer, bindingMap: Map<string, unknown>, language: ShaderLanguage) => string;
-};
 /**
  * Context handed to a layer's CPU sampler (`evaluator.ts` + `bake.ts`).
  * Defined here (not imported from the evaluator) so the registry has no
@@ -78,8 +47,6 @@ export type LayerRuntimeAdapter<TParams = unknown> = {
      * adapter's sample nodes to publish an editor projection per layer.
      */
     wgslEditorOverlay?: boolean;
-    /** Live WebGL (GLSL) sample-expression adapter. */
-    glsl?: LayerGlslAdapter;
     /**
      * Direct-pipeline live update for a single layer (editor tweaks). Runs the
      * per-type live update via the provided context. No `setManifest`.

@@ -20,7 +20,6 @@ import {
   mutableDeclaration,
   numberLiteral,
   zeroEffectExpression,
-  type ShaderLanguage,
 } from "../shader-codegen";
 import type { WebGpuLayerAdapter } from "../types";
 
@@ -136,85 +135,6 @@ function applyFieldGradientLayerParamsToUniformNodes(
   });
 }
 
-// --- WebGL (GLSL) uniforms ---
-
-function fieldGradientShaderUniforms(bindings: FieldGradientLayerShaderBinding[]) {
-  return Object.fromEntries(
-    bindings.flatMap((binding) => [
-      [`${binding.parameterPrefix}Amplitude`, { value: clamp(binding.layer.params.amplitude, 0, 0.6) }],
-      [`${binding.parameterPrefix}Frequency`, { value: Math.max(0.0001, binding.layer.params.frequency) }],
-      [`${binding.parameterPrefix}Mode`, { value: fieldGradientModeValue(binding.layer.params.mode) }],
-      [`${binding.parameterPrefix}Power`, { value: Math.max(0.0001, binding.layer.params.power) }],
-      ...Array.from({ length: binding.anchorCount }, (_, anchorIndex) => {
-        const anchor = binding.layer.params.anchors[anchorIndex] ?? {
-          color: "#000000",
-          x: 0.5,
-          y: 0.5,
-        };
-
-        return [
-          [`${binding.parameterPrefix}AnchorDirection${anchorIndex}`, { value: directionVectorFromPoint(anchor.x, anchor.y) }],
-          [`${binding.parameterPrefix}AnchorColor${anchorIndex}`, { value: colorVectorFromHex(anchor.color) }],
-        ];
-      }).flat(),
-    ])
-  );
-}
-
-function applyFieldGradientLayerParamsToShaderUniforms(
-  material: THREE.ShaderMaterial,
-  layer: Extract<SkyboxManifestLayer, { type: "field-gradient" }>,
-  bindings: FieldGradientLayerShaderBinding[]
-) {
-  const binding = bindings.find((nextBinding) => nextBinding.layer.id === layer.id);
-
-  if (!binding) {
-    return;
-  }
-
-  if (material.uniforms[`${binding.parameterPrefix}Amplitude`]) {
-    material.uniforms[`${binding.parameterPrefix}Amplitude`].value = clamp(layer.params.amplitude, 0, 0.6);
-  }
-
-  if (material.uniforms[`${binding.parameterPrefix}Frequency`]) {
-    material.uniforms[`${binding.parameterPrefix}Frequency`].value = Math.max(0.0001, layer.params.frequency);
-  }
-
-  if (material.uniforms[`${binding.parameterPrefix}Mode`]) {
-    material.uniforms[`${binding.parameterPrefix}Mode`].value = fieldGradientModeValue(layer.params.mode);
-  }
-
-  if (material.uniforms[`${binding.parameterPrefix}Power`]) {
-    material.uniforms[`${binding.parameterPrefix}Power`].value = Math.max(0.0001, layer.params.power);
-  }
-
-  Array.from({ length: binding.anchorCount }, (_, anchorIndex) => {
-    const anchor = layer.params.anchors[anchorIndex] ?? {
-      color: "#000000",
-      x: 0.5,
-      y: 0.5,
-    };
-
-    material.uniforms[`${binding.parameterPrefix}AnchorDirection${anchorIndex}`]?.value.copy(
-      directionVectorFromPoint(anchor.x, anchor.y)
-    );
-    material.uniforms[`${binding.parameterPrefix}AnchorColor${anchorIndex}`]?.value.copy(
-      colorVectorFromHex(anchor.color)
-    );
-  });
-}
-
-function glslFieldGradientUniformDeclarations(bindings: FieldGradientLayerShaderBinding[]) {
-  return bindings
-    .map((binding) => `uniform float ${binding.parameterPrefix}Amplitude;
-      uniform float ${binding.parameterPrefix}Frequency;
-      uniform float ${binding.parameterPrefix}Mode;
-      uniform float ${binding.parameterPrefix}Power;
-      ${Array.from({ length: binding.anchorCount }, (_, anchorIndex) => `uniform vec3 ${binding.parameterPrefix}AnchorDirection${anchorIndex};
-      uniform vec3 ${binding.parameterPrefix}AnchorColor${anchorIndex};`).join("\n")}`)
-    .join("\n");
-}
-
 // --- Binding collection ---
 
 function collectFieldGradientLayerBindings(nodes: SkyboxManifestNode[]) {
@@ -249,61 +169,49 @@ function collectFieldGradientLayerBindings(nodes: SkyboxManifestNode[]) {
   return bindings;
 }
 
-function createFieldGradientBindingMap(bindings: FieldGradientLayerShaderBinding[]) {
-  return new Map(bindings.map((binding) => [binding.layer.id, binding]));
-}
-
 // --- Sample expression (shared GLSL + WGSL codegen) ---
 
-function fieldGradientSampleExpression(binding: FieldGradientLayerShaderBinding, language: ShaderLanguage) {
-  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
-  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
-  const declare = language === "wgsl" ? "let" : "float";
-
+function fieldGradientSampleExpression(binding: FieldGradientLayerShaderBinding) {
   if (binding.anchorCount === 0) {
-    return `effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);`;
+    return `effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);`;
   }
 
   const anchorLines = Array.from({ length: binding.anchorCount }, (_, anchorIndex) => `{
-        ${declare} anchorDirection = normalize(${binding.parameterPrefix}AnchorDirection${anchorIndex});
-        ${declare} anchorDistance = 1.0 - clamp(dot(fieldDirection, anchorDirection), -1.0, 1.0);
-        ${declare} fieldSigma = 0.46 / max(${binding.parameterPrefix}Power, 0.0001);
-        ${declare} inverseDistanceWeight = 1.0 / pow(anchorDistance + 0.0005, max(${binding.parameterPrefix}Power, 0.0001));
-        ${declare} gaussianWeight = exp(-(anchorDistance * anchorDistance) / max(2.0 * fieldSigma * fieldSigma, 0.000001));
-        ${declare} weight = ${
-          language === "wgsl"
-            ? `select(inverseDistanceWeight, gaussianWeight, ${binding.parameterPrefix}Mode > 0.5)`
-            : `(${binding.parameterPrefix}Mode > 0.5 ? gaussianWeight : inverseDistanceWeight)`
-        };
+        let anchorDirection = normalize(${binding.parameterPrefix}AnchorDirection${anchorIndex});
+        let anchorDistance = 1.0 - clamp(dot(fieldDirection, anchorDirection), -1.0, 1.0);
+        let fieldSigma = 0.46 / max(${binding.parameterPrefix}Power, 0.0001);
+        let inverseDistanceWeight = 1.0 / pow(anchorDistance + 0.0005, max(${binding.parameterPrefix}Power, 0.0001));
+        let gaussianWeight = exp(-(anchorDistance * anchorDistance) / max(2.0 * fieldSigma * fieldSigma, 0.000001));
+        let weight = select(inverseDistanceWeight, gaussianWeight, ${binding.parameterPrefix}Mode > 0.5);
         weightedColor += ${binding.parameterPrefix}AnchorColor${anchorIndex} * weight;
         weightSum += weight;
       }`
   ).join("\n");
 
   return `{
-    ${declare} warpAmplitude = clamp(${binding.parameterPrefix}Amplitude, 0.0, 0.6);
-    ${declare} warpFrequency = max(${binding.parameterPrefix}Frequency, 0.0001);
-    ${mutableDeclaration("fieldDirection", vec3Type, "direction", language)}
-    ${declare} warpScale = warpAmplitude;
+    let warpAmplitude = clamp(${binding.parameterPrefix}Amplitude, 0.0, 0.6);
+    let warpFrequency = max(${binding.parameterPrefix}Frequency, 0.0001);
+    ${mutableDeclaration("fieldDirection", "vec3<f32>", "direction")}
+    let warpScale = warpAmplitude;
     if (warpScale > 0.0) {
-      ${declare} warpX = sin((direction.y * warpFrequency + 0.23) * ${numberLiteral(
+      let warpX = sin((direction.y * warpFrequency + 0.23) * ${numberLiteral(
         Math.PI * 2
       )}) * cos((direction.z * warpFrequency + 0.41) * ${numberLiteral(Math.PI * 2)});
-      ${declare} warpY = cos((direction.z * warpFrequency + 0.17) * ${numberLiteral(
+      let warpY = cos((direction.z * warpFrequency + 0.17) * ${numberLiteral(
         Math.PI * 2
       )}) * sin((direction.x * warpFrequency + 0.37) * ${numberLiteral(Math.PI * 2)});
-      ${declare} warpZ = sin((direction.x * warpFrequency - 0.31) * ${numberLiteral(
+      let warpZ = sin((direction.x * warpFrequency - 0.31) * ${numberLiteral(
         Math.PI * 2
       )}) * cos((direction.y * warpFrequency + 0.29) * ${numberLiteral(Math.PI * 2)});
-      fieldDirection = normalize(direction + ${vec3Type}(warpX, warpY, warpZ) * warpScale);
+      fieldDirection = normalize(direction + vec3<f32>(warpX, warpY, warpZ) * warpScale);
     }
-    ${mutableDeclaration("weightedColor", vec3Type, `${vec3Type}(0.0)`, language)}
-    ${mutableDeclaration("weightSum", language === "wgsl" ? "f32" : "float", "0.0", language)}
+    ${mutableDeclaration("weightedColor", "vec3<f32>", `vec3<f32>(0.0)`)}
+    ${mutableDeclaration("weightSum", "f32", "0.0")}
     ${anchorLines}
     if (weightSum > 0.0) {
-      effectColor = ${vec4Type}(weightedColor / weightSum, 1.0);
+      effectColor = vec4<f32>(weightedColor / weightSum, 1.0);
     } else {
-      effectColor = ${vec4Type}(0.0, 0.0, 0.0, 0.0);
+      effectColor = vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
   }`;
 }
@@ -335,10 +243,10 @@ const fieldGradientWebGpuAdapter: BuiltInWebGpuLayerAdapter<
         ]).flat(),
       ])
       .join(""),
-  createSampleExpression: (layer, language, context) => {
+  createSampleExpression: (layer, _language, context) => {
     const binding = context.bindingsByLayerId.get(layer.id);
 
-    return binding ? fieldGradientSampleExpression(binding, language) : zeroEffectExpression(language);
+    return binding ? fieldGradientSampleExpression(binding) : zeroEffectExpression();
   },
   createSampleParameters: (bindings, uniforms) =>
     Object.fromEntries(
@@ -372,26 +280,4 @@ registerLayerRuntimeAdapter({
   updateLive: (context, layer) => context.applyLayerParams(layer),
   wgsl: fieldGradientWebGpuAdapter as WebGpuLayerAdapter,
   getTopologyKey: (layer) => fieldGradientWebGpuAdapter.getTopologyKey(layer as never),
-  glsl: {
-    collectBindings: (nodes) => collectFieldGradientLayerBindings(nodes),
-    createBindingMap: (bindings) =>
-      createFieldGradientBindingMap(bindings as FieldGradientLayerShaderBinding[]),
-    uniformDeclarations: (bindings) =>
-      glslFieldGradientUniformDeclarations(bindings as FieldGradientLayerShaderBinding[]),
-    shaderUniforms: (bindings) =>
-      fieldGradientShaderUniforms(bindings as FieldGradientLayerShaderBinding[]),
-    applyParams: (material, layer, bindings) =>
-      applyFieldGradientLayerParamsToShaderUniforms(
-        material as THREE.ShaderMaterial,
-        layer as Extract<SkyboxManifestLayer, { type: "field-gradient" }>,
-        bindings as FieldGradientLayerShaderBinding[]
-      ),
-    sampleExpression: (layer, bindingMap, language) => {
-      const binding = bindingMap.get(layer.id) as FieldGradientLayerShaderBinding | undefined;
-
-      return binding
-        ? fieldGradientSampleExpression(binding, language)
-        : zeroEffectExpression(language);
-    },
-  },
 });

@@ -22,17 +22,8 @@ import type {
   SkyboxStarfieldParams,
 } from "./manifest";
 import { DEFAULT_SKYBOX_GEOMETRY, migrateManifestToV2 } from "./manifest";
-import {
-  createStarfieldBakeCacheKey,
-  STARFIELD_PREVIEW_BAKE_WIDTH,
-} from "./starfield-static";
-import {
-  createStarfieldPatchMeshGroup,
-  createStarfieldGpuBakeService,
-  disposeStarfieldPatchMeshGroup,
-  type StarfieldGpuPatchTextureSet,
-  type StarfieldGpuBakeService,
-} from "./starfield-gpu-bake";
+import { createStarfieldBakeService } from "./starfield-bake-registry";
+import type { StarfieldGpuBakeService } from "./starfield-gpu-bake";
 import {
   getLayerRuntimeAdapter,
   type LayerLiveUpdateContext,
@@ -49,7 +40,6 @@ import {
   createBakedMaterialFromTexture,
   createBakedSkyboxTexture,
   createMaterialTopologyKey,
-  createWebGlMaterial,
   createWebGpuMaterial,
   forEachRenderableLayer,
   findManifestNodeById,
@@ -91,8 +81,6 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #renderer: SupportedRenderer | null = null;
   #starfieldGpuBakeService: StarfieldGpuBakeService | null = null;
   #starfieldBakeTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
-  #starfieldPatchOverlay = new THREE.Group();
-  #starfieldPatchTextures = new Map<string, StarfieldGpuPatchTextureSet>();
   #starfieldTextureKeys = new Map<string, string>();
   #starfieldTextures = new Map<string, THREE.Texture>();
 
@@ -103,8 +91,6 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     );
     this.frustumCulled = false;
     this.renderOrder = -1;
-    this.#starfieldPatchOverlay.name = "Skybox live starfield patches";
-    this.add(this.#starfieldPatchOverlay);
   }
 
   fromManifest(manifest: SkyboxManifest) {
@@ -127,7 +113,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   setRenderer(renderer: SupportedRenderer | null) {
     this.#renderer = renderer;
     this.#starfieldGpuBakeService?.dispose();
-    this.#starfieldGpuBakeService = createStarfieldGpuBakeService(renderer);
+    this.#starfieldGpuBakeService = createStarfieldBakeService(renderer);
     return this;
   }
 
@@ -204,47 +190,6 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#ownedTexture = null;
   }
 
-  private clearStarfieldPatchOverlay() {
-    this.#starfieldPatchOverlay.children.forEach((child) => {
-      if (child instanceof THREE.Group) {
-        disposeStarfieldPatchMeshGroup(child);
-      }
-    });
-    this.#starfieldPatchOverlay.clear();
-  }
-
-  private syncStarfieldPatchOverlay() {
-    this.clearStarfieldPatchOverlay();
-    const debugTextureSlots = this.material.userData.debugImageTextureSlots as
-      | Record<string, { value?: unknown }>
-      | undefined;
-
-    if (resolveRenderMode(this.#renderMode, this.#renderer) !== "live-webgpu") {
-      return;
-    }
-
-    forEachRenderableLayer(this.#manifest.nodes, (layer) => {
-      if (layer.type !== "starfield") {
-        return;
-      }
-
-      const patchSet = this.#starfieldPatchTextures.get(layer.id);
-
-      if (!patchSet) {
-        return;
-      }
-
-      if (debugTextureSlots) {
-        debugTextureSlots[layer.id] = { value: patchSet };
-      }
-
-      const group = createStarfieldPatchMeshGroup(patchSet, layer.params);
-
-      group.renderOrder = 0;
-      this.#starfieldPatchOverlay.add(group);
-    });
-  }
-
   private disposeStarfieldTextures() {
     this.#starfieldBakeTimeouts.forEach((timeoutId) => {
       clearTimeout(timeoutId);
@@ -252,8 +197,6 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#starfieldBakeTimeouts.clear();
     this.#starfieldTextures.forEach((texture) => disposeStarfieldTexture(texture));
     this.#starfieldTextures.clear();
-    this.clearStarfieldPatchOverlay();
-    this.#starfieldPatchTextures.clear();
     this.#starfieldTextureKeys.clear();
     this.#starfieldGpuBakeService?.dispose();
     this.#starfieldGpuBakeService = null;
@@ -268,12 +211,8 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       }
 
       activeLayerIds.add(layer.id);
-      const textureKey = this.#starfieldGpuBakeService?.createBakeKey(layer.params) ??
-        createStarfieldBakeCacheKey(
-          layer.params,
-          STARFIELD_PREVIEW_BAKE_WIDTH,
-          Math.floor(STARFIELD_PREVIEW_BAKE_WIDTH / 2)
-        );
+      // No bake service (starfield-generation entry not imported) → key is "" and nothing bakes.
+      const textureKey = this.#starfieldGpuBakeService?.createBakeKey(layer.params) ?? "";
 
       if (this.#starfieldTextureKeys.get(layer.id) === textureKey) {
         return;
@@ -292,7 +231,6 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         disposeStarfieldTexture(previousTexture);
       }
       this.#starfieldTextures.delete(layerId);
-      this.#starfieldPatchTextures.delete(layerId);
       this.#starfieldTextureKeys.delete(layerId);
     });
 
@@ -304,17 +242,10 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       clearTimeout(timeoutId);
       this.#starfieldBakeTimeouts.delete(layerId);
     });
-
-    this.syncStarfieldPatchOverlay();
   }
 
   private scheduleStarfieldTextureBake(layerId: string, params: SkyboxStarfieldParams) {
-    const textureKey = this.#starfieldGpuBakeService?.createBakeKey(params) ??
-      createStarfieldBakeCacheKey(
-        params,
-        STARFIELD_PREVIEW_BAKE_WIDTH,
-        Math.floor(STARFIELD_PREVIEW_BAKE_WIDTH / 2)
-      );
+    const textureKey = this.#starfieldGpuBakeService?.createBakeKey(params) ?? "";
 
     if (this.#starfieldTextureKeys.get(layerId) === textureKey) {
       return;
@@ -335,16 +266,17 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         return;
       }
 
-      const currentTextureKey = this.#starfieldGpuBakeService?.createBakeKey(node.params) ??
-        createStarfieldBakeCacheKey(
-          node.params,
-          STARFIELD_PREVIEW_BAKE_WIDTH,
-          Math.floor(STARFIELD_PREVIEW_BAKE_WIDTH / 2)
-        );
+      const currentTextureKey = this.#starfieldGpuBakeService?.createBakeKey(node.params) ?? "";
 
       if (currentTextureKey !== textureKey) {
         this.scheduleStarfieldTextureBake(layerId, node.params);
         return;
+      }
+
+      // Defensive: the starfield-generation entry may have registered its bake factory after
+      // setRenderer ran, so (re)create the service here if it's still missing.
+      if (!this.#starfieldGpuBakeService && this.#renderer) {
+        this.#starfieldGpuBakeService = createStarfieldBakeService(this.#renderer);
       }
 
       if (!this.#starfieldGpuBakeService?.canBake()) {
@@ -541,17 +473,14 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#manifest = nextManifest;
     this.applyGeometry(this.#manifest.geometry ?? this.#geometryOptions);
     this.syncStarfieldTextures();
-    const renderMode = resolveRenderMode(this.#renderMode, this.#renderer);
+    const renderMode = resolveRenderMode(this.#renderMode);
     const nextTopologyKey = createMaterialTopologyKey(
       this.#manifest,
       renderMode,
       this.#editorPresentationEnabled
     );
 
-    if (
-      this.#materialTopologyKey === nextTopologyKey &&
-      (renderMode === "live-webgpu" || renderMode === "live-webgl")
-    ) {
+    if (this.#materialTopologyKey === nextTopologyKey && renderMode === "live-webgpu") {
       this.applyLiveManifestUniformUpdates();
       return this;
     }
@@ -562,20 +491,12 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         this.#editorLayerState,
         this.#imageTextures,
         this.#starfieldTextures,
-        this.#starfieldPatchTextures,
-        this.#editorPresentationEnabled
-      ));
-    } else if (renderMode === "live-webgl") {
-      this.replaceMaterial(createWebGlMaterial(
-        this.#manifest,
-        this.#editorLayerState,
-        this.#imageTextures,
-        this.#starfieldTextures,
+        new Map(),
         this.#editorPresentationEnabled
       ));
     } else {
       const texture = createBakedSkyboxTexture(this.#manifest, this.#bakeOptions);
-      this.replaceMaterial(createBakedMaterialFromTexture(texture, this.#renderer), texture);
+      this.replaceMaterial(createBakedMaterialFromTexture(texture), texture);
     }
 
     this.#materialTopologyKey = nextTopologyKey;
@@ -584,7 +505,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   }
 
   setBakedTexture(texture: THREE.Texture) {
-    this.replaceMaterial(createBakedMaterialFromTexture(texture, this.#renderer));
+    this.replaceMaterial(createBakedMaterialFromTexture(texture));
     this.#materialTopologyKey = null;
 
     return this;

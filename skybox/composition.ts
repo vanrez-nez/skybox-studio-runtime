@@ -8,14 +8,12 @@ import type {
   SkyboxManifestNode,
 } from "../manifest";
 import type { WebGpuCompositionRuntime, WebGpuLayerAdapter } from "../layer-addons";
-import { getLayerRuntimeAdapter } from "../layer-addons/registry";
 import {
   mutableDeclaration,
   numberLiteral,
   selectExpression,
   vectorLiteral,
   zeroEffectExpression,
-  type ShaderLanguage,
 } from "../layer-addons/shader-codegen";
 
 export type CompositionNodeShaderBinding = {
@@ -65,60 +63,10 @@ export function compositionNodeValues(node: SkyboxManifestNode) {
   };
 }
 
-const EMPTY_BINDING_MAP: Map<string, unknown> = new Map();
-
-function effectExpression(
-  layer: SkyboxManifestLayer,
-  language: ShaderLanguage,
-  bindingMapsByType: Map<string, Map<string, unknown>>
-) {
-  const adapter = getLayerRuntimeAdapter(layer.type);
-
-  if (!adapter?.glsl) {
-    return zeroEffectExpression(language);
-  }
-
-  return adapter.glsl.sampleExpression(
-    layer,
-    bindingMapsByType.get(layer.type) ?? EMPTY_BINDING_MAP,
-    language
-  );
-}
-
-function blendColorExpression(mode: SkyboxLayerBlendMode, language: ShaderLanguage) {
-  if (language === "glsl") {
-    switch (mode) {
-      case "darken":
-        return "min(composedColor, effectColor.rgb)";
-      case "multiply":
-        return "composedColor * effectColor.rgb";
-      case "color-burn":
-        return "blendColorBurn(composedColor, effectColor.rgb)";
-      case "lighten":
-        return "max(composedColor, effectColor.rgb)";
-      case "screen":
-        return "composedColor + effectColor.rgb - composedColor * effectColor.rgb";
-      case "color-dodge":
-        return "blendColorDodge(composedColor, effectColor.rgb)";
-      case "overlay":
-        return "blendOverlay(composedColor, effectColor.rgb)";
-      case "soft-light":
-        return "blendSoftLight(composedColor, effectColor.rgb)";
-      case "hard-light":
-        return "blendHardLight(composedColor, effectColor.rgb)";
-      case "difference":
-        return "abs(composedColor - effectColor.rgb)";
-      case "exclusion":
-        return "composedColor + effectColor.rgb - 2.0 * composedColor * effectColor.rgb";
-      case "normal":
-      default:
-        return "effectColor.rgb";
-    }
-  }
-
-  const one = vectorLiteral(1, language);
-  const half = vectorLiteral(0.5, language);
-  const zero = vectorLiteral(0, language);
+function blendColorExpression(mode: SkyboxLayerBlendMode) {
+  const one = vectorLiteral(1);
+  const half = vectorLiteral(0.5);
+  const zero = vectorLiteral(0);
   const source = "effectColor.rgb";
   const backdrop = "composedColor";
 
@@ -134,10 +82,8 @@ function blendColorExpression(mode: SkyboxLayerBlendMode, language: ShaderLangua
         selectExpression(
           `${source} == ${zero}`,
           zero,
-          `${one} - min(${one}, (${one} - ${backdrop}) / ${source})`,
-          language
-        ),
-        language
+          `${one} - min(${one}, (${one} - ${backdrop}) / ${source})`
+        )
       );
     case "lighten":
       return `max(${backdrop}, ${source})`;
@@ -150,31 +96,26 @@ function blendColorExpression(mode: SkyboxLayerBlendMode, language: ShaderLangua
         selectExpression(
           `${source} == ${one}`,
           one,
-          `min(${one}, ${backdrop} / (${one} - ${source}))`,
-          language
-        ),
-        language
+          `min(${one}, ${backdrop} / (${one} - ${source}))`
+        )
       );
     case "overlay":
       return selectExpression(
         `${backdrop} <= ${half}`,
         `2.0 * ${backdrop} * ${source}`,
-        `${one} - 2.0 * (${one} - ${backdrop}) * (${one} - ${source})`,
-        language
+        `${one} - 2.0 * (${one} - ${backdrop}) * (${one} - ${source})`
       );
     case "soft-light":
       return selectExpression(
         `${source} <= ${half}`,
         `${backdrop} - (${one} - 2.0 * ${source}) * ${backdrop} * (${one} - ${backdrop})`,
-        `${backdrop} + (2.0 * ${source} - ${one}) * (softLightD - ${backdrop})`,
-        language
+        `${backdrop} + (2.0 * ${source} - ${one}) * (softLightD - ${backdrop})`
       );
     case "hard-light":
       return selectExpression(
         `${source} <= ${half}`,
         `2.0 * ${backdrop} * ${source}`,
-        `${backdrop} + (2.0 * ${source} - ${one}) - ${backdrop} * (2.0 * ${source} - ${one})`,
-        language
+        `${backdrop} + (2.0 * ${source} - ${one}) - ${backdrop} * (2.0 * ${source} - ${one})`
       );
     case "difference":
       return `abs(${backdrop} - ${source})`;
@@ -186,19 +127,11 @@ function blendColorExpression(mode: SkyboxLayerBlendMode, language: ShaderLangua
   }
 }
 
-function blendSoftLightSetupExpression(language: ShaderLanguage) {
-  if (language === "glsl") {
-    return "";
-  }
-
-  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
-  const declaration = language === "wgsl" ? "let" : "vec3";
-
-  return `${declaration} softLightD = ${selectExpression(
-    `composedColor <= ${vec3Type}(0.25)`,
-    `((16.0 * composedColor - ${vec3Type}(12.0)) * composedColor + ${vec3Type}(4.0)) * composedColor`,
-    "sqrt(composedColor)",
-    language
+function blendSoftLightSetupExpression() {
+  return `let softLightD = ${selectExpression(
+    `composedColor <= vec3<f32>(0.25)`,
+    `((16.0 * composedColor - vec3<f32>(12.0)) * composedColor + vec3<f32>(4.0)) * composedColor`,
+    "sqrt(composedColor)"
   )};`;
 }
 
@@ -208,8 +141,7 @@ function blendModeCondition(blendModeRef: string, mode: SkyboxLayerBlendMode) {
   return `${blendModeRef} >= ${numberLiteral(value - 0.5)} && ${blendModeRef} < ${numberLiteral(value + 0.5)}`;
 }
 
-function blendAssignmentBlock(blendModeRef: string, language: ShaderLanguage) {
-  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
+function blendAssignmentBlock(blendModeRef: string) {
   const blendModes: SkyboxLayerBlendMode[] = [
     "darken",
     "multiply",
@@ -225,38 +157,28 @@ function blendAssignmentBlock(blendModeRef: string, language: ShaderLanguage) {
   ];
   const branches = blendModes
     .map((mode, index) => `${index === 0 ? "if" : "else if"} (${blendModeCondition(blendModeRef, mode)}) {
-          blendedColor = ${blendColorExpression(mode, language)};
+          blendedColor = ${blendColorExpression(mode)};
         }`)
     .join("\n");
 
-  return `${blendSoftLightSetupExpression(language)}
-        ${mutableDeclaration("blendedColor", vec3Type, "effectColor.rgb", language)}
+  return `${blendSoftLightSetupExpression()}
+        ${mutableDeclaration("blendedColor", "vec3<f32>", "effectColor.rgb")}
         ${branches}
-        blendedColor = clamp(blendedColor, ${vec3Type}(0.0), ${vec3Type}(1.0));`;
+        blendedColor = clamp(blendedColor, vec3<f32>(0.0), vec3<f32>(1.0));`;
 }
 
 export function composeNodesExpression(
   nodes: SkyboxManifestNode[],
-  language: ShaderLanguage,
-  bindingMapsByType: Map<string, Map<string, unknown>>,
   compositionBindings: Map<string, CompositionNodeShaderBinding>,
-  webGpuRuntime?: WebGpuCompositionRuntime,
+  webGpuRuntime: WebGpuCompositionRuntime,
   depth = 0
 ): string {
-  const vec3Type = language === "wgsl" ? "vec3<f32>" : "vec3";
-  const vec4Type = language === "wgsl" ? "vec4<f32>" : "vec4";
-
   return getRenderableNodes(nodes)
     .map((node, index) => {
       const sourceExpression =
         node.type === "group"
-          ? `effectColor = ${vec4Type}(${(() => {
-              const variableName = `groupColor${depth}_${index}`;
-              return variableName;
-            })()}, 1.0);`
-          : language === "wgsl" && webGpuRuntime
-            ? webGpuEffectExpression(node, webGpuRuntime)
-          : effectExpression(node, language, bindingMapsByType);
+          ? `effectColor = vec4<f32>(groupColor${depth}_${index}, 1.0);`
+          : webGpuEffectExpression(node, webGpuRuntime);
       const groupColorName = `groupColor${depth}_${index}`;
       const compositionBinding = compositionBindings.get(node.id);
       const opacityRef = compositionBinding
@@ -267,18 +189,11 @@ export function composeNodesExpression(
         : numberLiteral(blendModeValue(node.blendMode));
       const groupBlock =
         node.type === "group"
-          ? `${mutableDeclaration(groupColorName, vec3Type, `${vec3Type}(0.0)`, language)}
+          ? `${mutableDeclaration(groupColorName, "vec3<f32>", "vec3<f32>(0.0)")}
         {
-          ${mutableDeclaration("previousComposedColor", vec3Type, "composedColor", language)}
-          composedColor = ${vec3Type}(0.0);
-          ${composeNodesExpression(
-            node.children,
-            language,
-            bindingMapsByType,
-            compositionBindings,
-            webGpuRuntime,
-            depth + 1
-          )}
+          ${mutableDeclaration("previousComposedColor", "vec3<f32>", "composedColor")}
+          composedColor = vec3<f32>(0.0);
+          ${composeNodesExpression(node.children, compositionBindings, webGpuRuntime, depth + 1)}
           ${groupColorName} = composedColor;
           composedColor = previousComposedColor;
         }`
@@ -286,14 +201,14 @@ export function composeNodesExpression(
 
       return `{
         ${groupBlock}
-        ${mutableDeclaration("effectColor", vec4Type, `${vec4Type}(0.0)`, language)}
+        ${mutableDeclaration("effectColor", "vec4<f32>", "vec4<f32>(0.0)")}
         ${sourceExpression}
-        ${language === "wgsl" ? "let" : "float"} sourceAlpha = clamp(effectColor.a * ${opacityRef}, 0.0, 1.0);
-        ${blendAssignmentBlock(blendModeRef, language)}
+        let sourceAlpha = clamp(effectColor.a * ${opacityRef}, 0.0, 1.0);
+        ${blendAssignmentBlock(blendModeRef)}
         composedColor = clamp(
           blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha),
-          ${vec3Type}(0.0),
-          ${vec3Type}(1.0)
+          vec3<f32>(0.0),
+          vec3<f32>(1.0)
         );
       }`;
     })
@@ -313,7 +228,7 @@ function webGpuEffectExpression(
   const adapterRuntime = runtime.adapters.get(layer.type);
 
   if (!adapterRuntime) {
-    return zeroEffectExpression("wgsl");
+    return zeroEffectExpression();
   }
 
   return (adapterRuntime.adapter as WebGpuLayerAdapter<SkyboxManifestLayer, unknown, unknown>)

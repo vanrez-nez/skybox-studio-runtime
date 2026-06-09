@@ -3,22 +3,12 @@ import * as THREE from "three";
 
 import {
   bakeSkyboxImageData,
-  bakeStarfieldImageData,
-  createStarCatalogForCoverage,
-  createStarCatalogForDescriptor,
-  createStarfieldBakeCacheKey,
-  createStarfieldPatchLayout,
   blendChannel,
   createAngularDecalPlacement,
   createDefaultSpotParams,
-  DEFAULT_STARFIELD_CLIP,
-  DEFAULT_STARFIELD_PARAMS,
   evaluateSkyboxDirection,
-  getStarfieldQualityPreset,
   migrateManifestToV2,
   normalizeImagePlacement,
-  normalizeStarfieldCoverage,
-  normalizeStarfieldParams,
   placementFromPosition,
   placementFromRotation,
   placementFromScale,
@@ -27,19 +17,31 @@ import {
   rotationFromPlacement,
   scaleFromPlacement,
   Skybox,
-  sourceDirectionFromUv,
-  sourceUvFromDirection,
   srgbChannelToLinear,
-  starfieldFieldGradientToSourceField,
-  starfieldClipContainsDirection,
-  sampleStarfieldLayer,
   spotFromRadiusScale,
-  sourceFoldEquirectUv,
-  STARFIELD_PREVIEW_BAKE_WIDTH,
-  StarfieldGpuBakeService,
   type SkyboxManifestV1,
   type SkyboxManifestV2,
 } from "../index";
+import {
+  bakeStarfieldImageData,
+  createStarCatalogForCoverage,
+  createStarCatalogForDescriptor,
+  createStarfieldBakeCacheKey,
+  createStarfieldPatchLayout,
+  DEFAULT_STARFIELD_CLIP,
+  DEFAULT_STARFIELD_PARAMS,
+  getStarfieldQualityPreset,
+  normalizeStarfieldCoverage,
+  normalizeStarfieldParams,
+  sourceDirectionFromUv,
+  sourceUvFromDirection,
+  starfieldFieldGradientToSourceField,
+  starfieldClipContainsDirection,
+  sampleStarfieldLayer,
+  sourceFoldEquirectUv,
+  STARFIELD_PREVIEW_BAKE_WIDTH,
+  StarfieldGpuBakeService,
+} from "../starfield";
 import {
   createStarfieldFinalPatchGeometryRanges,
   starfieldDisplayPixelAngleForHeight,
@@ -960,321 +962,6 @@ describe("runtime evaluator", () => {
     expect(scaledSpot.baseAngularRadius).toBeCloseTo(spot.baseAngularRadius);
   });
 
-  it("keeps gradient midpoint uniform updates on the live material path", () => {
-    const manifest: SkyboxManifestV2 = {
-      composition: { mode: "alpha-over", order: "bottom-to-top" },
-      geometry: { type: "box" },
-      nodes: [
-        {
-          blendMode: "normal",
-          enabled: true,
-          id: "gradient",
-          name: "Gradient",
-          opacity: 100,
-          params: {
-            mode: "linear",
-            rotation: 0,
-            stops: [
-              { color: "#000000", location: 0, midpoint: 25, opacity: 100 },
-              { color: "#ffffff", location: 100, opacity: 100 },
-            ],
-          },
-          type: "gradient",
-        },
-      ],
-      version: 2,
-    };
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(manifest)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    expect(material.fragmentShader).toContain("StopMidpoint0");
-    expect(material.uniforms.gradientLayer0StopMidpoint0.value).toBeCloseTo(0.25);
-
-    skybox.setManifest({
-      ...manifest,
-      nodes: [
-        {
-          ...manifest.nodes[0],
-          params: {
-            ...(manifest.nodes[0] as Extract<SkyboxManifestV2["nodes"][number], { type: "gradient" }>).params,
-            stops: [
-              { color: "#000000", location: 0, midpoint: 75, opacity: 100 },
-              { color: "#ffffff", location: 100, opacity: 100 },
-            ],
-          },
-        } as Extract<SkyboxManifestV2["nodes"][number], { type: "gradient" }>,
-      ],
-    });
-
-    expect(skybox.material).toBe(material);
-    expect(material.uniforms.gradientLayer0StopMidpoint0.value).toBeCloseTo(0.75);
-    skybox.dispose();
-  });
-
-  it("defaults legacy gradient midpoint uniforms to center", () => {
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest({
-        composition: { mode: "alpha-over", order: "bottom-to-top" },
-        geometry: { type: "box" },
-        nodes: [
-          {
-            blendMode: "normal",
-            enabled: true,
-            id: "gradient",
-            name: "Gradient",
-            opacity: 100,
-            params: {
-              mode: "linear",
-              rotation: 0,
-              stops: [
-                { color: "#000000", location: 0, opacity: 100 },
-                { color: "#ffffff", location: 100, opacity: 100 },
-              ],
-            },
-            type: "gradient",
-          },
-        ],
-        version: 2,
-      })
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    expect(material.uniforms.gradientLayer0StopMidpoint0.value).toBeCloseTo(0.5);
-    skybox.dispose();
-  });
-
-  it("keeps opacity changes on the live material uniform path", () => {
-    const manifest: SkyboxManifestV2 = {
-      composition: { mode: "alpha-over", order: "bottom-to-top" },
-      geometry: { type: "box" },
-      nodes: [
-        {
-          blendMode: "normal",
-          enabled: true,
-          id: "gradient",
-          name: "Gradient",
-          opacity: 100,
-          params: {
-            mode: "linear",
-            rotation: 0,
-            stops: [
-              { color: "#000000", location: 0, opacity: 100 },
-              { color: "#ffffff", location: 100, opacity: 100 },
-            ],
-          },
-          type: "gradient",
-        },
-      ],
-      version: 2,
-    };
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(manifest)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    expect(material.fragmentShader).toContain("compositionNode0Opacity");
-    expect(material.uniforms.compositionNode0Opacity.value).toBeCloseTo(1);
-
-    skybox.setManifest({
-      ...manifest,
-      nodes: [{ ...manifest.nodes[0], opacity: 25 }],
-    });
-
-    expect(skybox.material).toBe(material);
-    expect(material.uniforms.compositionNode0Opacity.value).toBeCloseTo(0.25);
-    skybox.dispose();
-  });
-
-  it("keeps blend mode changes on the live material uniform path", () => {
-    const manifest: SkyboxManifestV2 = {
-      composition: { mode: "alpha-over", order: "bottom-to-top" },
-      geometry: { type: "box" },
-      nodes: [
-        {
-          blendMode: "normal",
-          enabled: true,
-          id: "gradient",
-          name: "Gradient",
-          opacity: 100,
-          params: {
-            mode: "linear",
-            rotation: 0,
-            stops: [
-              { color: "#000000", location: 0, opacity: 100 },
-              { color: "#ffffff", location: 100, opacity: 100 },
-            ],
-          },
-          type: "gradient",
-        },
-      ],
-      version: 2,
-    };
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(manifest)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    expect(material.fragmentShader).toContain("compositionNode0BlendMode");
-    expect(material.uniforms.compositionNode0BlendMode.value).toBe(0);
-
-    skybox.setManifest({
-      ...manifest,
-      nodes: [{ ...manifest.nodes[0], blendMode: "screen" }],
-    });
-
-    expect(skybox.material).toBe(material);
-    expect(material.uniforms.compositionNode0BlendMode.value).toBe(5);
-    skybox.dispose();
-  });
-
-  it("updates layer composition directly without replacing the live material", () => {
-    const manifest: SkyboxManifestV2 = {
-      composition: { mode: "alpha-over", order: "bottom-to-top" },
-      geometry: { type: "box" },
-      nodes: [
-        {
-          blendMode: "normal",
-          enabled: true,
-          id: "gradient",
-          name: "Gradient",
-          opacity: 100,
-          params: {
-            mode: "linear",
-            rotation: 0,
-            stops: [
-              { color: "#000000", location: 0, opacity: 100 },
-              { color: "#ffffff", location: 100, opacity: 100 },
-            ],
-          },
-          type: "gradient",
-        },
-      ],
-      version: 2,
-    };
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(manifest)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    skybox.updateLayerComposition("gradient", { blendMode: "screen", opacity: 40 });
-
-    expect(skybox.material).toBe(material);
-    expect(material.uniforms.compositionNode0BlendMode.value).toBe(5);
-    expect(material.uniforms.compositionNode0Opacity.value).toBeCloseTo(0.4);
-    skybox.dispose();
-  });
-
-  it("updates field gradient params directly without replacing the live material", () => {
-    const manifest: SkyboxManifestV2 = {
-      composition: { mode: "alpha-over", order: "bottom-to-top" },
-      geometry: { type: "box" },
-      nodes: [
-        {
-          blendMode: "normal",
-          enabled: true,
-          id: "field",
-          name: "Field Gradient",
-          opacity: 100,
-          params: {
-            amplitude: 0.1,
-            anchors: [{ color: "#ff0000", x: 0.5, y: 0.5 }],
-            frequency: 1,
-            mode: "inverse-distance",
-            power: 2,
-          },
-          type: "field-gradient",
-        },
-      ],
-      version: 2,
-    };
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(manifest)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    skybox.updateFieldGradientLayer("field", {
-      amplitude: 0.3,
-      anchors: [{ color: "#00ff00", x: 0.5, y: 0.5 }],
-      frequency: 2,
-      mode: "gaussian",
-      power: 4,
-    });
-
-    expect(skybox.material).toBe(material);
-    expect(material.uniforms.fieldGradientLayer0Amplitude.value).toBeCloseTo(0.3);
-    expect(material.uniforms.fieldGradientLayer0Frequency.value).toBeCloseTo(2);
-    expect(material.uniforms.fieldGradientLayer0Mode.value).toBe(1);
-    expect(material.uniforms.fieldGradientLayer0Power.value).toBeCloseTo(4);
-    skybox.dispose();
-  });
-
-  it("updates spot params directly without replacing the live material", () => {
-    const spot = createDefaultSpotParams();
-    const manifest: SkyboxManifestV2 = {
-      composition: { mode: "alpha-over", order: "bottom-to-top" },
-      geometry: { type: "box" },
-      nodes: [
-        {
-          blendMode: "normal",
-          enabled: true,
-          id: "spot",
-          name: "Spot",
-          opacity: 100,
-          params: spot,
-          type: "spot",
-        },
-      ],
-      version: 2,
-    };
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(manifest)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    skybox.updateSpotLayer("spot", {
-      ...spot,
-      brightness: 2.5,
-      glareStrength: 0.75,
-      haloStrength: 0.45,
-    });
-
-    expect(skybox.material).toBe(material);
-    expect(material.uniforms.spotLayer0Brightness.value).toBeCloseTo(2.5);
-    expect(material.uniforms.spotLayer0GlareStrength.value).toBeCloseTo(0.75);
-    expect(material.uniforms.spotLayer0HaloStrength.value).toBeCloseTo(0.45);
-    skybox.dispose();
-  });
-
-  it("schedules starfield texture rebakes without replacing the live material", () => {
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(createStarfieldManifest())
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-    const initialTexture = material.uniforms.starfieldTexture0.value;
-
-    skybox.updateStarfieldLayer("starfield", {
-      ...DEFAULT_STARFIELD_PARAMS,
-      stars: {
-        ...DEFAULT_STARFIELD_PARAMS.stars,
-        uSeed: DEFAULT_STARFIELD_PARAMS.stars.uSeed + 2,
-      },
-    });
-
-    expect(skybox.material).toBe(material);
-    expect(material.uniforms.starfieldTexture0.value).toBe(initialTexture);
-    skybox.dispose();
-  });
-
   it("keeps material stable when only starfield quality changes", () => {
     const skybox = new Skybox()
       .setRenderer({} as THREE.WebGLRenderer)
@@ -1785,131 +1472,4 @@ describe("runtime evaluator", () => {
     expect(placement.tangentY[2]).toBeCloseTo(0);
   });
 
-  it("keeps image shader placement live-updatable when initial manifest placement is missing", () => {
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest({
-        composition: { mode: "alpha-over", order: "bottom-to-top" },
-        geometry: { type: "box" },
-        nodes: [
-          {
-            blendMode: "normal",
-            enabled: true,
-            id: "image",
-            name: "Image",
-            opacity: 100,
-            params: {
-              height: 16,
-              pixels: null,
-              placement: null,
-              src: "data:image/png;base64,",
-              width: 16,
-            },
-            type: "image",
-          },
-        ],
-        version: 2,
-      })
-      .load();
-
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    expect(material.fragmentShader).toContain("imageCenterDirection0");
-    expect(material.fragmentShader).not.toContain("return vec4(0.0, 0.0, 0.0, 0.0);");
-
-    skybox.dispose();
-  });
-
-  it("omits editor image presentation shader code by default", () => {
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest({
-        ...createImageManifest(),
-        nodes: [...createImageManifest().nodes, ...createSpotManifest().nodes],
-      })
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    expect(material.fragmentShader).not.toContain("imageActive0");
-    expect(material.fragmentShader).not.toContain("spotActive0");
-    expect(material.fragmentShader).not.toContain("rectCoverage");
-
-    skybox.dispose();
-  });
-
-  it("includes editor image presentation shader code only when enabled", () => {
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(createImageManifest())
-      .setEditorPresentationEnabled(true)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    expect(material.fragmentShader).toContain("imageActive0");
-    expect(material.fragmentShader).not.toContain("spotActive0");
-    expect(material.fragmentShader).toContain("rectCoverage");
-    expect(material.fragmentShader).toContain("rectAlpha");
-    expect(material.fragmentShader).toContain("bounds");
-    expect(material.fragmentShader).toContain("clamp(fwidth(imageEdgeDistance)");
-    expect(material.fragmentShader).toContain("imageHardInside");
-    expect(material.fragmentShader).toContain("imageNearRect");
-    expect(material.fragmentShader).toContain(
-      "effectColor = vec4(imageSampleColor.rgb, imageSampleColor.a * imageSampleInfo.z);"
-    );
-    expect(material.fragmentShader).not.toContain("imageSampleColor = skyboxStudioApplyImageEditorOverlay");
-    expect(material.fragmentShader).not.toContain("selectionFill");
-
-    skybox.dispose();
-  });
-
-  it("includes editor spot presentation shader code only when enabled", () => {
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(createSpotManifest())
-      .setEditorPresentationEnabled(true)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    expect(material.fragmentShader).toContain("spotActive0");
-    expect(material.fragmentShader).toContain("spotEditorUv");
-    expect(material.fragmentShader).toContain("rectCoverage");
-
-    skybox.dispose();
-  });
-
-  it("updates editor image state without rebuilding the material", () => {
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(createImageManifest())
-      .setEditorPresentationEnabled(true)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    skybox.setEditorImageState({
-      selectedImageLayerId: "image",
-    });
-
-    expect(skybox.material).toBe(material);
-    expect(material.uniforms.imageActive0.value).toBe(1);
-
-    skybox.dispose();
-  });
-
-  it("updates editor layer state for spots without rebuilding the material", () => {
-    const skybox = new Skybox()
-      .setRenderer({} as THREE.WebGLRenderer)
-      .fromManifest(createSpotManifest())
-      .setEditorPresentationEnabled(true)
-      .load();
-    const material = skybox.material as THREE.ShaderMaterial;
-
-    skybox.setEditorLayerState({
-      selectedLayerId: "spot",
-    });
-
-    expect(skybox.material).toBe(material);
-    expect(material.uniforms.spotActive0.value).toBe(1);
-
-    skybox.dispose();
-  });
 });
