@@ -81,6 +81,57 @@ const texture = createBakedSkyboxTexture(manifest, { width: 1024 });
 
 The bake path uses the same color conversion, layer ordering, opacity, blend modes, and group composition as the live renderers.
 
+### GPU equirect bake (WebGPU)
+
+When you have a `WebGPURenderer`, you can bake the live composition shader straight into an equirectangular render target (including HDR float targets) instead of evaluating on the CPU:
+
+```ts
+import { createSkyboxGpuBakeService } from "skybox-studio-runtime";
+
+const bake = createSkyboxGpuBakeService(renderer);
+const target = bake.bakeRenderTarget(manifest, { width: 2048, hdr: true });
+// …or read pixels back: const { data, width, height } = await bake.bakeImageData(manifest, { width: 2048 });
+```
+
+## Starfield Generation
+
+Procedural starfield generation (the star/nebula catalog, its GPU bake service, and the CPU sampler) lives behind a **separate entry point**, `skybox-studio-runtime/starfield`, so consumers that never use starfields don't pull that code into their core bundle. Import it **once** anywhere in your app to enable starfield layers:
+
+```ts
+// Side-effect import — registers the starfield GPU bake service + CPU sampler.
+import "skybox-studio-runtime/starfield";
+
+// …or import the helpers/params you need (also enables generation):
+import {
+  DEFAULT_STARFIELD_PARAMS,
+  normalizeStarfieldParams,
+} from "skybox-studio-runtime/starfield";
+```
+
+Without this import, `starfield` layers are a graceful no-op (they simply don't render/bake). With it imported, the live `Skybox` and the bakers generate starfield textures automatically from each layer's params.
+
+## Loading Bundles
+
+Skybox Studio exports project bundles (a `manifest.json` plus hashed image assets). The loader rehydrates a bundle from a directory, URL, or zip and returns a ready manifest with its image textures:
+
+```ts
+import { loadSkyboxBundle, Skybox } from "skybox-studio-runtime";
+
+const { manifest, imageTextures } = await loadSkyboxBundle(source);
+
+const skybox = new Skybox()
+  .setRenderer(renderer)
+  .setImageTextures(imageTextures)
+  .fromManifest(manifest)
+  .load();
+```
+
+`loadBundleFromUrl`, `loadBundleFromZip`, and `loadBundleFromDirectory` cover the individual sources, and `loadSkyboxImageTextures` loads just the image layers for a manifest you already have.
+
+## Extending Layers
+
+The runtime is registry-driven — there are no hardcoded `layer.type` branches. Register a custom layer adapter (its CPU `sampleCpu` plus optional WGSL/GLSL halves) with `registerLayerRuntimeAdapter`, and it composes end-to-end through both the live renderers and the bakers with no edits to the core.
+
 ## Groups
 
 Manifest V2 supports nested groups. A group is evaluated as an isolated subtree, then composited into its parent using the group's `blendMode` and `opacity`.

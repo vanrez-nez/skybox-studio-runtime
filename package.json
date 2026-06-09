@@ -3,6 +3,28 @@
   "version": "0.1.0",
   "description": "Three.js runtime for live and baked Skybox Studio manifests.",
   "type": "module",
+  "license": "MIT",
+  "author": "Ivan Juarez <ivan@blindgazer.com>",
+  "homepage": "https://github.com/vanrez-nez/skybox-studio-runtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vanrez-nez/skybox-studio-runtime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vanrez-nez/skybox-studio-runtime/issues"
+  },
+  "keywords": [
+    "three",
+    "threejs",
+    "skybox",
+    "equirectangular",
+    "webgpu",
+    "tsl",
+    "starfield",
+    "procedural",
+    "gradient",
+    "hdr"
+  ],
   "sideEffects": [
     "**/layer-addons/builtins/*.ts",
     "**/layer-addons/builtins/*.js",
@@ -24,7 +46,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "vite build && tsc -p tsconfig.json",
@@ -36,7 +59,6 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
-    "color-blend": "^4.0.0",
     "fflate": "^0.8.3",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
