@@ -206,6 +206,10 @@ export declare function createStarfieldBakeCacheKey(params: SkyboxStarfieldParam
     budgetBytes?: number;
     maxTextureSize?: number;
     residentBytesPerPixel?: number;
+    viewport?: {
+        verticalFovRadians: number;
+        renderHeight: number;
+    } | null;
 }): string;
 export declare function bakeStarfieldImageData(rawParams: SkyboxStarfieldParams, width?: number, height?: number): StarfieldBakeData;
 export {};

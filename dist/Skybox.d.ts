@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import "./layer-addons/builtins";
 import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxManifest, SkyboxRenderMode, SkyboxSpotParams, SkyboxStarfieldParams } from "./manifest";
+import type { StarGlintViewport } from "./baking/starfield-gpu-bake";
 import type { ImageTextureMap, LayerCompositionUpdate, RuntimeMaterial, SkyboxEditorImageState, SkyboxEditorLayerState, SupportedRenderer } from "./skybox/types";
 export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     #private;
@@ -10,6 +11,7 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     setBakeOptions(options: SkyboxBakeOptions): this;
     setRenderer(renderer: SupportedRenderer | null): this;
     setRenderMode(mode: SkyboxRenderMode): this;
+    setStarGlintViewport(viewport: StarGlintViewport | null): this;
     setImageTexture(layerId: string, texture: THREE.Texture | null): this;
     setImageTextures(textures: ImageTextureMap): this;
     refreshImageTextureBindings(): this;
@@ -19,6 +21,13 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     private applyGeometry;
     private disposeOwnedTexture;
     private disposeStarfieldTextures;
+    private disposeStarfieldGlints;
+    private disposeStarfieldGlint;
+    private syncStarfieldGlint;
+    private coverageActive;
+    private disposeCoverage;
+    private syncCoverage;
+    private renderCoveragePrepass;
     private syncStarfieldTextures;
     private scheduleStarfieldTextureBake;
     private replaceMaterial;

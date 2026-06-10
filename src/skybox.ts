@@ -23,7 +23,11 @@ import type {
 } from "./manifest";
 import { DEFAULT_SKYBOX_GEOMETRY, migrateManifestToV2 } from "./manifest";
 import { createStarfieldBakeService } from "./baking/starfield-bake-registry";
-import type { StarfieldGpuBakeService } from "./baking/starfield-gpu-bake";
+import type {
+  StarfieldGlintHandle,
+  StarfieldGpuBakeService,
+  StarGlintViewport,
+} from "./baking/starfield-gpu-bake";
 import {
   getLayerRuntimeAdapter,
   type LayerLiveUpdateContext,
@@ -40,11 +44,17 @@ import {
   createBakedMaterialFromTexture,
   createBakedSkyboxTexture,
   createMaterialTopologyKey,
+  createWebGpuCoverageMaterial,
   createWebGpuMaterial,
   forEachRenderableLayer,
   findManifestNodeById,
+  manifestHasLayerAboveStarfield,
   resolveRenderMode,
 } from "./skybox/materials";
+
+// Live starfield equirect bakes carry nebula only; star cores render via the screen-space glint
+// pass. (Export bakes — a different service instance, no viewport — keep full fixed-angular stars.)
+const NEBULA_ONLY_BAKE = { starsOmitted: true } as const;
 
 const DEFAULT_MANIFEST: SkyboxManifestV2 = {
   composition: { mode: "alpha-over", order: "bottom-to-top" },
@@ -65,10 +75,12 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #liveUpdateContext: LayerLiveUpdateContext = {
     applyLayerParams: (layer) => {
       this.material.userData.applyLayerParams?.(layer);
+      this.#coverageMaterial?.userData.applyLayerParams?.(layer);
     },
     applyImagePlacement: (layerId, placement) => {
       this.#imagePlacementOverrides.set(layerId, placement as SkyboxImagePlacement | null);
       this.material.userData.applyImageLayerPlacement?.(layerId, placement);
+      this.#coverageMaterial?.userData.applyImageLayerPlacement?.(layerId, placement);
     },
     scheduleResourceBake: (layerId, params) => {
       this.scheduleStarfieldTextureBake(layerId, params as SkyboxStarfieldParams);
@@ -80,9 +92,23 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #renderMode: SkyboxRenderMode = "auto";
   #renderer: SupportedRenderer | null = null;
   #starfieldGpuBakeService: StarfieldGpuBakeService | null = null;
+  #starGlintViewport: StarGlintViewport | null = null;
   #starfieldBakeTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   #starfieldTextureKeys = new Map<string, string>();
   #starfieldTextures = new Map<string, THREE.Texture>();
+  // Live screen-space star glints (constant-pixel stars), one child mesh per starfield layer. The
+  // equirect texture above carries nebula only on the live path; the glints render the star cores.
+  #starfieldGlints = new Map<string, { handle: StarfieldGlintHandle; geometryKey: string }>();
+  // Phase B: per-frame transmittance pre-pass so opaque layers above a starfield occlude its glints.
+  // The coverage material renders into #coverageTarget (offscreen) before the composite each frame;
+  // the glints sample it. Only built when live + glints exist + a layer sits above a starfield.
+  #coverageScene = new THREE.Scene();
+  #coverageGeometry: THREE.BufferGeometry | null = null;
+  #coverageMesh: THREE.Mesh | null = null;
+  #coverageMaterial: RuntimeMaterial | null = null;
+  #coverageTarget: THREE.RenderTarget | null = null;
+  #coverageTopologyKey: string | null = null;
+  #coverageSize = new THREE.Vector2();
 
   constructor() {
     super(
@@ -91,6 +117,11 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     );
     this.frustumCulled = false;
     this.renderOrder = -1;
+    // The composite mesh draws first (renderOrder -1); render the glint occlusion coverage just
+    // before it so the offscreen transmittance target is ready when the glints sample it later.
+    this.onBeforeRender = ((renderer: unknown, _scene: unknown, camera: unknown) => {
+      this.renderCoveragePrepass(renderer, camera as THREE.Camera);
+    }) as THREE.Mesh["onBeforeRender"];
   }
 
   fromManifest(manifest: SkyboxManifest) {
@@ -122,6 +153,30 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     return this;
   }
 
+  // Tell the runtime which viewport the starfield will be VIEWED through so stars hold a fixed
+  // logical-pixel size regardless of FOV/resolution (displayPixelAngle = verticalFovRadians /
+  // renderHeight). `renderHeight` must be logical/CSS pixels (e.g. canvas client height), not the
+  // device drawing-buffer height, so apparent size stays constant across device-pixel ratios.
+  // Pass null to fall back to the legacy fixed-angular star size. Changing it re-bakes starfields.
+  setStarGlintViewport(viewport: StarGlintViewport | null) {
+    const next =
+      viewport && viewport.renderHeight > 0 && viewport.verticalFovRadians > 0
+        ? { renderHeight: viewport.renderHeight, verticalFovRadians: viewport.verticalFovRadians }
+        : null;
+    // Only renderHeight reaches the glint shader (logical→device px conversion); FOV is intentionally
+    // ignored now — the screen-space pass is FOV-independent, which is what removes the wide-FOV
+    // streaks. The nebula equirect bake no longer depends on the viewport, so this never re-bakes.
+    const changed = this.#starGlintViewport?.renderHeight !== next?.renderHeight;
+
+    this.#starGlintViewport = next;
+
+    if (changed) {
+      this.#starfieldGlints.forEach(({ handle }) => handle.setViewport(next));
+    }
+
+    return this;
+  }
+
   setImageTexture(layerId: string, texture: THREE.Texture | null) {
     if (texture) {
       this.#imageTextures.set(layerId, texture);
@@ -130,6 +185,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     }
 
     this.material.userData.applyImageTextures?.(this.#imageTextures);
+    this.#coverageMaterial?.userData.applyImageTextures?.(this.#imageTextures);
 
     return this;
   }
@@ -144,6 +200,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     });
 
     this.material.userData.applyImageTextures?.(this.#imageTextures);
+    this.#coverageMaterial?.userData.applyImageTextures?.(this.#imageTextures);
 
     return this;
   }
@@ -202,6 +259,155 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#starfieldGpuBakeService = null;
   }
 
+  private disposeStarfieldGlints() {
+    this.#starfieldGlints.forEach(({ handle }) => {
+      this.remove(handle.object);
+      handle.dispose();
+    });
+    this.#starfieldGlints.clear();
+  }
+
+  private disposeStarfieldGlint(layerId: string) {
+    const entry = this.#starfieldGlints.get(layerId);
+
+    if (!entry) {
+      return;
+    }
+
+    this.remove(entry.handle.object);
+    entry.handle.dispose();
+    this.#starfieldGlints.delete(layerId);
+  }
+
+  // Keep a starfield layer's screen-space glint child in sync. Glints exist only on the live WebGPU
+  // path (the baked path samples a full CPU/GPU equirect, stars included). Geometry rebuilds only
+  // when the distribution key changes; otherwise it's a uniform-only update for live slider tweaks.
+  private syncStarfieldGlint(layerId: string, params: SkyboxStarfieldParams) {
+    const service = this.#starfieldGpuBakeService;
+
+    if (!service?.createGlints || resolveRenderMode(this.#renderMode) !== "live-webgpu") {
+      this.disposeStarfieldGlint(layerId);
+      return;
+    }
+
+    const geometryKey = service.glintGeometryKey(params);
+    const existing = this.#starfieldGlints.get(layerId);
+
+    if (existing) {
+      if (existing.geometryKey === geometryKey) {
+        existing.handle.setParams(params);
+        return;
+      }
+
+      this.remove(existing.handle.object);
+      existing.handle.dispose();
+    }
+
+    const handle = service.createGlints(params);
+
+    handle.setViewport(this.#starGlintViewport);
+    handle.setCoverageTexture(this.#coverageTarget?.texture ?? null);
+    this.add(handle.object);
+    this.#starfieldGlints.set(layerId, { handle, geometryKey });
+  }
+
+  // Coverage is worth running only when glints render live AND some layer sits above a starfield to
+  // occlude them. Otherwise glints stay fully visible (no pre-pass cost).
+  private coverageActive() {
+    return (
+      resolveRenderMode(this.#renderMode) === "live-webgpu" &&
+      this.#starfieldGlints.size > 0 &&
+      manifestHasLayerAboveStarfield(this.#manifest.nodes)
+    );
+  }
+
+  private disposeCoverage() {
+    if (this.#coverageMesh) {
+      this.#coverageScene.remove(this.#coverageMesh);
+      this.#coverageMesh = null;
+    }
+    this.#coverageMaterial?.dispose();
+    this.#coverageMaterial = null;
+    this.#coverageTopologyKey = null;
+    this.#starfieldGlints.forEach(({ handle }) => handle.setCoverageTexture(null));
+  }
+
+  // Build/teardown the coverage material when the layer topology changes; bind its target to glints.
+  private syncCoverage(topologyKey: string) {
+    if (!this.coverageActive()) {
+      this.disposeCoverage();
+      return;
+    }
+
+    if (!this.#coverageMaterial || this.#coverageTopologyKey !== topologyKey) {
+      this.#coverageMaterial?.dispose();
+      if (this.#coverageMesh) {
+        this.#coverageScene.remove(this.#coverageMesh);
+      }
+
+      this.#coverageMaterial = createWebGpuCoverageMaterial(
+        this.#manifest,
+        this.#imageTextures,
+        this.#starfieldTextures,
+        new Map()
+      );
+      this.#coverageMaterial.userData.applyImageTextures?.(this.#imageTextures);
+      this.#imagePlacementOverrides.forEach((placement, layerId) => {
+        this.#coverageMaterial?.userData.applyImageLayerPlacement?.(layerId, placement);
+      });
+
+      if (!this.#coverageGeometry) {
+        // screenUV-derived direction + z=w vertex → any enclosing geometry fills the screen, so a
+        // fixed sphere works regardless of the actual sky geometry type.
+        this.#coverageGeometry = createSkyboxGeometry(DEFAULT_SKYBOX_GEOMETRY);
+      }
+
+      this.#coverageMesh = new THREE.Mesh(this.#coverageGeometry, this.#coverageMaterial);
+      this.#coverageMesh.frustumCulled = false;
+      this.#coverageScene.add(this.#coverageMesh);
+
+      if (!this.#coverageTarget) {
+        this.#coverageTarget = new THREE.RenderTarget(1, 1, { depthBuffer: false });
+      }
+
+      this.#coverageTopologyKey = topologyKey;
+    }
+
+    const coverageTexture = this.#coverageTarget?.texture ?? null;
+    this.#starfieldGlints.forEach(({ handle }) => handle.setCoverageTexture(coverageTexture));
+  }
+
+  private renderCoveragePrepass(renderer: unknown, camera: THREE.Camera) {
+    const gpu = renderer as {
+      autoClear: boolean;
+      getDrawingBufferSize?: (target: THREE.Vector2) => THREE.Vector2;
+      getRenderTarget: () => THREE.RenderTarget | null;
+      render: (scene: THREE.Scene, camera: THREE.Camera) => void;
+      setRenderTarget: (target: THREE.RenderTarget | null) => void;
+    };
+
+    if (!this.#coverageMesh || !this.#coverageTarget || typeof gpu.setRenderTarget !== "function") {
+      return;
+    }
+
+    gpu.getDrawingBufferSize?.(this.#coverageSize);
+    const width = Math.max(1, Math.floor(this.#coverageSize.x || this.#coverageTarget.width));
+    const height = Math.max(1, Math.floor(this.#coverageSize.y || this.#coverageTarget.height));
+
+    if (this.#coverageTarget.width !== width || this.#coverageTarget.height !== height) {
+      this.#coverageTarget.setSize(width, height);
+    }
+
+    const previousTarget = gpu.getRenderTarget();
+    const previousAutoClear = gpu.autoClear;
+
+    gpu.autoClear = true;
+    gpu.setRenderTarget(this.#coverageTarget);
+    gpu.render(this.#coverageScene, camera);
+    gpu.setRenderTarget(previousTarget);
+    gpu.autoClear = previousAutoClear;
+  }
+
   private syncStarfieldTextures() {
     const activeLayerIds = new Set<string>();
 
@@ -211,8 +417,12 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       }
 
       activeLayerIds.add(layer.id);
+      // Stars render via the screen-space glint child; keep it in sync every pass (cheap when
+      // unchanged). The equirect texture is baked nebula-only.
+      this.syncStarfieldGlint(layer.id, layer.params);
       // No bake service (starfield-generation entry not imported) → key is "" and nothing bakes.
-      const textureKey = this.#starfieldGpuBakeService?.createBakeKey(layer.params) ?? "";
+      const textureKey =
+        this.#starfieldGpuBakeService?.createBakeKey(layer.params, undefined, null, NEBULA_ONLY_BAKE) ?? "";
 
       if (this.#starfieldTextureKeys.get(layer.id) === textureKey) {
         return;
@@ -234,6 +444,12 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       this.#starfieldTextureKeys.delete(layerId);
     });
 
+    Array.from(this.#starfieldGlints.keys()).forEach((layerId) => {
+      if (!activeLayerIds.has(layerId)) {
+        this.disposeStarfieldGlint(layerId);
+      }
+    });
+
     Array.from(this.#starfieldBakeTimeouts.entries()).forEach(([layerId, timeoutId]) => {
       if (activeLayerIds.has(layerId)) {
         return;
@@ -245,7 +461,12 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   }
 
   private scheduleStarfieldTextureBake(layerId: string, params: SkyboxStarfieldParams) {
-    const textureKey = this.#starfieldGpuBakeService?.createBakeKey(params) ?? "";
+    // Apply star appearance to the glint child immediately (live slider response); only the
+    // nebula equirect re-bake below is debounced.
+    this.syncStarfieldGlint(layerId, params);
+
+    const textureKey =
+      this.#starfieldGpuBakeService?.createBakeKey(params, undefined, null, NEBULA_ONLY_BAKE) ?? "";
 
     if (this.#starfieldTextureKeys.get(layerId) === textureKey) {
       return;
@@ -266,7 +487,8 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         return;
       }
 
-      const currentTextureKey = this.#starfieldGpuBakeService?.createBakeKey(node.params) ?? "";
+      const currentTextureKey =
+        this.#starfieldGpuBakeService?.createBakeKey(node.params, undefined, null, NEBULA_ONLY_BAKE) ?? "";
 
       if (currentTextureKey !== textureKey) {
         this.scheduleStarfieldTextureBake(layerId, node.params);
@@ -285,7 +507,10 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
 
       const nextTexture = this.#starfieldGpuBakeService.bakeTexture(
         node.params,
-        currentTextureKey
+        currentTextureKey,
+        undefined,
+        null,
+        NEBULA_ONLY_BAKE
       );
       const previousTexture = this.#starfieldTextures.get(layerId);
       if (previousTexture && previousTexture !== nextTexture) {
@@ -341,6 +566,17 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#imagePlacementOverrides.forEach((placement, layerId) => {
       this.material.userData.applyImageLayerPlacement?.(layerId, placement);
     });
+    // Mirror the occlusion-relevant updates (image alpha/placement, layer params) to the coverage
+    // material so glint occlusion tracks live image edits without a topology rebuild.
+    if (this.#coverageMaterial) {
+      if (this.#coverageMaterial.userData.applyLayerParams) {
+        forEachRenderableLayer(this.#manifest.nodes, this.#coverageMaterial.userData.applyLayerParams);
+      }
+      this.#coverageMaterial.userData.applyImageTextures?.(this.#imageTextures);
+      this.#imagePlacementOverrides.forEach((placement, layerId) => {
+        this.#coverageMaterial?.userData.applyImageLayerPlacement?.(layerId, placement);
+      });
+    }
   }
 
   setEditorPresentationEnabled(enabled: boolean) {
@@ -410,6 +646,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
 
     this.#imagePlacementOverrides.set(layerId, placement);
     this.material.userData.applyImageLayerPlacement?.(layerId, placement);
+    this.#coverageMaterial?.userData.applyImageLayerPlacement?.(layerId, placement);
 
     return this;
   }
@@ -482,6 +719,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
 
     if (this.#materialTopologyKey === nextTopologyKey && renderMode === "live-webgpu") {
       this.applyLiveManifestUniformUpdates();
+      this.syncCoverage(nextTopologyKey);
       return this;
     }
 
@@ -500,6 +738,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     }
 
     this.#materialTopologyKey = nextTopologyKey;
+    this.syncCoverage(nextTopologyKey);
 
     return this;
   }
@@ -521,5 +760,11 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.material.dispose();
     this.disposeOwnedTexture();
     this.disposeStarfieldTextures();
+    this.disposeStarfieldGlints();
+    this.disposeCoverage();
+    this.#coverageGeometry?.dispose();
+    this.#coverageGeometry = null;
+    this.#coverageTarget?.dispose();
+    this.#coverageTarget = null;
   }
 }

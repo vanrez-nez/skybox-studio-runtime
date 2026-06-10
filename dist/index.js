@@ -1,27 +1,27 @@
-import { $ as e, A as t, D as n, F as r, G as i, H as a, I as o, J as s, K as c, L as l, M as u, N as d, O as f, P as p, Q as m, R as h, U as ee, V as g, W as te, X as ne, Y as _, Z as v, d as y, et as b, it as x, j as re, k as ie, m as ae, nt as oe, q as S, rt as C, t as w, tt as T, z as E } from "./starfield-bake-registry-DrgMw3WJ.js";
-import * as D from "three";
-import { NodeMaterial as O } from "three/webgpu";
-import { Fn as se, cameraProjectionMatrixInverse as ce, cameraWorldMatrix as le, modelViewProjection as k, normalize as ue, positionGeometry as de, screenUV as fe, texture as A, uniform as j, vec2 as pe, vec4 as me, wgslFn as M } from "three/tsl";
+import { $ as e, A as t, D as n, F as r, G as i, H as a, I as o, J as s, K as c, L as l, M as u, N as d, O as f, P as p, Q as m, R as h, U as ee, V as g, W as _, X as te, Y as v, Z as y, d as b, et as ne, it as re, j as ie, k as ae, m as oe, nt as se, q as x, rt as S, t as C, tt as w, z as T } from "./starfield-bake-registry-C0-DJPT5.js";
+import * as E from "three";
+import { NodeMaterial as D } from "three/webgpu";
+import { Fn as ce, cameraProjectionMatrixInverse as le, cameraWorldMatrix as ue, modelViewProjection as O, normalize as de, positionGeometry as fe, screenUV as pe, texture as k, uniform as A, vec2 as me, vec4 as he, wgslFn as j } from "three/tsl";
 //#region src/manifest.ts
-var N = { type: "box" };
-function P(e) {
+var M = { type: "box" };
+function N(e) {
 	return e.version === 2 ? {
 		...e,
-		geometry: e.geometry ?? N
+		geometry: e.geometry ?? M
 	} : {
 		composition: e.composition,
-		geometry: N,
+		geometry: M,
 		nodes: e.layers.map((e) => ({ ...e })),
 		version: 2
 	};
 }
 //#endregion
 //#region src/skybox/geometry.ts
-function he(e) {
-	return e ?? N;
+function ge(e) {
+	return e ?? M;
 }
-function ge(e = N) {
-	return he(e).type === "sphere" ? new D.SphereGeometry(1, 64, 32) : new D.BoxGeometry(1, 1, 1);
+function P(e = M) {
+	return ge(e).type === "sphere" ? new E.SphereGeometry(1, 64, 32) : new E.BoxGeometry(1, 1, 1);
 }
 function _e(e = 1, t = 25, n = 25) {
 	let r = [], i = (t, n) => {
@@ -41,11 +41,11 @@ function _e(e = 1, t = 25, n = 25) {
 			i(n, r), i(a, r);
 		}
 	}
-	return new D.BufferGeometry().setAttribute("position", new D.Float32BufferAttribute(r, 3));
+	return new E.BufferGeometry().setAttribute("position", new E.Float32BufferAttribute(r, 3));
 }
-function ve(e = N) {
-	if (he(e).type === "sphere") return _e();
-	let t = new D.BoxGeometry(1, 1, 1), n = new D.EdgesGeometry(t);
+function ve(e = M) {
+	if (ge(e).type === "sphere") return _e();
+	let t = new E.BoxGeometry(1, 1, 1), n = new E.EdgesGeometry(t);
 	return t.dispose(), n;
 }
 //#endregion
@@ -53,14 +53,14 @@ function ve(e = N) {
 function ye(e) {
 	return [...e.stops].map((e) => ({
 		color: e.color,
-		midpoint: v((e.midpoint ?? 50) / 100, .01, .99),
-		opacity: v(e.opacity / 100),
-		t: v(e.location / 100)
+		midpoint: y((e.midpoint ?? 50) / 100, .01, .99),
+		opacity: y(e.opacity / 100),
+		t: y(e.location / 100)
 	})).sort((e, t) => e.t - t.t);
 }
 function F(e) {
-	let [t, n, r] = C(e.color);
-	return new D.Vector4(t, n, r, e.opacity);
+	let [t, n, r] = S(e.color);
+	return new E.Vector4(t, n, r, e.opacity);
 }
 //#endregion
 //#region src/layer-addons/shader-codegen.ts
@@ -95,13 +95,13 @@ function Se(e, t) {
 }
 function Ce(e) {
 	let t = e * Math.PI / 180;
-	return new D.Vector3(Math.sin(t), Math.cos(t), 0).normalize();
+	return new E.Vector3(Math.sin(t), Math.cos(t), 0).normalize();
 }
 function we(e) {
 	return e.map((e) => {
 		let t = ye(e.layer.params);
 		return {
-			axis: j(Ce(e.layer.params.rotation)),
+			axis: A(Ce(e.layer.params.rotation)),
 			layerId: e.layer.id,
 			stops: Array.from({ length: e.stopCount }, (e, n) => {
 				let r = t[n] ?? {
@@ -111,9 +111,9 @@ function we(e) {
 					t: 0
 				};
 				return {
-					color: j(F(r)),
-					midpoint: j(r.midpoint),
-					t: j(r.t)
+					color: A(F(r)),
+					midpoint: A(r.midpoint),
+					t: A(r.t)
 				};
 			})
 		};
@@ -207,7 +207,7 @@ var Oe = {
 	type: "gradient",
 	updateUniforms: Te
 };
-_({
+v({
 	type: "gradient",
 	sampleCpu: (e, t) => Se(e, t),
 	updateLive: (e, t) => e.applyLayerParams(t),
@@ -217,8 +217,8 @@ _({
 //#endregion
 //#region src/skybox/colors.ts
 function ke(e) {
-	let [t, n, r] = C(e);
-	return new D.Vector3(t, n, r);
+	let [t, n, r] = S(e);
+	return new E.Vector3(t, n, r);
 }
 //#endregion
 //#region src/layer-addons/builtins/field-gradient.ts
@@ -229,9 +229,9 @@ function Ae(e, t) {
 		0,
 		0
 	];
-	let n = i(e, v(t.amplitude, 0, .6), Math.max(1e-4, t.frequency)), r = 0, a = 0, o = 0, s = 0;
+	let n = i(e, y(t.amplitude, 0, .6), Math.max(1e-4, t.frequency)), r = 0, a = 0, o = 0, s = 0;
 	return t.anchors.forEach((e) => {
-		let i = f(n, re(e.x, e.y)), c = t.mode === "gaussian" ? Math.exp(-(i * i) / (2 * (.46 / t.power) ** 2)) : 1 / (i + 5e-4) ** t.power, l = C(e.color);
+		let i = f(n, ie(e.x, e.y)), c = t.mode === "gaussian" ? Math.exp(-(i * i) / (2 * (.46 / t.power) ** 2)) : 1 / (i + 5e-4) ** t.power, l = S(e.color);
 		r += l[0] * c, a += l[1] * c, o += l[2] * c, s += c;
 	}), s <= 0 ? [
 		0,
@@ -249,12 +249,12 @@ function je(e) {
 	return +(e === "gaussian");
 }
 function Me(e, t) {
-	let n = (v(e) - .5) * Math.PI * 2, r = (.5 - v(t)) * Math.PI, i = Math.cos(r);
-	return new D.Vector3(i * Math.cos(n), Math.sin(r), i * Math.sin(n)).normalize();
+	let n = (y(e) - .5) * Math.PI * 2, r = (.5 - y(t)) * Math.PI, i = Math.cos(r);
+	return new E.Vector3(i * Math.cos(n), Math.sin(r), i * Math.sin(n)).normalize();
 }
 function Ne(e) {
 	return e.map((e) => ({
-		amplitude: j(v(e.layer.params.amplitude, 0, .6)),
+		amplitude: A(y(e.layer.params.amplitude, 0, .6)),
 		anchors: Array.from({ length: e.anchorCount }, (t, n) => {
 			let r = e.layer.params.anchors[n] ?? {
 				color: "#000000",
@@ -262,19 +262,19 @@ function Ne(e) {
 				y: .5
 			};
 			return {
-				color: j(ke(r.color)),
-				direction: j(Me(r.x, r.y))
+				color: A(ke(r.color)),
+				direction: A(Me(r.x, r.y))
 			};
 		}),
-		frequency: j(Math.max(1e-4, e.layer.params.frequency)),
+		frequency: A(Math.max(1e-4, e.layer.params.frequency)),
 		layerId: e.layer.id,
-		mode: j(je(e.layer.params.mode)),
-		power: j(Math.max(1e-4, e.layer.params.power))
+		mode: A(je(e.layer.params.mode)),
+		power: A(Math.max(1e-4, e.layer.params.power))
 	}));
 }
 function Pe(e, t) {
 	let n = e.find((e) => e.layerId === t.id);
-	n && (n.amplitude.value = v(t.params.amplitude, 0, .6), n.frequency.value = Math.max(1e-4, t.params.frequency), n.mode.value = je(t.params.mode), n.power.value = Math.max(1e-4, t.params.power), n.anchors.forEach((e, n) => {
+	n && (n.amplitude.value = y(t.params.amplitude, 0, .6), n.frequency.value = Math.max(1e-4, t.params.frequency), n.mode.value = je(t.params.mode), n.power.value = Math.max(1e-4, t.params.power), n.anchors.forEach((e, n) => {
 		let r = t.params.anchors[n] ?? {
 			color: "#000000",
 			x: .5,
@@ -373,7 +373,7 @@ var Le = {
 	type: "field-gradient",
 	updateUniforms: Pe
 };
-_({
+v({
 	type: "field-gradient",
 	sampleCpu: (e, t) => Ae(e, t),
 	updateLive: (e, t) => e.applyLayerParams(t),
@@ -475,7 +475,7 @@ function Xe(e, t = B, n = 0) {
 		tangentY: Ye(i, r, n)
 	};
 }
-function Ze({ angularHeight: e, angularWidth: t, baseAngularHeight: n, baseAngularWidth: r, centerDirection: i, rotation: a = 0, upDirection: o = B }) {
+function G({ angularHeight: e, angularWidth: t, baseAngularHeight: n, baseAngularWidth: r, centerDirection: i, rotation: a = 0, upDirection: o = B }) {
 	let s = W(i), c = Ge(a), { tangentX: l, tangentY: u } = Xe(s, o, c), d = Math.max(1e-4, e), f = Math.max(1e-4, t);
 	return {
 		angularHeight: d,
@@ -489,9 +489,9 @@ function Ze({ angularHeight: e, angularWidth: t, baseAngularHeight: n, baseAngul
 		tangentY: u
 	};
 }
-function G(e) {
+function K(e) {
 	let t = e, n = W(t?.centerDirection ?? t?.normal ?? t?.center, Re), r = Array.isArray(t?.center) ? Math.max(1e-4, Math.hypot(t.center[0], t.center[1], t.center[2])) : 1, i = typeof t?.angularWidth == "number" ? t.angularWidth : 2 * Math.atan(Math.max(1e-4, t?.width ?? .4) / (2 * r)), a = typeof t?.angularHeight == "number" ? t.angularHeight : 2 * Math.atan(Math.max(1e-4, t?.height ?? .3) / (2 * r));
-	return Ze({
+	return G({
 		angularHeight: a,
 		angularWidth: i,
 		baseAngularHeight: typeof t?.baseAngularHeight == "number" ? t.baseAngularHeight : a,
@@ -500,14 +500,14 @@ function G(e) {
 		rotation: typeof t?.rotation == "number" ? t.rotation : 0
 	});
 }
-function Qe(e) {
+function Ze(e) {
 	let t = W(e.centerDirection);
 	return {
 		x: We(Ue(Math.atan2(t[0], -t[2]))),
 		y: Ue(Math.asin(Ve(t[1], -1, 1)))
 	};
 }
-function $e(e) {
+function Qe(e) {
 	let t = He(e.x), n = He(Ve(e.y, -89.9, V)), r = Math.cos(n);
 	return W([
 		Math.sin(t) * r,
@@ -515,39 +515,39 @@ function $e(e) {
 		-Math.cos(t) * r
 	]);
 }
-function et(e, t, n) {
-	let r = G(e);
-	return Ze({
+function $e(e, t, n) {
+	let r = K(e);
+	return G({
 		angularHeight: r.angularHeight,
 		angularWidth: r.angularWidth,
 		baseAngularHeight: r.baseAngularHeight,
 		baseAngularWidth: r.baseAngularWidth,
-		centerDirection: $e(t),
+		centerDirection: Qe(t),
 		rotation: r.rotation,
 		upDirection: n?.upDirection
 	});
 }
-function tt(e) {
-	let t = G(e);
+function et(e) {
+	let t = K(e);
 	return {
 		x: t.angularWidth / t.baseAngularWidth,
 		y: t.angularHeight / t.baseAngularHeight
 	};
 }
-function nt(e, t) {
-	let n = G(e);
+function tt(e, t) {
+	let n = K(e);
 	return {
 		...n,
 		angularHeight: Math.max(1e-4, n.baseAngularHeight * Math.max(1e-4, t.y)),
 		angularWidth: Math.max(1e-4, n.baseAngularWidth * Math.max(1e-4, t.x))
 	};
 }
-function rt(e) {
-	return G(e).rotation;
+function nt(e) {
+	return K(e).rotation;
 }
-function it(e, t) {
-	let n = G(e);
-	return Ze({
+function rt(e, t) {
+	let n = K(e);
+	return G({
 		angularHeight: n.angularHeight,
 		angularWidth: n.angularWidth,
 		baseAngularHeight: n.baseAngularHeight,
@@ -556,8 +556,8 @@ function it(e, t) {
 		rotation: t
 	});
 }
-function at(e, t) {
-	let n = G(t), r = W(e), i = H(r, n.centerDirection);
+function it(e, t) {
+	let n = K(t), r = W(e), i = H(r, n.centerDirection);
 	if (i <= 0) return null;
 	let a = H(r, n.tangentX) / i, o = H(r, n.tangentY) / i, s = Math.tan(n.angularWidth / 2), c = Math.tan(n.angularHeight / 2);
 	return s <= 0 || c <= 0 || a < -s || a > s || o < -c || o > c ? null : {
@@ -567,19 +567,19 @@ function at(e, t) {
 }
 //#endregion
 //#region src/skybox/empty-texture.ts
-var K = new D.DataTexture(new Uint8Array([
+var q = new E.DataTexture(new Uint8Array([
 	0,
 	0,
 	0,
 	0
-]), 1, 1, D.RGBAFormat);
-K.colorSpace = D.SRGBColorSpace, K.needsUpdate = !0;
+]), 1, 1, E.RGBAFormat);
+q.colorSpace = E.SRGBColorSpace, q.needsUpdate = !0;
 //#endregion
 //#region src/skybox/overlay.ts
-var ot = .18, st = .75, ct = 1.75, lt = 1e-4, ut = .01;
+var at = .18, ot = .75, st = 1.75, ct = 1e-4, lt = .01;
 //#endregion
 //#region src/layer-addons/builtins/image.ts
-function dt(e, t) {
+function ut(e, t) {
 	let n = t.placement;
 	if (!n || !t.pixels || t.width <= 0 || t.height <= 0) return [
 		0,
@@ -587,7 +587,7 @@ function dt(e, t) {
 		0,
 		0
 	];
-	let r = at(e, n);
+	let r = it(e, n);
 	if (!r) return [
 		0,
 		0,
@@ -602,45 +602,45 @@ function dt(e, t) {
 		0
 	];
 	let o = i * (t.width - 1), s = a * (t.height - 1), c = Math.floor(o), l = Math.floor(s), u = c + 1, d = l + 1, f = o - c, m = s - l;
-	return p(p(E(t, c, l), E(t, u, l), f), p(E(t, c, d), E(t, u, d), f), m);
+	return p(p(T(t, c, l), T(t, u, l), f), p(T(t, c, d), T(t, u, d), f), m);
+}
+function dt(e) {
+	if (!e) return {
+		centerDirection: new E.Vector3(0, 0, -1),
+		halfSize: new E.Vector2(0, 0),
+		tangentX: new E.Vector3(1, 0, 0),
+		tangentY: new E.Vector3(0, 1, 0)
+	};
+	let t = K(e);
+	return {
+		centerDirection: new E.Vector3(...t.centerDirection),
+		halfSize: new E.Vector2(Math.max(0, Math.tan(t.angularWidth / 2)), Math.max(0, Math.tan(t.angularHeight / 2))),
+		tangentX: new E.Vector3(...t.tangentX),
+		tangentY: new E.Vector3(...t.tangentY)
+	};
 }
 function ft(e) {
-	if (!e) return {
-		centerDirection: new D.Vector3(0, 0, -1),
-		halfSize: new D.Vector2(0, 0),
-		tangentX: new D.Vector3(1, 0, 0),
-		tangentY: new D.Vector3(0, 1, 0)
-	};
-	let t = G(e);
-	return {
-		centerDirection: new D.Vector3(...t.centerDirection),
-		halfSize: new D.Vector2(Math.max(0, Math.tan(t.angularWidth / 2)), Math.max(0, Math.tan(t.angularHeight / 2))),
-		tangentX: new D.Vector3(...t.tangentX),
-		tangentY: new D.Vector3(...t.tangentY)
-	};
-}
-function pt(e) {
 	return e.map((e) => {
-		let t = ft(e.layer.params.placement);
+		let t = dt(e.layer.params.placement);
 		return {
-			centerDirection: j(t.centerDirection),
-			halfSize: j(t.halfSize),
+			centerDirection: A(t.centerDirection),
+			halfSize: A(t.halfSize),
 			layerId: e.layer.id,
-			tangentX: j(t.tangentX),
-			tangentY: j(t.tangentY)
+			tangentX: A(t.tangentX),
+			tangentY: A(t.tangentY)
 		};
 	});
 }
-function mt(e, t, n) {
+function pt(e, t, n) {
 	let r = e.find((e) => e.layerId === t);
 	if (!r) return;
-	let i = ft(n);
+	let i = dt(n);
 	r.centerDirection.value.copy(i.centerDirection), r.tangentX.value.copy(i.tangentX), r.tangentY.value.copy(i.tangentY), r.halfSize.value.copy(i.halfSize);
 }
-function ht(e, t) {
+function mt(e, t) {
 	e.userData.applyImageLayerPlacement = t;
 }
-function gt(e) {
+function ht(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -662,7 +662,7 @@ function gt(e) {
 	}
 	return n(e), t;
 }
-function _t(e, t) {
+function gt(e, t) {
 	let { width: n, height: r } = e.layer.params;
 	return n <= 0 || r <= 0 ? "return vec4<f32>(0.0, 0.0, 0.0, 0.0);" : `
       let imageDirection = normalize(direction);
@@ -673,8 +673,8 @@ function _t(e, t) {
       let imageU = projectedX / max(${t.halfSize}.x * 2.0, 0.000001) + 0.5;
       let imageV = 0.5 - projectedY / max(${t.halfSize}.y * 2.0, 0.000001);
       let imageEdgeDistance = min(min(imageU, 1.0 - imageU), min(imageV, 1.0 - imageV));
-      let imageEdgeWidth = clamp(fwidth(imageEdgeDistance), 0.000001, ${I(ut)});
-      let imageHardInside = step(${I(lt)}, imageDenom) *
+      let imageEdgeWidth = clamp(fwidth(imageEdgeDistance), 0.000001, ${I(lt)});
+      let imageHardInside = step(${I(ct)}, imageDenom) *
         step(0.0, ${t.halfSize}.x) *
         step(0.0, ${t.halfSize}.y);
       let imageNearRect = step(-imageEdgeWidth, imageEdgeDistance);
@@ -684,8 +684,8 @@ function _t(e, t) {
       return vec4<f32>(imageU, imageV, imageValid, 0.0);
     `;
 }
-function vt(e) {
-	return M(`
+function _t(e) {
+	return j(`
     fn skyboxStudioImageSampleInfo${e.index}(
       direction: vec3<f32>,
       imageCenterDirection: vec3<f32>,
@@ -693,7 +693,7 @@ function vt(e) {
       imageTangentY: vec3<f32>,
       imageHalfSize: vec2<f32>
     ) -> vec4<f32> {
-      ${_t(e, {
+      ${gt(e, {
 		centerDirection: "imageCenterDirection",
 		halfSize: "imageHalfSize",
 		tangentX: "imageTangentX",
@@ -702,29 +702,29 @@ function vt(e) {
     }
   `);
 }
-var yt = M("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> vec4<f32> {\n    return vec4<f32>(color.rgb, color.a * valid);\n  }\n");
-function bt(e, t) {
-	return e.get(t.id) ?? K;
+var vt = j("\n  fn skyboxStudioApplyImageMask(color: vec4<f32>, valid: f32) -> vec4<f32> {\n    return vec4<f32>(color.rgb, color.a * valid);\n  }\n");
+function yt(e, t) {
+	return e.get(t.id) ?? q;
 }
-function xt(e, t) {
+function bt(e, t) {
 	e.forEach((e, n) => {
-		e.textureNode.value = t.get(n) ?? K;
+		e.textureNode.value = t.get(n) ?? q;
 	});
 }
-function St(e, t, n, r) {
+function xt(e, t, n, r) {
 	let i = /* @__PURE__ */ new Map();
 	return {
 		sampleData: i,
 		sampleNodes: Object.fromEntries(e.map((e) => {
-			let a = r[e.index], o = vt(e)({
+			let a = r[e.index], o = _t(e)({
 				direction: t,
 				imageCenterDirection: a.centerDirection,
 				imageHalfSize: a.halfSize,
 				imageTangentX: a.tangentX,
 				imageTangentY: a.tangentY
-			}), s = pe(o.x, o.y), c = A(bt(n, e.layer), s).setName(`imageTexture${e.index}`);
+			}), s = me(o.x, o.y), c = k(yt(n, e.layer), s).setName(`imageTexture${e.index}`);
 			c.getUniformHash = () => `skybox-image-texture:${e.layer.id}`;
-			let l = yt({
+			let l = vt({
 				color: c,
 				valid: o.z
 			});
@@ -736,8 +736,8 @@ function St(e, t, n, r) {
 		}))
 	};
 }
-var Ct = {
-	collect: gt,
+var St = {
+	collect: ht,
 	createParameterDeclarations: (e) => e.map((e) => `,
       ${e.parameterName}: vec4<f32>`).join(""),
 	createSampleExpression: (e, t, n) => {
@@ -745,10 +745,10 @@ var Ct = {
 		return r ? `effectColor = ${r.parameterName};` : z();
 	},
 	createSampleNodes: ({ bindings: e, direction: t, imageTextures: n, uniforms: r }) => {
-		let i = St(e, t, n, r);
+		let i = xt(e, t, n, r);
 		return {
 			editorProjectionByLayerId: new Map(Array.from(i.sampleData.entries()).map(([e, t]) => [e, {
-				uv: pe(t.sampleInfo.x, t.sampleInfo.y),
+				uv: me(t.sampleInfo.x, t.sampleInfo.y),
 				valid: t.sampleInfo.z
 			}])),
 			sampleData: i.sampleData,
@@ -758,7 +758,7 @@ var Ct = {
 		};
 	},
 	createSampleParameters: (e, t, n) => n?.sampleNodesByParameterName ?? {},
-	createUniforms: pt,
+	createUniforms: ft,
 	getTopologyKey: (e) => ({
 		hasPlacement: !!e.params.placement,
 		hasSrc: !!e.params.src,
@@ -766,32 +766,32 @@ var Ct = {
 		width: e.params.width
 	}),
 	type: "image",
-	updateUniforms: (e, t) => mt(e, t.id, t.params.placement)
+	updateUniforms: (e, t) => pt(e, t.id, t.params.placement)
 };
-_({
+v({
 	type: "image",
-	sampleCpu: (e, t) => dt(e, t),
+	sampleCpu: (e, t) => ut(e, t),
 	updateLive: (e, t) => e.applyImagePlacement(t.id, t.params.placement),
-	wgsl: Ct,
+	wgsl: St,
 	wgslEditorOverlay: !0,
-	getTopologyKey: (e) => Ct.getTopologyKey(e)
+	getTopologyKey: (e) => St.getTopologyKey(e)
 });
 //#endregion
 //#region src/spot-transform.ts
-var wt = Math.PI / 12;
-function q(e, t, n) {
+var Ct = Math.PI / 12;
+function J(e, t, n) {
 	return Math.min(n, Math.max(t, e));
 }
-function Tt(e) {
+function wt(e) {
 	return e * 180 / Math.PI;
 }
-function Et(e) {
+function Tt(e) {
 	return ((e + 180) % 360 + 360) % 360 - 180;
 }
-function Dt() {
+function Et() {
 	return {
-		angularRadius: wt,
-		baseAngularRadius: wt,
+		angularRadius: Ct,
+		baseAngularRadius: Ct,
 		brightness: 1,
 		centerDirection: [
 			0,
@@ -829,100 +829,100 @@ function Dt() {
 		}]
 	};
 }
-function J(e) {
-	let t = e, n = Dt(), r = Math.max(1e-4, typeof t?.baseAngularRadius == "number" ? t.baseAngularRadius : n.baseAngularRadius);
+function Y(e) {
+	let t = e, n = Et(), r = Math.max(1e-4, typeof t?.baseAngularRadius == "number" ? t.baseAngularRadius : n.baseAngularRadius);
 	return {
 		angularRadius: Math.max(1e-4, typeof t?.angularRadius == "number" ? t.angularRadius : r),
 		baseAngularRadius: r,
 		brightness: Math.max(0, typeof t?.brightness == "number" ? t.brightness : n.brightness),
 		centerDirection: W(t?.centerDirection, n.centerDirection),
 		colorMode: t?.colorMode === "gradient" ? "gradient" : "light",
-		coreRadius: q(typeof t?.coreRadius == "number" ? t.coreRadius : n.coreRadius, .01, .7),
-		coreSoftness: q(typeof t?.coreSoftness == "number" ? t.coreSoftness : n.coreSoftness, .4, 6),
-		dispersion: q(typeof t?.dispersion == "number" ? t.dispersion : n.dispersion, 0, 1),
-		dogSpread: q(typeof t?.dogSpread == "number" ? t.dogSpread : n.dogSpread, .015, .18),
-		dogStrength: q(typeof t?.dogStrength == "number" ? t.dogStrength : n.dogStrength, 0, 1.8),
-		dogStretch: q(typeof t?.dogStretch == "number" ? t.dogStretch : n.dogStretch, 0, .55),
-		glareSize: q(typeof t?.glareSize == "number" ? t.glareSize : n.glareSize, .03, 1.1),
-		glareStrength: q(typeof t?.glareStrength == "number" ? t.glareStrength : n.glareStrength, 0, 1.4),
-		glow: q(typeof t?.glow == "number" ? t.glow : n.glow, 0, 1),
-		glowSize: q(typeof t?.glowSize == "number" ? t.glowSize : n.glowSize, .05, 1.4),
-		glowStrength: q(typeof t?.glowStrength == "number" ? t.glowStrength : n.glowStrength, 0, 1),
-		halo: q(typeof t?.halo == "number" ? t.halo : n.halo, 0, 1),
-		haloInnerWidth: q(typeof t?.haloInnerWidth == "number" ? t.haloInnerWidth : n.haloInnerWidth, .003, .09),
-		haloOuterWidth: q(typeof t?.haloOuterWidth == "number" ? t.haloOuterWidth : n.haloOuterWidth, .01, .24),
-		haloRadius: q(typeof t?.haloRadius == "number" ? t.haloRadius : n.haloRadius, .04, 1),
-		haloStrength: q(typeof t?.haloStrength == "number" ? t.haloStrength : n.haloStrength, 0, 1.4),
+		coreRadius: J(typeof t?.coreRadius == "number" ? t.coreRadius : n.coreRadius, .01, .7),
+		coreSoftness: J(typeof t?.coreSoftness == "number" ? t.coreSoftness : n.coreSoftness, .4, 6),
+		dispersion: J(typeof t?.dispersion == "number" ? t.dispersion : n.dispersion, 0, 1),
+		dogSpread: J(typeof t?.dogSpread == "number" ? t.dogSpread : n.dogSpread, .015, .18),
+		dogStrength: J(typeof t?.dogStrength == "number" ? t.dogStrength : n.dogStrength, 0, 1.8),
+		dogStretch: J(typeof t?.dogStretch == "number" ? t.dogStretch : n.dogStretch, 0, .55),
+		glareSize: J(typeof t?.glareSize == "number" ? t.glareSize : n.glareSize, .03, 1.1),
+		glareStrength: J(typeof t?.glareStrength == "number" ? t.glareStrength : n.glareStrength, 0, 1.4),
+		glow: J(typeof t?.glow == "number" ? t.glow : n.glow, 0, 1),
+		glowSize: J(typeof t?.glowSize == "number" ? t.glowSize : n.glowSize, .05, 1.4),
+		glowStrength: J(typeof t?.glowStrength == "number" ? t.glowStrength : n.glowStrength, 0, 1),
+		halo: J(typeof t?.halo == "number" ? t.halo : n.halo, 0, 1),
+		haloInnerWidth: J(typeof t?.haloInnerWidth == "number" ? t.haloInnerWidth : n.haloInnerWidth, .003, .09),
+		haloOuterWidth: J(typeof t?.haloOuterWidth == "number" ? t.haloOuterWidth : n.haloOuterWidth, .01, .24),
+		haloRadius: J(typeof t?.haloRadius == "number" ? t.haloRadius : n.haloRadius, .04, 1),
+		haloStrength: J(typeof t?.haloStrength == "number" ? t.haloStrength : n.haloStrength, 0, 1.4),
 		lightColor: typeof t?.lightColor == "string" ? t.lightColor : n.lightColor,
 		stops: (t?.stops?.length ? t.stops : n.stops).map((e) => ({
 			color: e.color,
-			location: q(e.location, 0, 100),
-			midpoint: q(e.midpoint ?? 50, 1, 99),
-			opacity: q(e.opacity, 0, 100)
+			location: J(e.location, 0, 100),
+			midpoint: J(e.midpoint ?? 50, 1, 99),
+			opacity: J(e.opacity, 0, 100)
 		}))
 	};
 }
-function Ot(e) {
+function Dt(e) {
 	let t = W(e.centerDirection);
 	return {
-		x: Et(Tt(Math.atan2(t[0], -t[2]))),
-		y: Tt(Math.asin(q(t[1], -1, 1)))
+		x: Tt(wt(Math.atan2(t[0], -t[2]))),
+		y: wt(Math.asin(J(t[1], -1, 1)))
 	};
 }
-function kt(e, t) {
+function Ot(e, t) {
 	return {
-		...J(e),
-		centerDirection: $e({
+		...Y(e),
+		centerDirection: Qe({
 			x: t.x,
-			y: q(t.y, -V, V)
+			y: J(t.y, -V, V)
 		})
 	};
 }
-function At(e) {
-	let t = J(e);
+function kt(e) {
+	let t = Y(e);
 	return t.angularRadius / t.baseAngularRadius;
 }
-function jt(e, t) {
-	let n = J(e);
+function At(e, t) {
+	let n = Y(e);
 	return {
 		...n,
 		angularRadius: Math.max(1e-4, n.baseAngularRadius * Math.max(1e-4, t))
 	};
 }
-function Mt(e, t) {
-	let n = J(t), r = W(e), i = W(n.centerDirection), a = r[0] * i[0] + r[1] * i[1] + r[2] * i[2];
-	return Math.acos(q(a, -1, 1)) <= n.angularRadius;
+function jt(e, t) {
+	let n = Y(t), r = W(e), i = W(n.centerDirection), a = r[0] * i[0] + r[1] * i[1] + r[2] * i[2];
+	return Math.acos(J(a, -1, 1)) <= n.angularRadius;
 }
 //#endregion
 //#region src/skybox/editor-presentation.ts
-var Nt = {
+var Mt = {
 	hoveredLayerId: null,
 	selectedLayerId: null
 };
+function Nt(e, t) {
+	return +(t === e);
+}
 function Pt(e, t) {
 	return +(t === e);
 }
 function Ft(e, t) {
-	return +(t === e);
+	return Math.max(Nt(e, t.hoveredLayerId), Pt(e, t.selectedLayerId));
 }
 function It(e, t) {
-	return Math.max(Pt(e, t.hoveredLayerId), Ft(e, t.selectedLayerId));
-}
-function Lt(e, t) {
 	return e.map((e) => ({
-		active: j(It(e.layer.id, t)),
+		active: A(Ft(e.layer.id, t)),
 		layerId: e.layer.id
 	}));
 }
-function Rt(e, t) {
+function Lt(e, t) {
 	e.forEach((e) => {
-		e.active.value = It(e.layerId, t);
+		e.active.value = Ft(e.layerId, t);
 	});
 }
-function zt(e, t) {
+function Rt(e, t) {
 	e.userData.applyEditorLayerState = t;
 }
-var Bt = M(`
+var zt = j(`
   fn skyboxStudioApplyImageEditorRectOverlay(
     color: vec4<f32>,
     uv: vec2<f32>,
@@ -932,22 +932,22 @@ var Bt = M(`
     let activeAmount = clamp(activeValue, 0.0, 1.0);
     let rectCoverage = valid * activeAmount;
     let edgeDistance = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-    let edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${I(ut)});
+    let edgeWidth = clamp(fwidth(edgeDistance), 0.000001, ${I(lt)});
     let bounds = rectCoverage * (
       1.0 - smoothstep(
+        edgeWidth * ${I(ot)},
         edgeWidth * ${I(st)},
-        edgeWidth * ${I(ct)},
         edgeDistance
       )
     );
-    let rectAlpha = rectCoverage * ${I(ot)};
+    let rectAlpha = rectCoverage * ${I(at)};
     let overlayAlpha = max(rectAlpha, bounds);
     return vec4<f32>(
       mix(color.rgb, vec3<f32>(1.0, 0.0, 0.0), overlayAlpha),
       color.a
     );
   }
-`), Vt = M(`
+`), Bt = j(`
   fn skyboxStudioSpotEditorRectInfo(
     direction: vec3<f32>,
     spotCenterDirection: vec3<f32>,
@@ -964,8 +964,8 @@ var Bt = M(`
     let spotU = spotLocalX * 0.5 + 0.5;
     let spotV = 0.5 - spotLocalY * 0.5;
     let spotEdgeDistance = min(min(spotU, 1.0 - spotU), min(spotV, 1.0 - spotV));
-    let spotEdgeWidth = clamp(fwidth(spotEdgeDistance), 0.000001, ${I(ut)});
-    let spotValid = step(${I(lt)}, spotDenom) *
+    let spotEdgeWidth = clamp(fwidth(spotEdgeDistance), 0.000001, ${I(lt)});
+    let spotValid = step(${I(ct)}, spotDenom) *
       step(-spotEdgeWidth, spotEdgeDistance) *
       smoothstep(-spotEdgeWidth, spotEdgeWidth, spotEdgeDistance);
 
@@ -974,61 +974,61 @@ var Bt = M(`
 `);
 //#endregion
 //#region src/layer-addons/builtins/spot.ts
-function Ht(e, i) {
-	let s = J(i), c = r(e), u = r(s.centerDirection), f = t(c, u), p = Math.acos(v(f, -1, 1)), m = Math.max(s.angularRadius, 1e-4), ne = p / m;
-	if (s.colorMode === "gradient") return ne > 1 ? [
+function Vt(e, i) {
+	let s = Y(i), c = r(e), u = r(s.centerDirection), f = t(c, u), p = Math.acos(y(f, -1, 1)), m = Math.max(s.angularRadius, 1e-4), te = p / m;
+	if (s.colorMode === "gradient") return te > 1 ? [
 		0,
 		0,
 		0,
 		0
-	] : h(o(s.stops), ne);
-	let _ = l(e, u, m), y = _.d, b = C(s.lightColor), x = s.brightness, re = v(1 - y / s.coreRadius) ** +s.coreSoftness, ae = v(1 - y / s.glowSize) ** 2 * s.glowStrength, oe = v(1 - y / s.glareSize) ** 1.15 * s.glareStrength, S = (re + ae + oe) * x, w = g(b, S);
-	w = n(w, [
-		Math.max(S - 1, 0),
-		Math.max(S - 1, 0),
-		Math.max(S - 1, 0)
+	] : h(o(s.stops), te);
+	let v = l(e, u, m), b = v.d, ne = S(s.lightColor), re = s.brightness, ie = y(1 - b / s.coreRadius) ** +s.coreSoftness, oe = y(1 - b / s.glowSize) ** 2 * s.glowStrength, se = y(1 - b / s.glareSize) ** 1.15 * s.glareStrength, x = (ie + oe + se) * re, C = g(ne, x);
+	C = n(C, [
+		Math.max(x - 1, 0),
+		Math.max(x - 1, 0),
+		Math.max(x - 1, 0)
 	]);
-	let T = Math.max(s.haloInnerWidth, 1e-4), E = Math.max(s.haloOuterWidth, 1e-4), D = y - s.haloRadius, O = Math.exp(-te(D / (D < 0 ? T : E))), se = ie(d([
+	let w = Math.max(s.haloInnerWidth, 1e-4), T = Math.max(s.haloOuterWidth, 1e-4), E = b - s.haloRadius, D = Math.exp(-_(E / (E < 0 ? w : T))), ce = ae(d([
 		1,
 		1,
 		1
-	], ee(v((y - (s.haloRadius - T)) / (T + E))), s.dispersion), b), ce = O * s.haloStrength * x;
-	w = n(w, g(se, ce)), w = n(w, g([
+	], ee(y((b - (s.haloRadius - w)) / (w + T))), s.dispersion), ne), le = D * s.haloStrength * re;
+	C = n(C, g(ce, le)), C = n(C, g([
 		1,
 		1,
 		1
-	], Math.max(ce - 1.2, 0) * .22));
-	let le = Math.abs(_.y), k = Math.abs(_.x), ue = Math.exp(-te((k - s.haloRadius) / Math.max(s.dogSpread, 1e-4))) * Math.exp(-te(le / Math.max(s.dogSpread * .72, 1e-4))), de = a(s.haloRadius, s.haloRadius + Math.max(s.dogStretch, 1e-4), k) * (1 - a(s.haloRadius + Math.max(s.dogStretch, 1e-4), s.haloRadius + Math.max(s.dogStretch * 2.2, 1e-4), k)) * Math.exp(-te(le / Math.max(s.dogSpread * .9, 1e-4))), fe = ie(d([
+	], Math.max(le - 1.2, 0) * .22));
+	let ue = Math.abs(v.y), O = Math.abs(v.x), de = Math.exp(-_((O - s.haloRadius) / Math.max(s.dogSpread, 1e-4))) * Math.exp(-_(ue / Math.max(s.dogSpread * .72, 1e-4))), fe = a(s.haloRadius, s.haloRadius + Math.max(s.dogStretch, 1e-4), O) * (1 - a(s.haloRadius + Math.max(s.dogStretch, 1e-4), s.haloRadius + Math.max(s.dogStretch * 2.2, 1e-4), O)) * Math.exp(-_(ue / Math.max(s.dogSpread * .9, 1e-4))), pe = ae(d([
 		1,
 		1,
 		1
-	], ee(v((k - (s.haloRadius - s.dogSpread * 1.4)) / Math.max(s.dogSpread * 3.5, 1e-4))), s.dispersion), b), A = (ue + de * .28) * s.dogStrength * x;
-	w = n(w, g(fe, A)), w = n(w, g([
+	], ee(y((O - (s.haloRadius - s.dogSpread * 1.4)) / Math.max(s.dogSpread * 3.5, 1e-4))), s.dispersion), ne), k = (de + fe * .28) * s.dogStrength * re;
+	C = n(C, g(pe, k)), C = n(C, g([
 		1,
 		1,
 		1
-	], Math.max(A - 1.1, 0) * .18));
-	let j = v(Math.max(w[0], w[1], w[2]));
-	return j <= 1e-5 ? [
+	], Math.max(k - 1.1, 0) * .18));
+	let A = y(Math.max(C[0], C[1], C[2]));
+	return A <= 1e-5 ? [
 		0,
 		0,
 		0,
 		0
 	] : [
-		w[0] / j,
-		w[1] / j,
-		w[2] / j,
-		j
+		C[0] / A,
+		C[1] / A,
+		C[2] / A,
+		A
 	];
 }
-function Ut(e) {
+function Ht(e) {
 	return +(e === "gradient");
 }
-function Wt(e) {
-	let t = J(e);
+function Ut(e) {
+	let t = Y(e);
 	return {
 		brightness: Math.max(0, t.brightness),
-		centerDirection: new D.Vector3(...t.centerDirection).normalize(),
+		centerDirection: new E.Vector3(...t.centerDirection).normalize(),
 		coreRadius: t.coreRadius,
 		coreSoftness: t.coreSoftness,
 		dispersion: t.dispersion,
@@ -1044,35 +1044,35 @@ function Wt(e) {
 		haloRadius: t.haloRadius,
 		haloStrength: t.haloStrength,
 		lightColor: ke(t.lightColor),
-		mode: Ut(t.colorMode),
+		mode: Ht(t.colorMode),
 		radius: Math.max(1e-4, t.angularRadius),
 		stops: ye(t)
 	};
 }
-function Gt(e) {
+function Wt(e) {
 	return e.map((e) => {
-		let t = Wt(e.layer.params);
+		let t = Ut(e.layer.params);
 		return {
-			brightness: j(t.brightness),
-			centerDirection: j(t.centerDirection),
-			coreRadius: j(t.coreRadius),
-			coreSoftness: j(t.coreSoftness),
-			dispersion: j(t.dispersion),
-			dogSpread: j(t.dogSpread),
-			dogStrength: j(t.dogStrength),
-			dogStretch: j(t.dogStretch),
-			glareSize: j(t.glareSize),
-			glareStrength: j(t.glareStrength),
-			glowSize: j(t.glowSize),
-			glowStrength: j(t.glowStrength),
-			haloInnerWidth: j(t.haloInnerWidth),
-			haloOuterWidth: j(t.haloOuterWidth),
-			haloRadius: j(t.haloRadius),
-			haloStrength: j(t.haloStrength),
+			brightness: A(t.brightness),
+			centerDirection: A(t.centerDirection),
+			coreRadius: A(t.coreRadius),
+			coreSoftness: A(t.coreSoftness),
+			dispersion: A(t.dispersion),
+			dogSpread: A(t.dogSpread),
+			dogStrength: A(t.dogStrength),
+			dogStretch: A(t.dogStretch),
+			glareSize: A(t.glareSize),
+			glareStrength: A(t.glareStrength),
+			glowSize: A(t.glowSize),
+			glowStrength: A(t.glowStrength),
+			haloInnerWidth: A(t.haloInnerWidth),
+			haloOuterWidth: A(t.haloOuterWidth),
+			haloRadius: A(t.haloRadius),
+			haloStrength: A(t.haloStrength),
 			layerId: e.layer.id,
-			lightColor: j(t.lightColor),
-			mode: j(t.mode),
-			radius: j(t.radius),
+			lightColor: A(t.lightColor),
+			mode: A(t.mode),
+			radius: A(t.radius),
 			stops: Array.from({ length: e.stopCount }, (e, n) => {
 				let r = t.stops[n] ?? {
 					color: "#000000",
@@ -1081,18 +1081,18 @@ function Gt(e) {
 					t: 0
 				};
 				return {
-					color: j(F(r)),
-					midpoint: j(r.midpoint),
-					t: j(r.t)
+					color: A(F(r)),
+					midpoint: A(r.midpoint),
+					t: A(r.t)
 				};
 			})
 		};
 	});
 }
-function Kt(e, t) {
+function Gt(e, t) {
 	let n = e.find((e) => e.layerId === t.id);
 	if (!n) return;
-	let r = Wt(t.params);
+	let r = Ut(t.params);
 	n.brightness.value = r.brightness, n.centerDirection.value.copy(r.centerDirection), n.coreRadius.value = r.coreRadius, n.coreSoftness.value = r.coreSoftness, n.dispersion.value = r.dispersion, n.dogSpread.value = r.dogSpread, n.dogStrength.value = r.dogStrength, n.dogStretch.value = r.dogStretch, n.glareSize.value = r.glareSize, n.glareStrength.value = r.glareStrength, n.glowSize.value = r.glowSize, n.glowStrength.value = r.glowStrength, n.haloInnerWidth.value = r.haloInnerWidth, n.haloOuterWidth.value = r.haloOuterWidth, n.haloRadius.value = r.haloRadius, n.haloStrength.value = r.haloStrength, n.lightColor.value.copy(r.lightColor), n.mode.value = r.mode, n.radius.value = r.radius, n.stops.forEach((e, t) => {
 		let n = r.stops[t] ?? {
 			color: "#000000",
@@ -1103,7 +1103,7 @@ function Kt(e, t) {
 		e.color.value.copy(F(n)), e.midpoint.value = n.midpoint, e.t.value = n.t;
 	});
 }
-function qt(e) {
+function Kt(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -1126,7 +1126,7 @@ function qt(e) {
 	}
 	return n(e), t;
 }
-function Jt(e) {
+function qt(e) {
 	let t = Array.from({ length: Math.max(0, e.stopCount - 1) }, (t, n) => {
 		let r = `${e.parameterPrefix}StopT${n}`, i = `${e.parameterPrefix}StopT${n + 1}`, a = `spotLocalT${n}`, o = `spotSegmentMidpoint${n}`, s = `spotMidpointT${n}`, c = `${e.parameterPrefix}StopMidpoint${n}`, l = `${a} / max(${o} * 2.0, 0.00001)`, u = `select(${`0.5 + (${a} - ${o}) / max((1.0 - ${o}) * 2.0, 0.00001)`}, ${l}, ${a} <= ${o})`;
 		return `${n === 0 ? "if" : "else if"} (spotT <= ${i}) {
@@ -1143,8 +1143,8 @@ function Jt(e) {
       }
     }`;
 }
-function Yt(e) {
-	let t = `${e.parameterPrefix}Mode > 0.5`, n = Jt(e);
+function Jt(e) {
+	let t = `${e.parameterPrefix}Mode > 0.5`, n = qt(e);
 	return `{
     let spotCenter = normalize(${e.parameterPrefix}CenterDirection);
     let spotDot = clamp(dot(normalize(direction), spotCenter), -1.0, 1.0);
@@ -1208,8 +1208,8 @@ function Yt(e) {
     }
   }`;
 }
-var Xt = {
-	collect: qt,
+var Yt = {
+	collect: Kt,
 	createParameterDeclarations: (e) => e.flatMap((e) => [
 		`,
       ${e.parameterPrefix}CenterDirection: vec3<f32>`,
@@ -1260,16 +1260,16 @@ var Xt = {
 	]).join(""),
 	createSampleExpression: (e, t, n) => {
 		let r = n.bindingsByLayerId.get(e.id);
-		return r ? Yt(r) : z();
+		return r ? Jt(r) : z();
 	},
 	createSampleNodes: ({ bindings: e, direction: t, uniforms: n }) => ({ editorProjectionByLayerId: new Map(e.map((e) => {
-		let r = n[e.index], i = Vt({
+		let r = n[e.index], i = Bt({
 			direction: t,
 			spotCenterDirection: r.centerDirection,
 			spotRadius: r.radius
 		});
 		return [e.layer.id, {
-			uv: pe(i.x, i.y),
+			uv: me(i.x, i.y),
 			valid: i.z
 		}];
 	})) }),
@@ -1302,22 +1302,22 @@ var Xt = {
 			]).flat()
 		];
 	})),
-	createUniforms: Gt,
+	createUniforms: Wt,
 	getTopologyKey: (e) => ({ stopCount: e.params.stops.length }),
 	type: "spot",
-	updateUniforms: Kt
+	updateUniforms: Gt
 };
-_({
+v({
 	type: "spot",
-	sampleCpu: (e, t) => Ht(e, t),
+	sampleCpu: (e, t) => Vt(e, t),
 	updateLive: (e, t) => e.applyLayerParams(t),
-	wgsl: Xt,
+	wgsl: Yt,
 	wgslEditorOverlay: !0,
-	getTopologyKey: (e) => Xt.getTopologyKey(e)
+	getTopologyKey: (e) => Yt.getTopologyKey(e)
 });
 //#endregion
 //#region src/layer-addons/builtins/starfield.ts
-function Zt(e) {
+function Xt(e) {
 	let t = [];
 	function n(e) {
 		e.forEach((e) => {
@@ -1339,25 +1339,25 @@ function Zt(e) {
 	}
 	return n(e), t;
 }
-function Qt(e) {
+function Zt(e) {
 	e.userData.starfieldRenderTarget || e.dispose();
 }
-function $t(e, t) {
-	return e.get(t.id) ?? K;
+function Qt(e, t) {
+	return e.get(t.id) ?? q;
 }
-function en(e, t) {
+function $t(e, t) {
 	e.forEach((e, n) => {
-		e.textureNode.value = t.get(n) ?? K;
+		e.textureNode.value = t.get(n) ?? q;
 	});
 }
-var tn = M("\n  fn skyboxStudioDirectionToSourceStarfieldUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let theta = atan2(normalizedDirection.x, normalizedDirection.z);\n    let u = fract(theta / 6.283185307179586 + 0.5);\n    let v = acos(clamp(normalizedDirection.y, -1.0, 1.0)) / 3.141592653589793;\n\n    return vec2<f32>(u, v);\n  }\n");
-_({
+var en = j("\n  fn skyboxStudioDirectionToSourceStarfieldUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let theta = atan2(normalizedDirection.x, normalizedDirection.z);\n    let u = fract(theta / 6.283185307179586 + 0.5);\n    let v = acos(clamp(normalizedDirection.y, -1.0, 1.0)) / 3.141592653589793;\n\n    return vec2<f32>(u, v);\n  }\n");
+v({
 	type: "starfield",
 	updateLive: (e, t) => {
 		e.applyLayerParams(t), e.scheduleResourceBake(t.id, t.params);
 	},
 	wgsl: {
-		collect: Zt,
+		collect: Xt,
 		createParameterDeclarations: (e) => e.map((e) => `,
       ${e.parameterName}: vec4<f32>`).join(""),
 		createSampleExpression: (e, t, n) => {
@@ -1366,7 +1366,7 @@ _({
 		},
 		createSampleNodes: ({ bindings: e, direction: t, imageTextures: n }) => {
 			let r = n, i = /* @__PURE__ */ new Map(), a = Object.fromEntries(e.map((e) => {
-				let n = tn({ direction: t }), a = A($t(r, e.layer), n).setName(`starfieldTexture${e.index}`);
+				let n = en({ direction: t }), a = k(Qt(r, e.layer), n).setName(`starfieldTexture${e.index}`);
 				return a.getUniformHash = () => `skybox-starfield-texture:${e.layer.id}`, i.set(e.layer.id, {
 					sampleNode: a,
 					textureNode: a
@@ -1389,7 +1389,7 @@ _({
 });
 //#endregion
 //#region src/evaluator.ts
-function nn(e, t, n = {}) {
+function tn(e, t, n = {}) {
 	let r = c(t.type);
 	return r?.sampleCpu ? r.sampleCpu(e, t.params, {
 		layerId: t.id,
@@ -1402,9 +1402,9 @@ function nn(e, t, n = {}) {
 		0
 	];
 }
-function rn(t, n, r = {}) {
+function nn(t, n, r = {}) {
 	return n.filter((e) => e.enabled).reverse().reduce((n, i) => {
-		let a = i.type === "group" ? [...rn(t, i.children, r), 1] : nn(t, i, r), o = v(a[3] * (i.opacity / 100));
+		let a = i.type === "group" ? [...nn(t, i.children, r), 1] : tn(t, i, r), o = y(a[3] * (i.opacity / 100));
 		return e(n, [
 			a[0],
 			a[1],
@@ -1416,22 +1416,22 @@ function rn(t, n, r = {}) {
 		0
 	]);
 }
-function an(e, t) {
+function rn(e, t) {
 	for (let n of e) if (n.type === "group") {
 		if (n.id === t) return n;
-		let e = an(n.children, t);
+		let e = rn(n.children, t);
 		if (e) return e;
 	}
 	return null;
 }
-function on(e, t, n = {}) {
-	let r = P(e), i = n.targetGroupId ? an(r.nodes, n.targetGroupId) : null;
-	return rn(t, n.targetGroupId ? i ? [i] : [] : r.nodes, n);
+function an(e, t, n = {}) {
+	let r = N(e), i = n.targetGroupId ? rn(r.nodes, n.targetGroupId) : null;
+	return nn(t, n.targetGroupId ? i ? [i] : [] : r.nodes, n);
 }
 //#endregion
 //#region src/baking/bake.ts
-var sn = 1024, cn = "0.1.0", ln = /* @__PURE__ */ new Map(), un = /* @__PURE__ */ new Map();
-function dn(e = {}) {
+var on = 1024, sn = "0.1.0", cn = /* @__PURE__ */ new Map(), ln = /* @__PURE__ */ new Map();
+function un(e = {}) {
 	let t = Math.max(.1, e.dpr ?? 1), n = Math.max(1, Math.floor((e.width ?? 1024) * t)), r = Math.max(1, Math.floor((e.height ?? n / 2) * t));
 	return {
 		cache: e.cache ?? !0,
@@ -1441,38 +1441,38 @@ function dn(e = {}) {
 		width: n
 	};
 }
-function fn(e, t) {
-	return b(JSON.stringify({
+function dn(e, t) {
+	return ne(JSON.stringify({
 		manifest: e,
 		options: t,
-		runtimeVersion: cn
+		runtimeVersion: sn
 	}));
 }
-function pn() {
-	ln.clear(), un.clear();
+function fn() {
+	cn.clear(), ln.clear();
 }
-function mn(e, t = []) {
+function pn(e, t = []) {
 	return e.forEach((e) => {
 		if (e.enabled) {
 			if (e.type === "group") {
-				mn(e.children, t);
+				pn(e.children, t);
 				return;
 			}
 			e.type === "starfield" && t.push(e);
 		}
 	}), t;
 }
-function hn(e, t) {
+function mn(e, t) {
 	for (let n of e) {
 		if (n.type !== "group") continue;
 		if (n.id === t) return n;
-		let e = hn(n.children, t);
+		let e = mn(n.children, t);
 		if (e) return e;
 	}
 	return null;
 }
-function gn(e, t, n, r, i) {
-	let a = mn(r ? hn(e.nodes, r)?.children ?? [] : e.nodes);
+function hn(e, t, n, r, i) {
+	let a = pn(r ? mn(e.nodes, r)?.children ?? [] : e.nodes);
 	if (a.length === 0) return;
 	let o = /* @__PURE__ */ new Map();
 	return a.forEach((e) => {
@@ -1481,24 +1481,24 @@ function gn(e, t, n, r, i) {
 			o.set(e.id, r);
 			return;
 		}
-		let a = ae(e.params, t, n), s = un.get(a), c = s ?? y(e.params, t, n);
-		s || un.set(a, c), o.set(e.id, c);
+		let a = oe(e.params, t, n), s = ln.get(a), c = s ?? b(e.params, t, n);
+		s || ln.set(a, c), o.set(e.id, c);
 	}), o;
 }
-function _n(e, t = {}) {
-	let n = P(e), r = dn(t), i = r.cache ? fn(n, r) : null;
+function gn(e, t = {}) {
+	let n = N(e), r = un(t), i = r.cache ? dn(n, r) : null;
 	if (i) {
-		let e = ln.get(i);
+		let e = cn.get(i);
 		if (e) return {
 			...e,
 			data: new Uint8ClampedArray(e.data)
 		};
 	}
-	let { height: a, targetGroupId: o, width: s } = r, c = gn(n, s, a, o, t.starfieldBakes), l = new Uint8ClampedArray(s * a * 4);
+	let { height: a, targetGroupId: o, width: s } = r, c = hn(n, s, a, o, t.starfieldBakes), l = new Uint8ClampedArray(s * a * 4);
 	for (let e = 0; e < a; e += 1) {
 		let t = (e + .5) / a;
 		for (let r = 0; r < s; r += 1) {
-			let [i, d, f] = oe(on(n, u((r + .5) / s, t), {
+			let [i, d, f] = se(an(n, u((r + .5) / s, t), {
 				sampleHeight: a,
 				starfieldBakes: c,
 				targetGroupId: o
@@ -1511,17 +1511,17 @@ function _n(e, t = {}) {
 		height: a,
 		width: s
 	};
-	return i && ln.set(i, {
+	return i && cn.set(i, {
 		...d,
 		data: new Uint8ClampedArray(l)
 	}), d;
 }
 //#endregion
 //#region src/skybox/composition.ts
-function vn(e) {
+function _n(e) {
 	return e.filter((e) => e.enabled).reverse();
 }
-function yn(e) {
+function vn(e) {
 	switch (e) {
 		case "darken": return 1;
 		case "multiply": return 2;
@@ -1537,13 +1537,13 @@ function yn(e) {
 		default: return 0;
 	}
 }
-function bn(e) {
+function yn(e) {
 	return {
-		blendMode: yn(e.blendMode),
-		opacity: v(e.opacity / 100)
+		blendMode: vn(e.blendMode),
+		opacity: y(e.opacity / 100)
 	};
 }
-function xn(e) {
+function bn(e) {
 	let t = be(1), n = be(.5), r = be(0), i = "effectColor.rgb", a = "composedColor";
 	switch (e) {
 		case "darken": return `min(${a}, ${i})`;
@@ -1560,14 +1560,14 @@ function xn(e) {
 		default: return i;
 	}
 }
-function Sn() {
+function xn() {
 	return `let softLightD = ${R("composedColor <= vec3<f32>(0.25)", "((16.0 * composedColor - vec3<f32>(12.0)) * composedColor + vec3<f32>(4.0)) * composedColor", "sqrt(composedColor)")};`;
 }
-function Cn(e, t) {
-	let n = yn(t);
+function Sn(e, t) {
+	let n = vn(t);
 	return `${e} >= ${I(n - .5)} && ${e} < ${I(n + .5)}`;
 }
-function wn(e) {
+function Cn(e) {
 	let t = [
 		"darken",
 		"multiply",
@@ -1580,30 +1580,30 @@ function wn(e) {
 		"hard-light",
 		"difference",
 		"exclusion"
-	].map((t, n) => `${n === 0 ? "if" : "else if"} (${Cn(e, t)}) {
-          blendedColor = ${xn(t)};
+	].map((t, n) => `${n === 0 ? "if" : "else if"} (${Sn(e, t)}) {
+          blendedColor = ${bn(t)};
         }`).join("\n");
-	return `${Sn()}
+	return `${xn()}
         ${L("blendedColor", "vec3<f32>", "effectColor.rgb")}
         ${t}
         blendedColor = clamp(blendedColor, vec3<f32>(0.0), vec3<f32>(1.0));`;
 }
-function Tn(e, t, n, r = 0) {
-	return vn(e).map((e, i) => {
-		let a = e.type === "group" ? `effectColor = vec4<f32>(groupColor${r}_${i}, 1.0);` : Dn(e, n), o = `groupColor${r}_${i}`, s = t.get(e.id), c = s ? `${s.parameterPrefix}Opacity` : I(e.opacity / 100), l = s ? `${s.parameterPrefix}BlendMode` : I(yn(e.blendMode));
+function wn(e, t, n, r = 0) {
+	return _n(e).map((e, i) => {
+		let a = e.type === "group" ? `effectColor = vec4<f32>(groupColor${r}_${i}, 1.0);` : En(e, n), o = `groupColor${r}_${i}`, s = t.get(e.id), c = s ? `${s.parameterPrefix}Opacity` : I(e.opacity / 100), l = s ? `${s.parameterPrefix}BlendMode` : I(vn(e.blendMode));
 		return `{
         ${e.type === "group" ? `${L(o, "vec3<f32>", "vec3<f32>(0.0)")}
         {
           ${L("previousComposedColor", "vec3<f32>", "composedColor")}
           composedColor = vec3<f32>(0.0);
-          ${Tn(e.children, t, n, r + 1)}
+          ${wn(e.children, t, n, r + 1)}
           ${o} = composedColor;
           composedColor = previousComposedColor;
         }` : ""}
         ${L("effectColor", "vec4<f32>", "vec4<f32>(0.0)")}
         ${a}
         let sourceAlpha = clamp(effectColor.a * ${c}, 0.0, 1.0);
-        ${wn(l)}
+        ${Cn(l)}
         composedColor = clamp(
           blendedColor * sourceAlpha + composedColor * (1.0 - sourceAlpha),
           vec3<f32>(0.0),
@@ -1612,59 +1612,86 @@ function Tn(e, t, n, r = 0) {
       }`;
 	}).join("\n");
 }
-function En(e) {
+function Tn(e) {
 	return new Map(e.map((e) => [e.layer.id, e]));
 }
-function Dn(e, t) {
+function En(e, t) {
 	let n = t.adapters.get(e.type);
 	return n ? n.adapter.createSampleExpression(e, "wgsl", { bindingsByLayerId: n.bindingsByLayerId }) : z();
 }
+function Dn(e) {
+	return e.type === "group" ? e.children.some(Dn) : e.type === "starfield";
+}
+function On(e) {
+	let t = _n(e), n = -1;
+	return t.forEach((e, t) => {
+		Dn(e) && (n = t);
+	}), n >= 0 && n < t.length - 1;
+}
+function kn(e, t) {
+	let n = _n(e), r = -1;
+	return n.forEach((e, t) => {
+		Dn(e) && (r = t);
+	}), n.map((e, n) => {
+		if (n <= r) return "";
+		let i = I(e.opacity / 100);
+		return e.type === "group" ? `{
+        let sourceAlpha = clamp(${i}, 0.0, 1.0);
+        coverageAbove = sourceAlpha + coverageAbove * (1.0 - sourceAlpha);
+      }` : `{
+        ${L("effectColor", "vec4<f32>", "vec4<f32>(0.0)")}
+        ${En(e, t)}
+        let sourceAlpha = clamp(effectColor.a * ${i}, 0.0, 1.0);
+        coverageAbove = sourceAlpha + coverageAbove * (1.0 - sourceAlpha);
+      }`;
+	}).filter(Boolean).join("\n");
+}
 //#endregion
 //#region src/skybox/materials.ts
-function On(e) {
+function An(e) {
 	return e.map((e) => {
-		let t = bn(e.node);
+		let t = yn(e.node);
 		return {
-			blendMode: j(t.blendMode),
+			blendMode: A(t.blendMode),
 			nodeId: e.node.id,
-			opacity: j(t.opacity)
+			opacity: A(t.opacity)
 		};
 	});
 }
-function kn(e, t) {
+function jn(e, t) {
 	for (let n of e) if (n.enabled) {
 		if (n.id === t) return n;
 		if (n.type === "group") {
-			let e = kn(n.children, t);
+			let e = jn(n.children, t);
 			if (e) return e;
 		}
 	}
 	return null;
 }
-function An(e, t) {
+function Mn(e, t) {
 	e.forEach((e) => {
-		let n = kn(t.nodes, e.nodeId);
+		let n = jn(t.nodes, e.nodeId);
 		if (!n) return;
-		let r = bn(n);
+		let r = yn(n);
 		e.opacity.value = r.opacity, e.blendMode.value = r.blendMode;
 	});
 }
-function jn(e, t) {
+function Nn(e, t) {
 	let n = e.find((e) => e.nodeId === t.id);
 	if (!n) return;
-	let r = bn(t);
+	let r = yn(t);
 	n.opacity.value = r.opacity, n.blendMode.value = r.blendMode;
 }
-function Mn(e, t) {
+function Pn(e, t) {
 	e.userData.applyCompositionParams = t;
 }
-function Nn(e, t) {
+function Fn(e, t) {
 	e.userData.applyLayerComposition = t;
 }
-function Pn(e) {
+function In(e) {
 	let t = [];
 	function n(e) {
-		vn(e).forEach((e) => {
+		_n(e).forEach((e) => {
 			let r = t.length;
 			t.push({
 				index: r,
@@ -1675,15 +1702,15 @@ function Pn(e) {
 	}
 	return n(e), t;
 }
-function Fn(e) {
+function Ln(e) {
 	return new Map(e.map((e) => [e.node.id, e]));
 }
-function In() {
-	return S().map((e) => e.wgsl).filter((e) => !!e);
+function Rn() {
+	return x().map((e) => e.wgsl).filter((e) => !!e);
 }
-function Ln(e, t, n, r, i) {
+function zn(e, t, n, r, i) {
 	let a = /* @__PURE__ */ new Map(), o = /* @__PURE__ */ new Map(), s = {}, c = {};
-	return In().forEach((i) => {
+	return Rn().forEach((i) => {
 		let l = i.collect(e.nodes), u = i.createUniforms(l), d = i.createSampleNodes?.({
 			bindings: l,
 			direction: t,
@@ -1692,7 +1719,7 @@ function Ln(e, t, n, r, i) {
 		}), f = {
 			adapter: i,
 			bindings: l,
-			bindingsByLayerId: En(l),
+			bindingsByLayerId: Tn(l),
 			samples: d,
 			uniforms: u
 		};
@@ -1706,27 +1733,27 @@ function Ln(e, t, n, r, i) {
 		textureSlotsByLayerId: c
 	};
 }
-function Rn(e, t) {
+function Bn(e, t) {
 	return e.adapters.get(t);
 }
-function zn(e, t) {
+function Vn(e, t) {
 	e.forEach((e) => {
 		if (e.enabled) {
 			if (e.type === "group") {
-				zn(e.children, t);
+				Vn(e.children, t);
 				return;
 			}
 			t(e);
 		}
 	});
 }
-function Bn(e, t) {
+function Hn(e, t) {
 	let n = e.adapters.get(t.type);
 	n && n.adapter.updateUniforms(n.uniforms, t);
 }
-function Vn(e, t, n) {
-	let r = Fn(n), i = Tn(e.nodes, r, t);
-	return M(`
+function Un(e, t, n) {
+	let r = Ln(n), i = wn(e.nodes, r, t);
+	return j(`
     fn skyboxStudioSample(
       direction: vec3<f32>${Array.from(t.adapters.values()).map((e) => e.adapter.createParameterDeclarations(e.bindings)).join("")}${n.flatMap((e) => [`,
       ${e.parameterPrefix}Opacity: f32`, `,
@@ -1738,10 +1765,10 @@ function Vn(e, t, n) {
     }
   `);
 }
-function Hn(e, t, n, r, i) {
-	let a = Pn(e.nodes), o = On(a), s = Ln(e, t, n, r, i), c = Rn(s, "image"), l = c?.uniforms ?? [], u = c?.samples, d = Rn(s, "starfield")?.samples;
+function Wn(e, t, n, r, i) {
+	let a = In(e.nodes), o = An(a), s = zn(e, t, n, r, i), c = Bn(s, "image"), l = c?.uniforms ?? [], u = c?.samples, d = Bn(s, "starfield")?.samples;
 	return {
-		colorNode: Vn(e, s, a)({
+		colorNode: Un(e, s, a)({
 			direction: t,
 			...s.sampleParameters,
 			...Object.fromEntries(a.flatMap((e) => {
@@ -1756,74 +1783,99 @@ function Hn(e, t, n, r, i) {
 		starfieldSamples: d
 	};
 }
-function Un() {
-	let e = fe.mul(2).sub(1), t = ce.mul(me(e.x, e.y.negate(), 1, 1)), n = t.xyz.div(t.w), r = le.mul(me(n, 0)).xyz;
-	return ue(r);
+function Gn() {
+	let e = pe.mul(2).sub(1), t = le.mul(he(e.x, e.y.negate(), 1, 1)), n = t.xyz.div(t.w), r = ue.mul(he(n, 0)).xyz;
+	return de(r);
 }
-function Wn(e, t, n, r, i, a) {
-	let o = new O(), s = se(() => {
-		let e = k;
+function Kn(e, t, n, r, i, a) {
+	let o = new D(), s = ce(() => {
+		let e = O;
 		return e.z.assign(e.w), e;
 	})();
-	o.side = D.BackSide, o.depthTest = !1, o.depthWrite = !1, o.vertexNode = s;
-	let { colorNode: c, compositionUniforms: l, imageSamples: u, imageUniforms: d, layerRuntime: f, starfieldSamples: p } = Hn(e, Un(), n, r, i), m = a ? S().flatMap((e) => {
+	o.side = E.BackSide, o.depthTest = !1, o.depthWrite = !1, o.vertexNode = s;
+	let { colorNode: c, compositionUniforms: l, imageSamples: u, imageUniforms: d, layerRuntime: f, starfieldSamples: p } = Wn(e, Gn(), n, r, i), m = a ? x().flatMap((e) => {
 		let n = f.adapters.get(e.type);
 		if (!e.wgslEditorOverlay || !n) return [];
 		let r = n.bindings;
 		return [{
 			bindings: r,
-			editorUniforms: Lt(r, t)
+			editorUniforms: It(r, t)
 		}];
 	}) : [], h = c;
 	return m.forEach(({ bindings: e, editorUniforms: t }) => {
 		e.forEach((e, n) => {
 			let r = f.editorProjectionByLayerId.get(e.layer.id);
-			r && (h = Bt({
+			r && (h = zt({
 				color: h,
 				activeValue: t[n].active,
 				uv: r.uv,
 				valid: r.valid
 			}));
 		});
-	}), o.colorNode = h, m.length > 0 && zt(o, (e) => {
-		m.forEach(({ editorUniforms: t }) => Rt(t, e));
-	}), o.userData.webGpuLayerRuntime = f, o.userData.applyLayerParams = (e) => Bn(f, e), Mn(o, (e) => An(l, e)), Nn(o, (e) => jn(l, e)), ht(o, (e, t) => mt(d, e, t)), o.userData.applyImageTextures = (e) => xt(u?.sampleData ?? /* @__PURE__ */ new Map(), e), o.userData.applyStarfieldTextures = (e) => en(p?.sampleData ?? /* @__PURE__ */ new Map(), e), o.userData.debugImageTextureSlots = f.textureSlotsByLayerId, o;
+	}), o.colorNode = h, m.length > 0 && Rt(o, (e) => {
+		m.forEach(({ editorUniforms: t }) => Lt(t, e));
+	}), o.userData.webGpuLayerRuntime = f, o.userData.applyLayerParams = (e) => Hn(f, e), Pn(o, (e) => Mn(l, e)), Fn(o, (e) => Nn(l, e)), mt(o, (e, t) => pt(d, e, t)), o.userData.applyImageTextures = (e) => bt(u?.sampleData ?? /* @__PURE__ */ new Map(), e), o.userData.applyStarfieldTextures = (e) => $t(p?.sampleData ?? /* @__PURE__ */ new Map(), e), o.userData.debugImageTextureSlots = f.textureSlotsByLayerId, o;
 }
-var Gn = M("\n  fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let longitude = atan2(normalizedDirection.x, -normalizedDirection.z);\n    let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n    return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);\n  }\n"), Kn = M("\n  fn skyboxStudioEquirectUvToDirection(uv: vec2<f32>) -> vec3<f32> {\n    let lambda = (uv.x - 0.5) * 6.283185307179586;\n    let phi = (uv.y - 0.5) * 3.141592653589793;\n    let cosPhi = cos(phi);\n\n    return normalize(vec3<f32>(cosPhi * sin(lambda), sin(phi), -cosPhi * cos(lambda)));\n  }\n");
-function qn(e, t, n, r = {}) {
-	let i = new O();
-	i.side = D.DoubleSide, i.depthTest = !1, i.depthWrite = !1;
-	let a = de.xy.mul(.5).add(.5), { colorNode: o } = Hn(e, ue(Kn({ uv: r.flipY ? pe(a.x, a.y.oneMinus()) : a })), t, n, /* @__PURE__ */ new Map());
+function qn(e, t) {
+	let n = kn(e.nodes, t);
+	return j(`
+    fn skyboxStudioCoverage(
+      direction: vec3<f32>${Array.from(t.adapters.values()).map((e) => e.adapter.createParameterDeclarations(e.bindings)).join("")}
+    ) -> vec4<f32> {
+      var coverageAbove = 0.0;
+      ${n}
+      let transmittance = clamp(1.0 - coverageAbove, 0.0, 1.0);
+      return vec4<f32>(transmittance, transmittance, transmittance, 1.0);
+    }
+  `);
+}
+function Jn(e, t, n, r) {
+	let i = new D();
+	i.side = E.BackSide, i.depthTest = !1, i.depthWrite = !1, i.vertexNode = ce(() => {
+		let e = O;
+		return e.z.assign(e.w), e;
+	})();
+	let a = Gn(), o = zn(e, a, t, n, r), s = Bn(o, "image"), c = s?.samples, l = s?.uniforms ?? [], u = Bn(o, "starfield")?.samples;
+	return i.colorNode = qn(e, o)({
+		direction: a,
+		...o.sampleParameters
+	}), i.userData.applyLayerParams = (e) => Hn(o, e), mt(i, (e, t) => pt(l, e, t)), i.userData.applyImageTextures = (e) => bt(c?.sampleData ?? /* @__PURE__ */ new Map(), e), i.userData.applyStarfieldTextures = (e) => $t(u?.sampleData ?? /* @__PURE__ */ new Map(), e), i;
+}
+var Yn = j("\n  fn skyboxStudioDirectionToEquirectUv(direction: vec3<f32>) -> vec2<f32> {\n    let normalizedDirection = normalize(direction);\n    let longitude = atan2(normalizedDirection.x, -normalizedDirection.z);\n    let latitude = asin(clamp(normalizedDirection.y, -1.0, 1.0));\n\n    return vec2<f32>(longitude / 6.283185307179586 + 0.5, latitude / 3.141592653589793 + 0.5);\n  }\n"), Xn = j("\n  fn skyboxStudioEquirectUvToDirection(uv: vec2<f32>) -> vec3<f32> {\n    let lambda = (uv.x - 0.5) * 6.283185307179586;\n    let phi = (uv.y - 0.5) * 3.141592653589793;\n    let cosPhi = cos(phi);\n\n    return normalize(vec3<f32>(cosPhi * sin(lambda), sin(phi), -cosPhi * cos(lambda)));\n  }\n");
+function Zn(e, t, n, r = {}) {
+	let i = new D();
+	i.side = E.DoubleSide, i.depthTest = !1, i.depthWrite = !1;
+	let a = fe.xy.mul(.5).add(.5), { colorNode: o } = Wn(e, de(Xn({ uv: r.flipY ? me(a.x, a.y.oneMinus()) : a })), t, n, /* @__PURE__ */ new Map());
 	return i.colorNode = o, i;
 }
-function Jn(e) {
-	let t = new O(), n = se(() => {
-		let e = k;
+function Qn(e) {
+	let t = new D(), n = ce(() => {
+		let e = O;
 		return e.z.assign(e.w), e;
-	})(), r = Un();
-	return t.side = D.BackSide, t.depthTest = !1, t.depthWrite = !1, t.vertexNode = n, t.colorNode = A(e, Gn({ direction: r })), t;
+	})(), r = Gn();
+	return t.side = E.BackSide, t.depthTest = !1, t.depthWrite = !1, t.vertexNode = n, t.colorNode = k(e, Yn({ direction: r })), t;
 }
-function Yn(e, t) {
+function $n(e, t) {
 	if (typeof document < "u") {
 		let n = document.createElement("canvas");
 		return n.width = e, n.height = t, n;
 	}
 	return new OffscreenCanvas(e, t);
 }
-function Xn(e, t = {}) {
-	let n = _n(e, t), r = Yn(n.width, n.height), i = r.getContext("2d");
+function er(e, t = {}) {
+	let n = gn(e, t), r = $n(n.width, n.height), i = r.getContext("2d");
 	if (!i || !("putImageData" in i)) throw Error("Skybox runtime: unable to create a 2D canvas context for baking.");
 	i.putImageData(new ImageData(n.data, n.width, n.height), 0, 0);
-	let a = new D.CanvasTexture(r);
-	return a.mapping = D.EquirectangularReflectionMapping, a.wrapS = D.RepeatWrapping, a.wrapT = D.ClampToEdgeWrapping, a.colorSpace = D.SRGBColorSpace, a.flipY = !1, a.needsUpdate = !0, a;
+	let a = new E.CanvasTexture(r);
+	return a.mapping = E.EquirectangularReflectionMapping, a.wrapS = E.RepeatWrapping, a.wrapT = E.ClampToEdgeWrapping, a.colorSpace = E.SRGBColorSpace, a.flipY = !1, a.needsUpdate = !0, a;
 }
-function Zn(e) {
-	return Jn(e);
+function tr(e) {
+	return Qn(e);
 }
-function Qn(e) {
+function nr(e) {
 	return e === "baked-texture" ? "baked-texture" : "live-webgpu";
 }
-function $n(e, t, n) {
+function rr(e, t, n) {
 	let r = (e) => e.type === "group" ? {
 		children: e.children.map(r),
 		enabled: e.enabled,
@@ -1837,16 +1889,16 @@ function $n(e, t, n) {
 	};
 	return JSON.stringify({
 		editorPresentationEnabled: n,
-		geometry: e.geometry?.type ?? N.type,
+		geometry: e.geometry?.type ?? M.type,
 		nodes: e.nodes.map(r),
 		renderMode: t
 	});
 }
-function Y(e, t) {
+function X(e, t) {
 	for (let n of e) {
 		if (n.id === t) return n;
 		if (n.type === "group") {
-			let e = Y(n.children, t);
+			let e = X(n.children, t);
 			if (e) return e;
 		}
 	}
@@ -1854,46 +1906,57 @@ function Y(e, t) {
 }
 //#endregion
 //#region src/skybox.ts
-var er = {
+var ir = { starsOmitted: !0 }, ar = {
 	composition: {
 		mode: "alpha-over",
 		order: "bottom-to-top"
 	},
-	geometry: N,
+	geometry: M,
 	nodes: [],
 	version: 2
-}, tr = class extends D.Mesh {
+}, or = class extends E.Mesh {
 	#e = {};
-	#t = { ...Nt };
+	#t = { ...Mt };
 	#n = !1;
-	#r = N;
+	#r = M;
 	#i = /* @__PURE__ */ new Map();
 	#a = /* @__PURE__ */ new Map();
 	#o = {
 		applyLayerParams: (e) => {
-			this.material.userData.applyLayerParams?.(e);
+			this.material.userData.applyLayerParams?.(e), this.#x?.userData.applyLayerParams?.(e);
 		},
 		applyImagePlacement: (e, t) => {
-			this.#i.set(e, t), this.material.userData.applyImageLayerPlacement?.(e, t);
+			this.#i.set(e, t), this.material.userData.applyImageLayerPlacement?.(e, t), this.#x?.userData.applyImageLayerPlacement?.(e, t);
 		},
 		scheduleResourceBake: (e, t) => {
 			this.scheduleStarfieldTextureBake(e, t);
 		}
 	};
-	#s = er;
+	#s = ar;
 	#c = null;
 	#l = null;
 	#u = "auto";
 	#d = null;
 	#f = null;
-	#p = /* @__PURE__ */ new Map();
+	#p = null;
 	#m = /* @__PURE__ */ new Map();
 	#h = /* @__PURE__ */ new Map();
+	#g = /* @__PURE__ */ new Map();
+	#_ = /* @__PURE__ */ new Map();
+	#v = new E.Scene();
+	#y = null;
+	#b = null;
+	#x = null;
+	#S = null;
+	#C = null;
+	#w = new E.Vector2();
 	constructor() {
-		super(ge(N), Wn(er, Nt, /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), !1)), this.frustumCulled = !1, this.renderOrder = -1;
+		super(P(M), Kn(ar, Mt, /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), !1)), this.frustumCulled = !1, this.renderOrder = -1, this.onBeforeRender = ((e, t, n) => {
+			this.renderCoveragePrepass(e, n);
+		});
 	}
 	fromManifest(e) {
-		return this.#s = P(e), this.applyGeometry(this.#s.geometry ?? N), this;
+		return this.#s = N(e), this.applyGeometry(this.#s.geometry ?? M), this;
 	}
 	setGeometry(e) {
 		return this.applyGeometry(e), this;
@@ -1905,24 +1968,31 @@ var er = {
 		}, this;
 	}
 	setRenderer(e) {
-		return this.#d = e, this.#f?.dispose(), this.#f = w(e), this;
+		return this.#d = e, this.#f?.dispose(), this.#f = C(e), this;
 	}
 	setRenderMode(e) {
 		return this.#u = e, this;
 	}
+	setStarGlintViewport(e) {
+		let t = e && e.renderHeight > 0 && e.verticalFovRadians > 0 ? {
+			renderHeight: e.renderHeight,
+			verticalFovRadians: e.verticalFovRadians
+		} : null, n = this.#p?.renderHeight !== t?.renderHeight;
+		return this.#p = t, n && this.#_.forEach(({ handle: e }) => e.setViewport(t)), this;
+	}
 	setImageTexture(e, t) {
-		return t ? this.#a.set(e, t) : this.#a.delete(e), this.material.userData.applyImageTextures?.(this.#a), this;
+		return t ? this.#a.set(e, t) : this.#a.delete(e), this.material.userData.applyImageTextures?.(this.#a), this.#x?.userData.applyImageTextures?.(this.#a), this;
 	}
 	setImageTextures(e) {
 		return this.#a.clear(), Object.entries(e).forEach(([e, t]) => {
 			t && this.#a.set(e, t);
-		}), this.material.userData.applyImageTextures?.(this.#a), this;
+		}), this.material.userData.applyImageTextures?.(this.#a), this.#x?.userData.applyImageTextures?.(this.#a), this;
 	}
 	refreshImageTextureBindings() {
 		return this.#c = null, this.setManifest(this.#s), this;
 	}
 	refreshStarfieldTextureBindings() {
-		this.material.userData.applyStarfieldTextures?.(this.#h);
+		this.material.userData.applyStarfieldTextures?.(this.#g);
 	}
 	otherOverridingSetup() {
 		return this;
@@ -1931,64 +2001,124 @@ var er = {
 		return e && (this.#d = e), this.setManifest(this.#s), this;
 	}
 	applyGeometry(e) {
-		let t = he(e);
+		let t = ge(e);
 		if (this.#r.type === t.type && this.geometry) return;
 		let n = this.geometry;
-		this.#r = t, this.geometry = ge(t), n.dispose();
+		this.#r = t, this.geometry = P(t), n.dispose();
 	}
 	disposeOwnedTexture() {
 		this.#l?.dispose(), this.#l = null;
 	}
 	disposeStarfieldTextures() {
-		this.#p.forEach((e) => {
+		this.#m.forEach((e) => {
 			clearTimeout(e);
-		}), this.#p.clear(), this.#h.forEach((e) => Qt(e)), this.#h.clear(), this.#m.clear(), this.#f?.dispose(), this.#f = null;
+		}), this.#m.clear(), this.#g.forEach((e) => Zt(e)), this.#g.clear(), this.#h.clear(), this.#f?.dispose(), this.#f = null;
+	}
+	disposeStarfieldGlints() {
+		this.#_.forEach(({ handle: e }) => {
+			this.remove(e.object), e.dispose();
+		}), this.#_.clear();
+	}
+	disposeStarfieldGlint(e) {
+		let t = this.#_.get(e);
+		t && (this.remove(t.handle.object), t.handle.dispose(), this.#_.delete(e));
+	}
+	syncStarfieldGlint(e, t) {
+		let n = this.#f;
+		if (!n?.createGlints || nr(this.#u) !== "live-webgpu") {
+			this.disposeStarfieldGlint(e);
+			return;
+		}
+		let r = n.glintGeometryKey(t), i = this.#_.get(e);
+		if (i) {
+			if (i.geometryKey === r) {
+				i.handle.setParams(t);
+				return;
+			}
+			this.remove(i.handle.object), i.handle.dispose();
+		}
+		let a = n.createGlints(t);
+		a.setViewport(this.#p), a.setCoverageTexture(this.#S?.texture ?? null), this.add(a.object), this.#_.set(e, {
+			handle: a,
+			geometryKey: r
+		});
+	}
+	coverageActive() {
+		return nr(this.#u) === "live-webgpu" && this.#_.size > 0 && On(this.#s.nodes);
+	}
+	disposeCoverage() {
+		this.#b &&= (this.#v.remove(this.#b), null), this.#x?.dispose(), this.#x = null, this.#C = null, this.#_.forEach(({ handle: e }) => e.setCoverageTexture(null));
+	}
+	syncCoverage(e) {
+		if (!this.coverageActive()) {
+			this.disposeCoverage();
+			return;
+		}
+		(!this.#x || this.#C !== e) && (this.#x?.dispose(), this.#b && this.#v.remove(this.#b), this.#x = Jn(this.#s, this.#a, this.#g, /* @__PURE__ */ new Map()), this.#x.userData.applyImageTextures?.(this.#a), this.#i.forEach((e, t) => {
+			this.#x?.userData.applyImageLayerPlacement?.(t, e);
+		}), this.#y ||= P(M), this.#b = new E.Mesh(this.#y, this.#x), this.#b.frustumCulled = !1, this.#v.add(this.#b), this.#S ||= new E.RenderTarget(1, 1, { depthBuffer: !1 }), this.#C = e);
+		let t = this.#S?.texture ?? null;
+		this.#_.forEach(({ handle: e }) => e.setCoverageTexture(t));
+	}
+	renderCoveragePrepass(e, t) {
+		let n = e;
+		if (!this.#b || !this.#S || typeof n.setRenderTarget != "function") return;
+		n.getDrawingBufferSize?.(this.#w);
+		let r = Math.max(1, Math.floor(this.#w.x || this.#S.width)), i = Math.max(1, Math.floor(this.#w.y || this.#S.height));
+		(this.#S.width !== r || this.#S.height !== i) && this.#S.setSize(r, i);
+		let a = n.getRenderTarget(), o = n.autoClear;
+		n.autoClear = !0, n.setRenderTarget(this.#S), n.render(this.#v, t), n.setRenderTarget(a), n.autoClear = o;
 	}
 	syncStarfieldTextures() {
 		let e = /* @__PURE__ */ new Set();
-		zn(this.#s.nodes, (t) => {
+		Vn(this.#s.nodes, (t) => {
 			if (t.type !== "starfield") return;
-			e.add(t.id);
-			let n = this.#f?.createBakeKey(t.params) ?? "";
-			this.#m.get(t.id) !== n && this.scheduleStarfieldTextureBake(t.id, t.params);
-		}), Array.from(this.#h.keys()).forEach((t) => {
+			e.add(t.id), this.syncStarfieldGlint(t.id, t.params);
+			let n = this.#f?.createBakeKey(t.params, void 0, null, ir) ?? "";
+			this.#h.get(t.id) !== n && this.scheduleStarfieldTextureBake(t.id, t.params);
+		}), Array.from(this.#g.keys()).forEach((t) => {
 			if (e.has(t)) return;
-			let n = this.#h.get(t);
-			n && Qt(n), this.#h.delete(t), this.#m.delete(t);
-		}), Array.from(this.#p.entries()).forEach(([t, n]) => {
-			e.has(t) || (clearTimeout(n), this.#p.delete(t));
+			let n = this.#g.get(t);
+			n && Zt(n), this.#g.delete(t), this.#h.delete(t);
+		}), Array.from(this.#_.keys()).forEach((t) => {
+			e.has(t) || this.disposeStarfieldGlint(t);
+		}), Array.from(this.#m.entries()).forEach(([t, n]) => {
+			e.has(t) || (clearTimeout(n), this.#m.delete(t));
 		});
 	}
 	scheduleStarfieldTextureBake(e, t) {
-		let n = this.#f?.createBakeKey(t) ?? "";
-		if (this.#m.get(e) === n) return;
-		let r = this.#p.get(e);
+		this.syncStarfieldGlint(e, t);
+		let n = this.#f?.createBakeKey(t, void 0, null, ir) ?? "";
+		if (this.#h.get(e) === n) return;
+		let r = this.#m.get(e);
 		r && clearTimeout(r);
 		let i = setTimeout(() => {
-			this.#p.delete(e);
-			let t = Y(this.#s.nodes, e);
+			this.#m.delete(e);
+			let t = X(this.#s.nodes, e);
 			if (t?.type !== "starfield") return;
-			let r = this.#f?.createBakeKey(t.params) ?? "";
+			let r = this.#f?.createBakeKey(t.params, void 0, null, ir) ?? "";
 			if (r !== n) {
 				this.scheduleStarfieldTextureBake(e, t.params);
 				return;
 			}
-			if (!this.#f && this.#d && (this.#f = w(this.#d)), !this.#f?.canBake()) return;
-			let i = this.#f.bakeTexture(t.params, r), a = this.#h.get(e);
-			a && a !== i && Qt(a), this.#h.set(e, i), this.#m.set(e, r), a ? this.refreshStarfieldTextureBindings() : (this.#c = null, this.setManifest(this.#s)), this.dispatchEvent({ type: "starfieldtexturechange" });
+			if (!this.#f && this.#d && (this.#f = C(this.#d)), !this.#f?.canBake()) return;
+			let i = this.#f.bakeTexture(t.params, r, void 0, null, ir), a = this.#g.get(e);
+			a && a !== i && Zt(a), this.#g.set(e, i), this.#h.set(e, r), a ? this.refreshStarfieldTextureBindings() : (this.#c = null, this.setManifest(this.#s)), this.dispatchEvent({ type: "starfieldtexturechange" });
 		}, 150);
-		this.#p.set(e, i);
+		this.#m.set(e, i);
 	}
 	replaceMaterial(e, t = null) {
 		let n = this.material;
 		this.material = e, e.userData.applyEditorLayerState?.(this.#t), this.#i.forEach((t, n) => {
 			e.userData.applyImageLayerPlacement?.(n, t);
-		}), e.userData.applyStarfieldTextures?.(this.#h), n.dispose(), this.disposeOwnedTexture(), this.#l = t;
+		}), e.userData.applyStarfieldTextures?.(this.#g), n.dispose(), this.disposeOwnedTexture(), this.#l = t;
 	}
 	applyLiveManifestUniformUpdates() {
-		this.material.userData.applyCompositionParams?.(this.#s), this.material.userData.applyLayerParams && zn(this.#s.nodes, this.material.userData.applyLayerParams), this.material.userData.applyImageTextures?.(this.#a), this.material.userData.applyStarfieldTextures?.(this.#h), this.material.userData.applyEditorLayerState?.(this.#t), this.#i.forEach((e, t) => {
+		this.material.userData.applyCompositionParams?.(this.#s), this.material.userData.applyLayerParams && Vn(this.#s.nodes, this.material.userData.applyLayerParams), this.material.userData.applyImageTextures?.(this.#a), this.material.userData.applyStarfieldTextures?.(this.#g), this.material.userData.applyEditorLayerState?.(this.#t), this.#i.forEach((e, t) => {
 			this.material.userData.applyImageLayerPlacement?.(t, e);
-		});
+		}), this.#x && (this.#x.userData.applyLayerParams && Vn(this.#s.nodes, this.#x.userData.applyLayerParams), this.#x.userData.applyImageTextures?.(this.#a), this.#i.forEach((e, t) => {
+			this.#x?.userData.applyImageLayerPlacement?.(t, e);
+		}));
 	}
 	setEditorPresentationEnabled(e) {
 		return this.#n === e ? this : (this.#n = e, this.#c = null, this.setManifest(this.#s), this);
@@ -2011,18 +2141,18 @@ var er = {
 		return this.updateImageLayerPlacement(e, t);
 	}
 	updateImageLayerPlacement(e, t) {
-		let n = Y(this.#s.nodes, e);
+		let n = X(this.#s.nodes, e);
 		return n?.type === "image" && (n.params = {
 			...n.params,
 			placement: t
-		}), this.#i.set(e, t), this.material.userData.applyImageLayerPlacement?.(e, t), this;
+		}), this.#i.set(e, t), this.material.userData.applyImageLayerPlacement?.(e, t), this.#x?.userData.applyImageLayerPlacement?.(e, t), this;
 	}
 	updateLayerComposition(e, t) {
-		let n = Y(this.#s.nodes, e);
+		let n = X(this.#s.nodes, e);
 		return n ? (t.blendMode !== void 0 && (n.blendMode = t.blendMode), t.opacity !== void 0 && (n.opacity = t.opacity), this.material.userData.applyLayerComposition?.(n), this) : this;
 	}
 	updateLayer(e, t) {
-		let n = Y(this.#s.nodes, e);
+		let n = X(this.#s.nodes, e);
 		return !n || n.type === "group" ? this : (n.params = t, c(n.type)?.updateLive?.(this.#o, n), this);
 	}
 	updateGradientLayer(e, t) {
@@ -2038,62 +2168,62 @@ var er = {
 		return this.updateLayer(e, t);
 	}
 	setManifest(e) {
-		let t = P(e);
+		let t = N(e);
 		this.#s = t, this.applyGeometry(this.#s.geometry ?? this.#r), this.syncStarfieldTextures();
-		let n = Qn(this.#u), r = $n(this.#s, n, this.#n);
-		if (this.#c === r && n === "live-webgpu") return this.applyLiveManifestUniformUpdates(), this;
-		if (n === "live-webgpu") this.replaceMaterial(Wn(this.#s, this.#t, this.#a, this.#h, /* @__PURE__ */ new Map(), this.#n));
+		let n = nr(this.#u), r = rr(this.#s, n, this.#n);
+		if (this.#c === r && n === "live-webgpu") return this.applyLiveManifestUniformUpdates(), this.syncCoverage(r), this;
+		if (n === "live-webgpu") this.replaceMaterial(Kn(this.#s, this.#t, this.#a, this.#g, /* @__PURE__ */ new Map(), this.#n));
 		else {
-			let e = Xn(this.#s, this.#e);
-			this.replaceMaterial(Zn(e), e);
+			let e = er(this.#s, this.#e);
+			this.replaceMaterial(tr(e), e);
 		}
-		return this.#c = r, this;
+		return this.#c = r, this.syncCoverage(r), this;
 	}
 	setBakedTexture(e) {
-		return this.replaceMaterial(Zn(e)), this.#c = null, this;
+		return this.replaceMaterial(tr(e)), this.#c = null, this;
 	}
 	invalidateBakeCache() {
-		return pn(), this;
+		return fn(), this;
 	}
 	dispose() {
-		this.geometry.dispose(), this.material.dispose(), this.disposeOwnedTexture(), this.disposeStarfieldTextures();
+		this.geometry.dispose(), this.material.dispose(), this.disposeOwnedTexture(), this.disposeStarfieldTextures(), this.disposeStarfieldGlints(), this.disposeCoverage(), this.#y?.dispose(), this.#y = null, this.#S?.dispose(), this.#S = null;
 	}
 };
 //#endregion
 //#region src/baking/skybox-gpu-bake.ts
-function nr(e) {
+function sr(e) {
 	let t = e;
 	return !!(t && typeof t.render == "function" && typeof t.setRenderTarget == "function" && typeof t.getRenderTarget == "function");
 }
-function rr(e, t, n, r) {
-	let i = new D.RenderTarget(e, t, {
+function cr(e, t, n, r) {
+	let i = new E.RenderTarget(e, t, {
 		depthBuffer: !1,
-		format: D.RGBAFormat,
+		format: E.RGBAFormat,
 		generateMipmaps: !1,
-		magFilter: D.LinearFilter,
-		minFilter: D.LinearFilter,
+		magFilter: E.LinearFilter,
+		minFilter: E.LinearFilter,
 		stencilBuffer: !1,
-		type: n ? r ? D.FloatType : D.HalfFloatType : D.UnsignedByteType,
-		wrapS: D.RepeatWrapping,
-		wrapT: D.ClampToEdgeWrapping
+		type: n ? r ? E.FloatType : E.HalfFloatType : E.UnsignedByteType,
+		wrapS: E.RepeatWrapping,
+		wrapT: E.ClampToEdgeWrapping
 	});
-	return i.texture.name = "GPU baked skybox composition", i.texture.colorSpace = n ? D.LinearSRGBColorSpace : D.SRGBColorSpace, i.texture.generateMipmaps = !1, i;
+	return i.texture.name = "GPU baked skybox composition", i.texture.colorSpace = n ? E.LinearSRGBColorSpace : E.SRGBColorSpace, i.texture.generateMipmaps = !1, i;
 }
-var ir = class {
+var lr = class {
 	#e;
-	#t = new D.Scene();
-	#n = new D.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-	#r = new D.PlaneGeometry(2, 2);
+	#t = new E.Scene();
+	#n = new E.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+	#r = new E.PlaneGeometry(2, 2);
 	constructor(e) {
 		this.#e = e;
 	}
 	canBake() {
-		return nr(this.#e);
+		return sr(this.#e);
 	}
 	bakeRenderTarget(e, t) {
-		let n = Math.max(1, Math.floor(t.width)), r = Math.max(1, Math.floor(t.height)), i = qn(P(e), t.imageTextures ?? /* @__PURE__ */ new Map(), t.starfieldTextures ?? /* @__PURE__ */ new Map(), { flipY: t.flipY }), a = rr(n, r, !!t.hdr, !!t.float), o = new D.Mesh(this.#r, i);
+		let n = Math.max(1, Math.floor(t.width)), r = Math.max(1, Math.floor(t.height)), i = Zn(N(e), t.imageTextures ?? /* @__PURE__ */ new Map(), t.starfieldTextures ?? /* @__PURE__ */ new Map(), { flipY: t.flipY }), a = cr(n, r, !!t.hdr, !!t.float), o = new E.Mesh(this.#r, i);
 		o.frustumCulled = !1;
-		let s = this.#e.getRenderTarget(), c = this.#e.autoClear, l = new D.Color(), u = this.#e.getClearAlpha();
+		let s = this.#e.getRenderTarget(), c = this.#e.autoClear, l = new E.Color(), u = this.#e.getClearAlpha();
 		this.#e.getClearColor(l);
 		try {
 			this.#t.clear(), this.#t.add(o), this.#e.autoClear = !0, this.#e.setClearColor(0, 0), this.#e.setRenderTarget(a), this.#e.clear(), this.#e.render(this.#t, this.#n), this.#t.remove(o);
@@ -2137,16 +2267,16 @@ var ir = class {
 		return new Uint8ClampedArray(r.buffer);
 	}
 };
-function ar(e) {
-	return nr(e) ? new ir(e) : null;
+function ur(e) {
+	return sr(e) ? new lr(e) : null;
 }
 //#endregion
 //#region src/loader/loader.ts
-var X = class extends Error {
+var Z = class extends Error {
 	constructor(e, t) {
 		super(e), this.name = "LoaderAssetError", this.entry = t.entry ?? null, this.event = t.event, this.id = t.id, this.phase = t.phase, this.src = t.src;
 	}
-}, or = class {
+}, dr = class {
 	#e = {
 		total: 0,
 		loaded: 0,
@@ -2216,7 +2346,7 @@ var X = class extends Error {
 	async #s(e, t) {
 		let n = this.#o.get(t) ?? null;
 		if (!n && !this.#b(t)) {
-			let e = this.#o.size === 0, n = new X(e ? `No manifest loaded. Cannot resolve id: "${t}"` : `Manifest loaded but id not found: "${t}". Available ids: ${[...this.#o.keys()].join(", ")}`, {
+			let e = this.#o.size === 0, n = new Z(e ? `No manifest loaded. Cannot resolve id: "${t}"` : `Manifest loaded but id not found: "${t}". Available ids: ${[...this.#o.keys()].join(", ")}`, {
 				id: t,
 				phase: e ? "no-manifest" : "id-not-found"
 			});
@@ -2245,7 +2375,7 @@ var X = class extends Error {
 		return Array.isArray(e) ? e.map((e) => this.#l(e)) : "assets" in e ? e.assets.map((e) => this.#l(e)) : [this.#l(e)];
 	}
 	#l(e) {
-		if (!this.#u(e)) throw new X("Invalid manifest entry.", { phase: "manifest-parse-error" });
+		if (!this.#u(e)) throw new Z("Invalid manifest entry.", { phase: "manifest-parse-error" });
 		return e;
 	}
 	#u(e) {
@@ -2275,7 +2405,7 @@ var X = class extends Error {
 	}
 	async #p(e, t, n) {
 		let r = this.#n.get(e);
-		if (!r) throw new X(`No loader registered for type: ${e}`, {
+		if (!r) throw new Z(`No loader registered for type: ${e}`, {
 			entry: n,
 			phase: "missing-extension",
 			src: t
@@ -2320,40 +2450,40 @@ var X = class extends Error {
 };
 //#endregion
 //#region src/loader/extensions/texture.ts
-function sr(e) {
-	return e.colorSpace = D.SRGBColorSpace, e.wrapS = D.ClampToEdgeWrapping, e.wrapT = D.ClampToEdgeWrapping, e.flipY = !1, e.minFilter = D.LinearMipmapLinearFilter, e.magFilter = D.LinearFilter, e.generateMipmaps = !0, e.needsUpdate = !0, e;
+function fr(e) {
+	return e.colorSpace = E.SRGBColorSpace, e.wrapS = E.ClampToEdgeWrapping, e.wrapT = E.ClampToEdgeWrapping, e.flipY = !1, e.minFilter = E.LinearMipmapLinearFilter, e.magFilter = E.LinearFilter, e.generateMipmaps = !0, e.needsUpdate = !0, e;
 }
-var Z = class {
+var Q = class {
 	static {
 		this.type = "texture";
 	}
-	#e = new D.TextureLoader();
+	#e = new E.TextureLoader();
 	async load(e, t) {
 		let n = Array.isArray(e) ? e : [e], r = null;
 		for (let e of n) try {
-			return sr(await this.#e.loadAsync(e));
+			return fr(await this.#e.loadAsync(e));
 		} catch (n) {
-			r = new X(`Failed to load texture: ${e}`, {
+			r = new Z(`Failed to load texture: ${e}`, {
 				entry: t,
 				event: n,
 				phase: "network-error",
 				src: e
 			});
 		}
-		throw r ?? new X(`No texture sources for entry ${t?.id ?? "?"}`, {
+		throw r ?? new Z(`No texture sources for entry ${t?.id ?? "?"}`, {
 			entry: t,
 			phase: "network-error",
 			src: e
 		});
 	}
-}, Q = "manifest.json";
-function $(e) {
+}, $ = "manifest.json";
+function pr(e) {
 	let t = [], n = (e) => {
 		for (let r of e) r.type === "group" ? n(r.children) : r.type === "image" && t.push(r);
 	};
 	return n(e.nodes), t;
 }
-function cr(e) {
+function mr(e) {
 	switch (e.slice(e.lastIndexOf(".") + 1).toLowerCase()) {
 		case "jpg":
 		case "jpeg": return "image/jpeg";
@@ -2361,11 +2491,11 @@ function cr(e) {
 		default: return "image/png";
 	}
 }
-function lr(e, t) {
+function hr(e, t) {
 	let n = e.slice();
 	return URL.createObjectURL(new Blob([n], { type: t }));
 }
-async function ur(e) {
+async function gr(e) {
 	if (typeof e == "string") {
 		let t = await fetch(e);
 		if (!t.ok) throw Error(`Could not fetch zip bundle (${t.status} ${t.statusText}).`);
@@ -2373,39 +2503,39 @@ async function ur(e) {
 	}
 	return e instanceof Uint8Array ? e : e instanceof ArrayBuffer ? new Uint8Array(e) : new Uint8Array(await e.arrayBuffer());
 }
-async function dr(e) {
+async function _r(e) {
 	let t = e.slice(), n = new Blob([t]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
 	return new Uint8Array(await new Response(n).arrayBuffer());
 }
-var fr = 101010256, pr = 33639248, mr = 67324752, hr = 22, gr = 65535;
-function _r(e) {
-	let t = Math.max(0, e.byteLength - hr - gr);
-	for (let n = e.byteLength - hr; n >= t; --n) if (e.getUint32(n, !0) === fr) return n;
+var vr = 101010256, yr = 33639248, br = 67324752, xr = 22, Sr = 65535;
+function Cr(e) {
+	let t = Math.max(0, e.byteLength - xr - Sr);
+	for (let n = e.byteLength - xr; n >= t; --n) if (e.getUint32(n, !0) === vr) return n;
 	return -1;
 }
-async function vr(e) {
-	let t = new DataView(e.buffer, e.byteOffset, e.byteLength), n = _r(t);
+async function wr(e) {
+	let t = new DataView(e.buffer, e.byteOffset, e.byteLength), n = Cr(t);
 	if (n < 0) throw Error("Invalid zip bundle: end-of-central-directory record not found.");
 	let r = t.getUint16(n + 10, !0), i = t.getUint32(n + 16, !0), a = new TextDecoder(), o = [];
 	for (let n = 0; n < r; n += 1) {
-		if (t.getUint32(i, !0) !== pr) throw Error("Invalid zip bundle: malformed central directory.");
+		if (t.getUint32(i, !0) !== yr) throw Error("Invalid zip bundle: malformed central directory.");
 		let n = t.getUint16(i + 10, !0), r = t.getUint32(i + 20, !0), s = t.getUint16(i + 28, !0), c = t.getUint16(i + 30, !0), l = t.getUint16(i + 32, !0), u = t.getUint32(i + 42, !0), d = a.decode(e.subarray(i + 46, i + 46 + s));
-		if (t.getUint32(u, !0) !== mr) throw Error(`Invalid zip bundle: bad local header for "${d}".`);
+		if (t.getUint32(u, !0) !== br) throw Error(`Invalid zip bundle: bad local header for "${d}".`);
 		let f = t.getUint16(u + 26, !0), p = t.getUint16(u + 28, !0), m = u + 30 + f + p, h = e.subarray(m, m + r);
 		if (n === 0) o.push(Promise.resolve([d, h]));
-		else if (n === 8) o.push(dr(h).then((e) => [d, e]));
+		else if (n === 8) o.push(_r(h).then((e) => [d, e]));
 		else throw Error(`Unsupported zip compression method ${n} for "${d}".`);
 		i += 46 + s + c + l;
 	}
 	return Object.fromEntries(await Promise.all(o));
 }
-async function yr(e, t = {}) {
-	let n = t.toAssetUrl ?? lr, r = await vr(await ur(e)), i = r[Q];
-	if (!i) throw Error(`Zip bundle is missing ${Q}.`);
-	let a = JSON.parse(new TextDecoder().decode(i)), o = P(a), s = a.assets ?? {}, c = /* @__PURE__ */ new Map(), l = [];
+async function Tr(e, t = {}) {
+	let n = t.toAssetUrl ?? hr, r = await wr(await gr(e)), i = r[$];
+	if (!i) throw Error(`Zip bundle is missing ${$}.`);
+	let a = JSON.parse(new TextDecoder().decode(i)), o = N(a), s = a.assets ?? {}, c = /* @__PURE__ */ new Map(), l = [];
 	for (let [e, t] of Object.entries(r)) {
-		if (e === Q) continue;
-		let r = n(t, s[e]?.mimeType ?? cr(e), e);
+		if (e === $) continue;
+		let r = n(t, s[e]?.mimeType ?? mr(e), e);
 		c.set(e, r), l.push(r);
 	}
 	return {
@@ -2417,24 +2547,24 @@ async function yr(e, t = {}) {
 		}
 	};
 }
-async function br(e) {
-	let t = await fetch(new URL(Q, e).href);
-	if (!t.ok) throw Error(`Could not load ${Q} (${t.status}).`);
+async function Er(e) {
+	let t = await fetch(new URL($, e).href);
+	if (!t.ok) throw Error(`Could not load ${$} (${t.status}).`);
 	return {
-		manifest: P(await t.json()),
+		manifest: N(await t.json()),
 		resolveAssetUrl: (t) => new URL(t, e).href,
 		dispose: () => {}
 	};
 }
-async function xr(e, t) {
+async function Dr(e, t) {
 	let n = t.split("/").filter(Boolean), r = e;
 	for (let e = 0; e < n.length - 1; e += 1) r = await r.getDirectoryHandle(n[e]);
 	let i = await r.getFileHandle(n[n.length - 1]);
 	return URL.createObjectURL(await i.getFile());
 }
-async function Sr(e) {
-	let t = await (await e.getFileHandle(Q)).getFile(), n = P(JSON.parse(await t.text())), r = /* @__PURE__ */ new Map();
-	for (let t of $(n)) t.params.src && r.set(t.params.src, await xr(e, t.params.src));
+async function Or(e) {
+	let t = await (await e.getFileHandle($)).getFile(), n = N(JSON.parse(await t.text())), r = /* @__PURE__ */ new Map();
+	for (let t of pr(n)) t.params.src && r.set(t.params.src, await Dr(e, t.params.src));
 	return {
 		manifest: n,
 		resolveAssetUrl: (e) => r.get(e) ?? e,
@@ -2444,9 +2574,9 @@ async function Sr(e) {
 		}
 	};
 }
-async function Cr(e) {
+async function kr(e) {
 	let t = structuredClone(e.manifest);
-	for (let n of $(t)) {
+	for (let n of pr(t)) {
 		if (!n.params.src) continue;
 		let t = await (await fetch(e.resolveAssetUrl(n.params.src))).blob(), r = await createImageBitmap(t), i = document.createElement("canvas");
 		i.width = r.width, i.height = r.height;
@@ -2461,15 +2591,15 @@ async function Cr(e) {
 }
 //#endregion
 //#region src/loader/skybox-bundle.ts
-function wr() {
-	let e = new or();
-	return e.register(Z.type, Z), e;
+function Ar() {
+	let e = new dr();
+	return e.register(Q.type, Q), e;
 }
-async function Tr(e, t = {}) {
-	let n = t.loader ?? wr(), r = $(e.manifest).filter((e) => e.enabled && e.params.src), i = r.map((t) => ({
+async function jr(e, t = {}) {
+	let n = t.loader ?? Ar(), r = pr(e.manifest).filter((e) => e.enabled && e.params.src), i = r.map((t) => ({
 		id: t.id,
 		src: e.resolveAssetUrl(t.params.src),
-		type: Z.type
+		type: Q.type
 	})), a = t.onProgress ? n.onProgress(t.onProgress) : null;
 	try {
 		await n.load(i);
@@ -2479,15 +2609,15 @@ async function Tr(e, t = {}) {
 	let o = /* @__PURE__ */ new Map();
 	return await Promise.all(r.map(async (e) => {
 		try {
-			o.set(e.id, await n.loadAsset(Z.type, e.id));
+			o.set(e.id, await n.loadAsset(Q.type, e.id));
 		} catch {}
 	})), o;
 }
-function Er(e) {
+function Mr(e) {
 	return typeof e == "object" && !!e && "manifest" in e && typeof e.resolveAssetUrl == "function";
 }
-async function Dr(e, t = {}) {
-	let { onProgress: n, ...r } = t, i = !Er(e), a = Er(e) ? e : await yr(e, r), o = wr(), s = await Tr(a, {
+async function Nr(e, t = {}) {
+	let { onProgress: n, ...r } = t, i = !Mr(e), a = Mr(e) ? e : await Tr(e, r), o = Ar(), s = await jr(a, {
 		loader: o,
 		onProgress: n
 	});
@@ -2502,4 +2632,4 @@ async function Dr(e, t = {}) {
 	};
 }
 //#endregion
-export { sn as DEFAULT_BAKE_WIDTH, wt as DEFAULT_SPOT_BASE_ANGULAR_RADIUS, V as IMAGE_PLACEMENT_ELEVATION_LIMIT, or as Loader, X as LoaderAssetError, tr as Skybox, ir as SkyboxGpuBakeService, Z as TextureLoaderExtension, _n as bakeSkyboxImageData, ne as blendChannel, v as clamp, $ as collectImageLayers, m as compositeBlendChannel, e as compositeOver, sr as configureSkyboxImageTexture, Ze as createAngularDecalPlacement, fn as createBakeCacheKey, Xn as createBakedSkyboxTexture, Dt as createDefaultSpotParams, Xe as createImagePlacementTangents, ge as createSkyboxGeometry, ar as createSkyboxGpuBakeService, ve as createSkyboxWireGeometry, $e as directionFromPosition, on as evaluateSkyboxDirection, c as getLayerRuntimeAdapter, S as getLayerRuntimeAdapters, pn as invalidateBakeCache, s as isRegisteredLayerType, T as linearChannelToSrgb, oe as linearRgbToSrgbBytes, Sr as loadBundleFromDirectory, br as loadBundleFromUrl, yr as loadBundleFromZip, Dr as loadSkyboxBundle, Tr as loadSkyboxImageTextures, P as migrateManifestToV2, G as normalizeImagePlacement, J as normalizeSpotParams, W as normalizeVector, C as parseHexColor, et as placementFromPosition, it as placementFromRotation, nt as placementFromScale, Qe as positionFromPlacement, Ot as positionFromSpot, at as projectDirectionToImageUv, At as radiusScaleFromSpot, _ as registerLayerRuntimeAdapter, Cr as rehydrateImagePixels, dn as resolveBakeOptions, rt as rotationFromPlacement, tt as scaleFromPlacement, Mt as spotContainsDirection, kt as spotFromPosition, jt as spotFromRadiusScale, x as srgbChannelToLinear };
+export { on as DEFAULT_BAKE_WIDTH, Ct as DEFAULT_SPOT_BASE_ANGULAR_RADIUS, V as IMAGE_PLACEMENT_ELEVATION_LIMIT, dr as Loader, Z as LoaderAssetError, or as Skybox, lr as SkyboxGpuBakeService, Q as TextureLoaderExtension, gn as bakeSkyboxImageData, te as blendChannel, y as clamp, pr as collectImageLayers, m as compositeBlendChannel, e as compositeOver, fr as configureSkyboxImageTexture, G as createAngularDecalPlacement, dn as createBakeCacheKey, er as createBakedSkyboxTexture, Et as createDefaultSpotParams, Xe as createImagePlacementTangents, P as createSkyboxGeometry, ur as createSkyboxGpuBakeService, ve as createSkyboxWireGeometry, Qe as directionFromPosition, an as evaluateSkyboxDirection, c as getLayerRuntimeAdapter, x as getLayerRuntimeAdapters, fn as invalidateBakeCache, s as isRegisteredLayerType, w as linearChannelToSrgb, se as linearRgbToSrgbBytes, Or as loadBundleFromDirectory, Er as loadBundleFromUrl, Tr as loadBundleFromZip, Nr as loadSkyboxBundle, jr as loadSkyboxImageTextures, N as migrateManifestToV2, K as normalizeImagePlacement, Y as normalizeSpotParams, W as normalizeVector, S as parseHexColor, $e as placementFromPosition, rt as placementFromRotation, tt as placementFromScale, Ze as positionFromPlacement, Dt as positionFromSpot, it as projectDirectionToImageUv, kt as radiusScaleFromSpot, v as registerLayerRuntimeAdapter, kr as rehydrateImagePixels, un as resolveBakeOptions, nt as rotationFromPlacement, et as scaleFromPlacement, jt as spotContainsDirection, Ot as spotFromPosition, At as spotFromRadiusScale, re as srgbChannelToLinear };

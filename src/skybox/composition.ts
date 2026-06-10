@@ -236,3 +236,78 @@ function webGpuEffectExpression(
       bindingsByLayerId: adapterRuntime.bindingsByLayerId,
     });
 }
+
+// --- Coverage above the starfield (Phase B: screen-space glint occlusion) ------------------------
+//
+// Star glints render as a screen-space pass on TOP of the composited sky, so on their own they'd
+// always sit above every other layer. To honour layer order, opaque layers stacked ABOVE a starfield
+// must hide the glints behind them. This codegen computes, per pixel, the transmittance of the stack
+// above the topmost starfield = Π(1 − sourceAlpha) over those layers; the glint pass multiplies its
+// output by it. Only `sourceAlpha` matters (not color or blend mode), so occlusion is uniform across
+// blend modes. Groups composite over black and are treated as opaque (alpha = opacity) by the color
+// path, so a group's coverage here is just its opacity — no child sampling needed.
+
+function nodeSubtreeHasStarfield(node: SkyboxManifestNode): boolean {
+  if (node.type === "group") {
+    return node.children.some(nodeSubtreeHasStarfield);
+  }
+
+  return node.type === "starfield";
+}
+
+// True when at least one renderable layer is composited above the topmost starfield (i.e. a coverage
+// pass is worth running). Restricted to the top level — a starfield nested in a group is rare.
+export function manifestHasLayerAboveStarfield(nodes: SkyboxManifestNode[]): boolean {
+  const order = getRenderableNodes(nodes);
+  let boundary = -1;
+
+  order.forEach((node, index) => {
+    if (nodeSubtreeHasStarfield(node)) {
+      boundary = index;
+    }
+  });
+
+  return boundary >= 0 && boundary < order.length - 1;
+}
+
+// WGSL body that accumulates `coverageAbove` (alpha-over) for every top-level layer drawn after the
+// topmost starfield. Mutates a pre-declared `var coverageAbove`. Reuses the same per-layer sample
+// expressions as the color path, so e.g. a transparent PNG region of an image layer doesn't occlude.
+export function composeCoverageExpression(
+  nodes: SkyboxManifestNode[],
+  webGpuRuntime: WebGpuCompositionRuntime
+): string {
+  const order = getRenderableNodes(nodes);
+  let boundary = -1;
+
+  order.forEach((node, index) => {
+    if (nodeSubtreeHasStarfield(node)) {
+      boundary = index;
+    }
+  });
+
+  return order
+    .map((node, index) => {
+      if (index <= boundary) {
+        return "";
+      }
+
+      const opacityRef = numberLiteral(node.opacity / 100);
+
+      if (node.type === "group") {
+        return `{
+        let sourceAlpha = clamp(${opacityRef}, 0.0, 1.0);
+        coverageAbove = sourceAlpha + coverageAbove * (1.0 - sourceAlpha);
+      }`;
+      }
+
+      return `{
+        ${mutableDeclaration("effectColor", "vec4<f32>", "vec4<f32>(0.0)")}
+        ${webGpuEffectExpression(node, webGpuRuntime)}
+        let sourceAlpha = clamp(effectColor.a * ${opacityRef}, 0.0, 1.0);
+        coverageAbove = sourceAlpha + coverageAbove * (1.0 - sourceAlpha);
+      }`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}

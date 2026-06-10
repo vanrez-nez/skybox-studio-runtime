@@ -67,7 +67,13 @@ registerLayerRuntimeAdapter({
     }),
 });
 
-export { createStarfieldGpuBakeService, StarfieldGpuBakeService } from "./baking/starfield-gpu-bake";
+export {
+  createStarfieldGlints,
+  createStarfieldGpuBakeService,
+  starfieldGlintGeometryKey,
+  StarfieldGpuBakeService,
+  type StarfieldGlintHandle,
+} from "./baking/starfield-gpu-bake";
 export {
   bakeStarfieldImageData,
   createStarCatalogForCoverage,

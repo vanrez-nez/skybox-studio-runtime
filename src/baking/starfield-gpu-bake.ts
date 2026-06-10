@@ -8,6 +8,8 @@ import {
   acos,
   atan,
   attribute,
+  cameraProjectionMatrix,
+  cameraViewMatrix,
   clamp as nodeClamp,
   cos,
   dot,
@@ -15,15 +17,19 @@ import {
   float,
   floor,
   int,
+  length,
   max,
   min,
   mix,
   modelViewProjection,
+  modelWorldMatrix,
   mod,
   mx_fractal_noise_float,
   normalize,
   positionGeometry,
   pow,
+  screenSize,
+  screenUV,
   select,
   sin,
   smoothstep,
@@ -44,11 +50,14 @@ import type {
   SkyboxStarfieldParams,
 } from "../manifest";
 import {
+  createStarCatalogForCoverage,
   createStarCatalogForDescriptor,
   createStarfieldPatchLayout,
   createStarfieldBakeCacheKey,
   getStarfieldQualityPreset,
+  normalizeStarfieldCoverage,
   normalizeStarfieldParams,
+  starfieldClipContainsDirection,
   starfieldFieldGradientToSourceField,
   STARFIELD_PREVIEW_BAKE_WIDTH,
   type StarfieldBakeData,
@@ -102,6 +111,41 @@ type StarfieldGpuRenderer = {
 };
 
 type StarfieldUniformMap = Record<string, any>;
+
+// Viewport the baked starfield will be VIEWED through. When provided, stars are sized to a fixed
+// logical-pixel size: displayPixelAngle = verticalFovRadians / renderHeight makes the on-screen
+// size cancel out to `uStarSize · scale` logical px regardless of FOV/resolution (point-source
+// glint behavior). `renderHeight` is logical/CSS pixels, not the device drawing-buffer height.
+export type StarGlintViewport = {
+  renderHeight: number;
+  verticalFovRadians: number;
+};
+
+// displayPixelAngle (rad/star-size-unit) + screenPixelScale (AA threshold scale, in screen px)
+// for a given viewport and equirect output height. With a viewport, on-screen radius already
+// equals `uStarSize · scale` logical px, so screenPixelScale is 1 (AA thresholds become true
+// logical-pixel thresholds). Without one, fall back to the legacy fixed-angular behavior.
+export function starGlintScalesFor(
+  viewport: StarGlintViewport | null | undefined,
+  outputHeight: number
+) {
+  if (viewport && viewport.renderHeight > 0 && viewport.verticalFovRadians > 0) {
+    // Exact angle subtended by one screen pixel at the center of a rectilinear (perspective)
+    // projection: a ray at angle a lands at r = f·tan(a) with f = (H/2)/tan(vFov/2), so the
+    // center pixel-angle is 1/f = 2·tan(vFov/2)/H — NOT the small-angle approximation vFov/H
+    // (which under-sizes stars by ~6% at 50°, ~15% at 70°, ~27% at 90°). With this, a star's
+    // on-screen center radius is exactly uStarSize·scale px, so screenPixelScale stays 1.
+    return {
+      displayPixelAngle: (2 * Math.tan(viewport.verticalFovRadians / 2)) / viewport.renderHeight,
+      screenPixelScale: 1,
+    };
+  }
+
+  return {
+    displayPixelAngle: Math.PI / REFERENCE_BAKE_HEIGHT,
+    screenPixelScale: outputHeight / REFERENCE_BAKE_HEIGHT,
+  };
+}
 
 type GpuBakeEntry = {
   key: string;
@@ -599,6 +643,247 @@ function createStarMaterial(
   })();
 
   return material as THREE.Material;
+}
+
+// --- Screen-space star glints (live render path) -------------------------------------------------
+//
+// The equirect bake (above) can only carry a *fixed-angular* sky: FOV-compensating the baked angular
+// star size streaks stars radially at wide FOV (the projection stretches an inflated angular blob).
+// To get genuinely constant *screen-pixel* stars at any FOV, the live path renders the star catalog
+// as instanced quads projected with the live camera and sized in real pixels — reusing the exact
+// per-star core+glare recipe from `createStarMaterial`, with the angular-distance metric replaced by
+// pixel distance (so `displayPixelAngle` collapses to 1 px and `screenPixelScale` to 1).
+
+// Viewport the glints are VIEWED through. Only `renderHeight` (logical/CSS px of the canvas) is used:
+// it converts the logical-pixel star size to device pixels via screenSize.y / renderHeight. The FOV
+// is intentionally ignored — that is the whole point (no FOV compensation, no streaks).
+export type StarfieldGlintHandle = {
+  object: THREE.Object3D;
+  /** Push the live viewport so glints stay a fixed logical-pixel size across FOV/DPR/resize. */
+  setViewport: (viewport: StarGlintViewport | null) => void;
+  /** Update per-star appearance uniforms in place (no geometry rebuild) for live slider tweaks. */
+  setParams: (params: SkyboxStarfieldParams) => void;
+  /** Bind the per-frame transmittance target (Phase B occlusion), or null to disable occlusion. */
+  setCoverageTexture: (texture: THREE.Texture | null) => void;
+  dispose: () => void;
+};
+
+// Distribution-only signature: which stars exist + their per-star randoms depend on these alone, so
+// the instanced geometry is rebuilt only when one of them changes. Size/brightness/glare/color are
+// uniforms (live uniform updates, no rebuild). Clip changes which stars are filtered out.
+export function starfieldGlintGeometryKey(params: SkyboxStarfieldParams) {
+  const stars = params.stars;
+
+  return JSON.stringify({
+    density: stars.uDensity,
+    largeStarRarity: stars.uLargeStarRarity,
+    seed: stars.uSeed,
+    clip: params.clip,
+  });
+}
+
+function createStarGlintGeometry(params: SkyboxStarfieldParams) {
+  // Full-sphere catalog (no equirect seam copies — a 3D direction is unambiguous), then drop stars
+  // outside the layer's clip region. REFERENCE_BAKE_HEIGHT only feeds the (here unused) query margin.
+  const coverage = normalizeStarfieldCoverage(params.clip);
+  const catalog = createStarCatalogForCoverage(params.stars, coverage, REFERENCE_BAKE_HEIGHT, {
+    includeSeamCopies: false,
+  });
+  const directions: number[] = [];
+  const randoms: number[] = [];
+  const sizeGates: number[] = [];
+
+  catalog.forEach((star) => {
+    if (!starfieldClipContainsDirection([star.x, star.y, star.z], params.clip)) {
+      return;
+    }
+
+    directions.push(star.x, star.y, star.z);
+    randoms.push(star.rSize, star.rBright, star.rGlare, star.rColor);
+    sizeGates.push(star.rSizeGate);
+  });
+
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(EMPTY_STAR_POSITIONS, 3));
+  geometry.setAttribute("iDirection", new THREE.InstancedBufferAttribute(new Float32Array(directions), 3));
+  geometry.setAttribute("iRandoms", new THREE.InstancedBufferAttribute(new Float32Array(randoms), 4));
+  geometry.setAttribute("iSizeGate", new THREE.InstancedBufferAttribute(new Float32Array(sizeGates), 1));
+  geometry.instanceCount = sizeGates.length;
+  // The quad is billboarded in the shader from camera-relative directions; never frustum-cull by the
+  // (origin-centered, zero-size) bounding sphere.
+  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), Infinity);
+
+  return geometry;
+}
+
+function starGlintUniformValues(params: SkyboxStarfieldParams) {
+  const stars = params.stars;
+
+  return {
+    uBright: stars.uBright,
+    uBrightVar: stars.uBrightVar,
+    uColorVar: stars.uColorVar,
+    uGlareSize: stars.uGlareSize,
+    uGlareStr: stars.uGlareStr,
+    uGlareVar: stars.uGlareVar,
+    uLargeStarRarity: stars.uLargeStarRarity,
+    uSizeVar: stars.uSizeVar,
+    uStarSize: stars.uStarSize,
+  };
+}
+
+function createStarGlintMaterial(params: SkyboxStarfieldParams) {
+  const values = starGlintUniformValues(params);
+  const uniforms: StarfieldUniformMap = {
+    uBright: { value: values.uBright },
+    uBrightVar: { value: values.uBrightVar },
+    uColorVar: { value: values.uColorVar },
+    uGlareSize: { value: values.uGlareSize },
+    uGlareStr: { value: values.uGlareStr },
+    uGlareVar: { value: values.uGlareVar },
+    uCoverageEnabled: { value: 0 },
+    uCoverageTexture: { value: whiteCoverageTexture() },
+    uLargeStarRarity: { value: values.uLargeStarRarity },
+    uRenderHeight: { value: REFERENCE_BAKE_HEIGHT },
+    uSizeVar: { value: values.uSizeVar },
+    uStarSize: { value: values.uStarSize },
+  };
+  const uCoverageEnabled = numberUniform(uniforms, "uCoverageEnabled");
+  const uCoverageTexture = uniformTexture(whiteCoverageTexture());
+  uniforms.uCoverageTexture = uCoverageTexture;
+  const uStarSize = numberUniform(uniforms, "uStarSize");
+  const uSizeVar = numberUniform(uniforms, "uSizeVar");
+  const uLargeStarRarity = numberUniform(uniforms, "uLargeStarRarity");
+  const uBright = numberUniform(uniforms, "uBright");
+  const uBrightVar = numberUniform(uniforms, "uBrightVar");
+  const uGlareSize = numberUniform(uniforms, "uGlareSize");
+  const uGlareStr = numberUniform(uniforms, "uGlareStr");
+  const uGlareVar = numberUniform(uniforms, "uGlareVar");
+  const uColorVar = numberUniform(uniforms, "uColorVar");
+  const uRenderHeight = numberUniform(uniforms, "uRenderHeight");
+  const vLocalPx = varyingProperty("vec2", "vStarGlintLocalPx") as any;
+  const vRandoms = varyingProperty("vec4", "vStarGlintRandoms") as any;
+  const vSizeGate = varyingProperty("float", "vStarGlintSizeGate") as any;
+  const material = new MeshBasicNodeMaterial({
+    blending: THREE.AdditiveBlending,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+    transparent: true,
+  }) as any;
+
+  material.uniforms = uniforms;
+  material.vertexNode = Fn(() => {
+    const iDirection = attribute("iDirection", "vec3") as any;
+    const iRandoms = attribute("iRandoms", "vec4") as any;
+    const iSizeGate = attribute("iSizeGate", "float") as any;
+    const scale = sizeMultiplierNode(iRandoms.x, iSizeGate, uLargeStarRarity, uSizeVar);
+    // All radii are LOGICAL pixels here (port of createStarMaterial's vertex with displayPixelAngle
+    // → 1 px and screenPixelScale → 1). The support quad spans the larger of the core/glare sigmas
+    // out to GAUSSIAN_CUTOFF_SIGMA so bright mid-size stars are never hard-clipped into squares.
+    const screenRadiusPx = uStarSize.mul(scale);
+    const pinWeight = smoothstep(SUBPIXEL_DENSITY_THRESHOLD_PX, AA_PIN_THRESHOLD_PX, screenRadiusPx).oneMinus();
+    const coreSupportRadius = max(screenRadiusPx, mix(float(MIN_CORE_PIXELS), float(0.5), pinWeight));
+    const coreSigma = max(coreSupportRadius.mul(0.45), float(0.5));
+    const glareRadius = uGlareSize.mul(mix(1.0, scale, uSizeVar));
+    const glareSupportEdge = max(screenRadiusPx.add(glareRadius), float(MIN_GLARE_PIXELS));
+    const glareSigma = max(glareSupportEdge.mul(0.36), float(0.5))
+      .mul(step(0.000001, uGlareSize))
+      .mul(step(0.000001, uGlareStr));
+    const supportSigma = (max as any)(coreSigma, glareSigma);
+    const supportRadiusPx = max(supportSigma, float(0.5)).mul(GAUSSIAN_CUTOFF_SIGMA);
+
+    // Project the star direction to clip space ignoring all translation (transform as a direction,
+    // w = 0), so the sky is at infinity: no parallax from camera/skybox translation, matching the
+    // equirect composite's per-pixel ray.
+    const quadCorner = (positionGeometry as any).xy;
+    const screen = screenSize as any;
+    const worldDir = (modelWorldMatrix as any).mul(vec4(normalize(iDirection) as any, 0.0)).xyz;
+    const viewDir = (cameraViewMatrix as any).mul(vec4(worldDir as any, 0.0)).xyz;
+    const clip = (cameraProjectionMatrix as any).mul(vec4(viewDir as any, 1.0));
+    // Billboard the quad corner by a constant pixel radius (device px = logical px · DPR), expanded
+    // in clip space (· clip.w) so the on-screen size is depth-independent.
+    const pixelRatio = screen.y.div(max(uRenderHeight, 1.0));
+    const cornerDevicePx = quadCorner.mul(supportRadiusPx).mul(pixelRatio);
+    const cornerNdc = cornerDevicePx.div(screen.mul(0.5));
+    const offset = vec4(cornerNdc.mul(clip.w) as any, 0.0, 0.0);
+
+    vLocalPx.assign(quadCorner.mul(supportRadiusPx));
+    vRandoms.assign(iRandoms);
+    vSizeGate.assign(iSizeGate);
+
+    // Cull stars at/behind the camera plane (clip.w <= 0 projects them incorrectly): collapse the
+    // whole quad to a single off-screen point so it rasterizes nothing.
+    return (select as any)(clip.w.greaterThan(0.0), clip.add(offset), vec4(2.0, 2.0, 2.0, 1.0));
+  })();
+  material.colorNode = Fn(() => {
+    const distancePx = length(vLocalPx);
+    const rank = sizeRankNode(vRandoms.x, vSizeGate, uLargeStarRarity);
+    const scale = sizeMultiplierNode(vRandoms.x, vSizeGate, uLargeStarRarity, uSizeVar);
+    const screenRadiusPx = uStarSize.mul(scale);
+    const subpixelWeight = smoothstep(SUBPIXEL_DENSITY_THRESHOLD_PX * 0.75, SUBPIXEL_DENSITY_THRESHOLD_PX, screenRadiusPx).oneMinus();
+    const normalWeight = smoothstep(AA_PIN_THRESHOLD_PX, AA_PIN_THRESHOLD_PX + 0.25, screenRadiusPx);
+    const coreRadius = max(screenRadiusPx, float(0.1));
+    const densityEnergy = max(0.08, smoothstep(0.0, SUBPIXEL_DENSITY_THRESHOLD_PX, screenRadiusPx));
+    const coreEnergy = mix(1.0, densityEnergy, subpixelWeight);
+    const coreSigma = max(coreRadius.mul(0.45), float(0.5));
+    const core = exp(distancePx.mul(distancePx).negate().div(max(coreSigma.mul(coreSigma).mul(2.0), 1e-10))).mul(coreEnergy);
+    const glareRadius = uGlareSize.mul(mix(1.0, scale, uSizeVar));
+    const glareEdge = max(screenRadiusPx.add(glareRadius), float(0.1));
+    const glareSigma = max(glareEdge.mul(0.36), float(0.5));
+    const glare = exp(distancePx.mul(distancePx).negate().div(max(glareSigma.mul(glareSigma).mul(2.0), 1e-10)))
+      .mul(normalWeight)
+      .mul(step(0.000001, uGlareSize))
+      .mul(step(0.000001, uGlareStr));
+    const linkedBrightRand = mix(vRandoms.y, max(vRandoms.y, rank), uSizeVar.mul(STAR_SIZE_BRIGHTNESS_LINK));
+    const linkedGlareRand = mix(vRandoms.z, max(vRandoms.z, rank), uSizeVar.mul(STAR_SIZE_GLARE_LINK));
+    const glareStrength = uGlareStr.mul(mix(1.0, pow(linkedGlareRand, 8.0), uGlareVar));
+    const bright = uBright.mul(mix(1.0, pow(linkedBrightRand, 3.0).mul(3.0), uBrightVar));
+    const color = starColorNode(mix(0.5, vRandoms.w, uColorVar));
+    const radiance = color.mul(core.add(glare.mul(glareStrength))).mul(bright);
+    // Phase B: attenuate by the transmittance of layers stacked above the starfield (sampled at this
+    // screen pixel) so opaque upper layers occlude the glints. Defaults to 1 (no coverage bound).
+    const transmittance = texture(uCoverageTexture, screenUV as any).r;
+    const occluded = radiance.mul(mix(1.0, transmittance, uCoverageEnabled));
+
+    return vec4(occluded, 1.0);
+  })();
+
+  return { material: material as THREE.Material, uniforms };
+}
+
+export function createStarfieldGlints(params: SkyboxStarfieldParams): StarfieldGlintHandle {
+  const normalized = normalizeStarfieldParams(params);
+  const geometry = createStarGlintGeometry(normalized);
+  const { material, uniforms } = createStarGlintMaterial(normalized);
+  const mesh = new THREE.Mesh(geometry, material);
+
+  mesh.name = "Starfield glints";
+  mesh.frustumCulled = false;
+  // Draw after the composited skybox mesh (renderOrder -1) so glints sit on top of the sky.
+  mesh.renderOrder = 1;
+
+  return {
+    object: mesh,
+    setViewport: (viewport) => {
+      uniforms.uRenderHeight.value =
+        viewport && viewport.renderHeight > 0 ? viewport.renderHeight : REFERENCE_BAKE_HEIGHT;
+    },
+    setParams: (nextParams) => {
+      const next = starGlintUniformValues(normalizeStarfieldParams(nextParams));
+      Object.entries(next).forEach(([key, value]) => {
+        uniforms[key].value = value;
+      });
+    },
+    setCoverageTexture: (coverageTexture) => {
+      uniforms.uCoverageTexture.value = coverageTexture ?? whiteCoverageTexture();
+      uniforms.uCoverageEnabled.value = coverageTexture ? 1 : 0;
+    },
+    dispose: () => {
+      geometry.dispose();
+      material.dispose();
+    },
+  };
 }
 
 function createDownsampleMaterial(
@@ -1107,6 +1392,37 @@ function disposeMaterial(material: THREE.Material) {
   material.dispose();
 }
 
+let whiteCoverageTextureInstance: THREE.DataTexture | null = null;
+
+// Default glint coverage = fully transmissive (white) → no occlusion until a real coverage target is
+// bound. Phase B (layer-order occlusion) swaps this for the per-frame transmittance pre-pass output.
+function whiteCoverageTexture() {
+  if (!whiteCoverageTextureInstance) {
+    const texture = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+
+    texture.needsUpdate = true;
+    whiteCoverageTextureInstance = texture;
+  }
+
+  return whiteCoverageTextureInstance;
+}
+
+let blackStarTextureInstance: THREE.DataTexture | null = null;
+
+// Shared 1x1 opaque-black texture used as the "no stars" input when compositing a nebula-only live
+// bake (the star pass is additive, so black contributes nothing).
+function blackStarTexture() {
+  if (!blackStarTextureInstance) {
+    const texture = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+    blackStarTextureInstance = texture;
+  }
+
+  return blackStarTextureInstance;
+}
+
 export function starfieldDisplayPixelAngleForHeight(height: number) {
   return Math.PI / Math.max(1, height);
 }
@@ -1133,35 +1449,67 @@ export class StarfieldGpuBakeService {
     this.#maxTextureSize = rendererMaxTextureSize(renderer);
   }
 
-  createBakeKey(paramsInput: SkyboxStarfieldParams, width?: number) {
+  createBakeKey(
+    paramsInput: SkyboxStarfieldParams,
+    width?: number,
+    viewport?: StarGlintViewport | null,
+    options?: { starsOmitted?: boolean }
+  ) {
     const params = normalizeStarfieldParams(paramsInput);
     const preset = getStarfieldQualityPreset(params.quality);
     const bakeWidth = requestedStarfieldBakeWidth(width);
-
-    return createStarfieldBakeCacheKey(params, bakeWidth, Math.floor(bakeWidth / 2), {
+    const baseKey = createStarfieldBakeCacheKey(params, bakeWidth, Math.floor(bakeWidth / 2), {
       budgetBytes: preset.budgetBytes,
       maxTextureSize: this.#maxTextureSize,
+      viewport,
     });
+
+    // Nebula-only (live) and full (export) bakes of identical params must not collide in the cache.
+    return options?.starsOmitted ? `nebula-only:${baseKey}` : baseKey;
   }
 
   previewWidthFor(_paramsInput: SkyboxStarfieldParams) {
     return Math.max(1, Math.min(STARFIELD_PREVIEW_BAKE_WIDTH, this.#maxTextureSize));
   }
 
-  bakeTexture(paramsInput: SkyboxStarfieldParams, key?: string, width?: number) {
-    return this.#bakeTarget(paramsInput, key, width).texture;
+  bakeTexture(
+    paramsInput: SkyboxStarfieldParams,
+    key?: string,
+    width?: number,
+    viewport?: StarGlintViewport | null,
+    options?: { starsOmitted?: boolean }
+  ) {
+    return this.#bakeTarget(paramsInput, key, width, viewport, options).texture;
   }
 
-  bakePatchTextures(paramsInput: SkyboxStarfieldParams, key?: string, width?: number): StarfieldGpuPatchTextureSet {
-    return this.#bakePatchTargets(paramsInput, key, width);
+  // Screen-space star glints for the live path: constant-pixel stars projected with the live camera,
+  // paired with a nebula-only equirect bake (bakeTexture(..., { starsOmitted: true })).
+  createGlints(paramsInput: SkyboxStarfieldParams): StarfieldGlintHandle {
+    return createStarfieldGlints(paramsInput);
+  }
+
+  // Distribution-only key: when it changes the glint geometry must be rebuilt; otherwise a live
+  // tweak is just a uniform update via the handle's setParams.
+  glintGeometryKey(paramsInput: SkyboxStarfieldParams): string {
+    return starfieldGlintGeometryKey(normalizeStarfieldParams(paramsInput));
+  }
+
+  bakePatchTextures(
+    paramsInput: SkyboxStarfieldParams,
+    key?: string,
+    width?: number,
+    viewport?: StarGlintViewport | null
+  ): StarfieldGpuPatchTextureSet {
+    return this.#bakePatchTargets(paramsInput, key, width, viewport);
   }
 
   async bakeImageData(
     paramsInput: SkyboxStarfieldParams,
     key?: string,
-    width?: number
+    width?: number,
+    viewport?: StarGlintViewport | null
   ): Promise<StarfieldBakeData> {
-    const entry = this.#bakeTarget(paramsInput, key, width);
+    const entry = this.#bakeTarget(paramsInput, key, width, viewport);
     const { height, width: targetWidth } = entry.target;
     const target = entry.target;
     const result = this.#renderer.readRenderTargetPixelsAsync
@@ -1198,12 +1546,17 @@ export class StarfieldGpuBakeService {
     this.#quadGeometry.dispose();
   }
 
-  #bakePatchTargets(paramsInput: SkyboxStarfieldParams, key?: string, width?: number) {
+  #bakePatchTargets(
+    paramsInput: SkyboxStarfieldParams,
+    key?: string,
+    width?: number,
+    viewport?: StarGlintViewport | null
+  ) {
     const params = normalizeStarfieldParams(paramsInput);
     const preset = getStarfieldQualityPreset(params.quality);
     const requestedWidth = requestedStarfieldBakeWidth(width);
     const requestedHeight = Math.floor(requestedWidth / 2);
-    const bakeKey = key ?? this.createBakeKey(params, requestedWidth);
+    const bakeKey = key ?? this.createBakeKey(params, requestedWidth, viewport);
     const cached = this.#patchCache.get(bakeKey);
 
     if (cached) {
@@ -1253,7 +1606,7 @@ export class StarfieldGpuBakeService {
       );
 
       this.#renderMaterialToTarget(createNebulaMaterial(params, descriptor), nebulaTarget);
-      this.#renderStarsToTarget(params, descriptor, starTarget, requestedHeight, layout.supersample);
+      this.#renderStarsToTarget(params, descriptor, starTarget, requestedHeight, layout.supersample, viewport ?? null);
       targets.push(nebulaTarget, starTarget);
       patches.push({
         descriptor,
@@ -1271,14 +1624,21 @@ export class StarfieldGpuBakeService {
     return entry;
   }
 
-  #bakeTarget(paramsInput: SkyboxStarfieldParams, key?: string, width?: number) {
+  #bakeTarget(
+    paramsInput: SkyboxStarfieldParams,
+    key?: string,
+    width?: number,
+    viewport?: StarGlintViewport | null,
+    options?: { starsOmitted?: boolean }
+  ) {
     const params = normalizeStarfieldParams(paramsInput);
     const preset = getStarfieldQualityPreset(params.quality);
     const requestedWidth = requestedStarfieldBakeWidth(width);
     const requestedHeight = Math.floor(requestedWidth / 2);
     const targetWidth = clampedStarfieldTargetWidth(requestedWidth, this.#maxTextureSize);
     const targetHeight = Math.floor(targetWidth / 2);
-    const bakeKey = key ?? this.createBakeKey(params, requestedWidth);
+    const starsOmitted = options?.starsOmitted ?? false;
+    const bakeKey = key ?? this.createBakeKey(params, requestedWidth, viewport, options);
     const cached = this.#cache.get(bakeKey);
 
     if (cached && cached.target.width === targetWidth && cached.target.height === targetHeight) {
@@ -1321,6 +1681,16 @@ export class StarfieldGpuBakeService {
           wrapT: descriptorWrapping(descriptor.wrapT),
         }
       );
+      this.#renderMaterialToTarget(createNebulaMaterial(params, descriptor), nebulaTarget);
+
+      if (starsOmitted) {
+        // Live path: stars come from the screen-space glint pass, so the equirect texture carries
+        // nebula only. A black star texture makes the additive star contribution zero.
+        this.#renderPatchToFinal(params, descriptor, nebulaTarget.texture, blackStarTexture(), finalTarget);
+        nebulaTarget.dispose();
+        return;
+      }
+
       const starTarget = createRenderTarget(
         descriptor.storageSize.width,
         descriptor.storageSize.height,
@@ -1333,8 +1703,7 @@ export class StarfieldGpuBakeService {
         }
       );
 
-      this.#renderMaterialToTarget(createNebulaMaterial(params, descriptor), nebulaTarget);
-      this.#renderStarsToTarget(params, descriptor, starTarget, requestedHeight, layout.supersample);
+      this.#renderStarsToTarget(params, descriptor, starTarget, requestedHeight, layout.supersample, viewport ?? null);
       this.#renderPatchToFinal(params, descriptor, nebulaTarget.texture, starTarget.texture, finalTarget);
       nebulaTarget.dispose();
       starTarget.dispose();
@@ -1368,20 +1737,23 @@ export class StarfieldGpuBakeService {
     descriptor: StarfieldPatchDescriptor,
     target: THREE.RenderTarget,
     outputHeight: number,
-    supersample: number
+    supersample: number,
+    viewport: StarGlintViewport | null
   ) {
     const geometry = createStarGeometry(params, descriptor, outputHeight);
     const safeSupersample = Math.max(1, Math.floor(supersample));
     const internalWidth = descriptor.storageSize.width * safeSupersample;
     const internalHeight = descriptor.storageSize.height * safeSupersample;
     const sourcePerTarget = internalWidth / descriptor.storageSize.width;
+    // With a viewport, stars are sized to a fixed logical-pixel size (displayPixelAngle =
+    // vFov/renderHeight); without one, fall back to the legacy fixed-angular size where only the
+    // AA/sub-pixel thresholds track the output resolution.
+    const { displayPixelAngle, screenPixelScale } = starGlintScalesFor(viewport, outputHeight);
     const material = createStarMaterial(params, descriptor, {
       bakeHeight: internalHeight,
       bakeWidth: internalWidth,
-      // Fixed angular size (resolution-independent); only the AA/sub-pixel thresholds track the
-      // actual output resolution so small stars stay anti-aliased at low res and crisp at high res.
-      displayPixelAngle: Math.PI / REFERENCE_BAKE_HEIGHT,
-      screenPixelScale: outputHeight / REFERENCE_BAKE_HEIGHT,
+      displayPixelAngle,
+      screenPixelScale,
     });
     const mesh = new THREE.Mesh(geometry, material);
     const renderTarget = createRenderTarget(

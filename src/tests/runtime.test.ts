@@ -27,6 +27,7 @@ import {
   createStarCatalogForCoverage,
   createStarCatalogForDescriptor,
   createStarfieldBakeCacheKey,
+  createStarfieldGlints,
   createStarfieldPatchLayout,
   DEFAULT_STARFIELD_CLIP,
   DEFAULT_STARFIELD_PARAMS,
@@ -37,6 +38,7 @@ import {
   sourceUvFromDirection,
   starfieldFieldGradientToSourceField,
   starfieldClipContainsDirection,
+  starfieldGlintGeometryKey,
   sampleStarfieldLayer,
   sourceFoldEquirectUv,
   STARFIELD_PREVIEW_BAKE_WIDTH,
@@ -45,6 +47,7 @@ import {
 import {
   createStarfieldFinalPatchGeometryRanges,
   starfieldDisplayPixelAngleForHeight,
+  starGlintScalesFor,
 } from "../baking/starfield-gpu-bake";
 
 describe("runtime evaluator", () => {
@@ -734,6 +737,116 @@ describe("runtime evaluator", () => {
     expect(Math.abs(mediumBakeTexelAngle - highBakeTexelAngle)).toBeGreaterThan(0.00001);
     expect(high.storageHeight).toBeGreaterThan(medium.storageHeight);
     expect(high.storageWidth).toBeGreaterThan(medium.storageWidth);
+  });
+
+  it("sizes stars by viewport pixel angle when a glint viewport is given", () => {
+    const outputHeight = STARFIELD_PREVIEW_BAKE_WIDTH / 2;
+    const viewport = { renderHeight: 1080, verticalFovRadians: Math.PI / 3 };
+    const withViewport = starGlintScalesFor(viewport, outputHeight);
+
+    // displayPixelAngle is the exact center pixel-angle of a perspective projection,
+    // 2·tan(vFov/2)/renderHeight (not the small-angle vFov/renderHeight). On-screen center radius
+    // then equals uStarSize·scale, so the AA-threshold scale (screenPixelScale) is exactly 1.
+    expect(withViewport.displayPixelAngle).toBeCloseTo(
+      (2 * Math.tan(viewport.verticalFovRadians / 2)) / viewport.renderHeight
+    );
+    expect(withViewport.screenPixelScale).toBe(1);
+  });
+
+  it("falls back to the fixed-angular star size when no viewport is given", () => {
+    const outputHeight = STARFIELD_PREVIEW_BAKE_WIDTH / 2;
+    const fallback = starGlintScalesFor(null, outputHeight);
+
+    expect(fallback.displayPixelAngle).toBeCloseTo(Math.PI / (STARFIELD_PREVIEW_BAKE_WIDTH / 2));
+    expect(fallback.screenPixelScale).toBeCloseTo(outputHeight / (STARFIELD_PREVIEW_BAKE_WIDTH / 2));
+  });
+
+  it("changes the starfield bake cache key when the glint viewport changes", () => {
+    const service = new StarfieldGpuBakeService(createFakeWebGpuBakeRenderer(4096) as never);
+
+    try {
+      const noViewport = service.createBakeKey(DEFAULT_STARFIELD_PARAMS);
+      const fov50 = service.createBakeKey(DEFAULT_STARFIELD_PARAMS, undefined, {
+        renderHeight: 1080,
+        verticalFovRadians: (50 * Math.PI) / 180,
+      });
+      const fov90 = service.createBakeKey(DEFAULT_STARFIELD_PARAMS, undefined, {
+        renderHeight: 1080,
+        verticalFovRadians: (90 * Math.PI) / 180,
+      });
+      const fov50TallerViewer = service.createBakeKey(DEFAULT_STARFIELD_PARAMS, undefined, {
+        renderHeight: 1440,
+        verticalFovRadians: (50 * Math.PI) / 180,
+      });
+
+      expect(fov50).not.toBe(noViewport);
+      expect(fov50).not.toBe(fov90);
+      expect(fov50).not.toBe(fov50TallerViewer);
+    } finally {
+      service.dispose();
+    }
+  });
+
+  it("builds screen-space glint geometry from the clip-filtered full-sphere catalog", () => {
+    const params = DEFAULT_STARFIELD_PARAMS;
+    const coverage = normalizeStarfieldCoverage(params.clip);
+    const catalog = createStarCatalogForCoverage(
+      params.stars,
+      coverage,
+      STARFIELD_PREVIEW_BAKE_WIDTH / 2,
+      { includeSeamCopies: false }
+    );
+    const expectedCount = catalog.filter((star) =>
+      starfieldClipContainsDirection([star.x, star.y, star.z], params.clip)
+    ).length;
+    const glints = createStarfieldGlints(params);
+
+    try {
+      const mesh = glints.object as THREE.Mesh;
+      const geometry = mesh.geometry as THREE.InstancedBufferGeometry;
+
+      // One instanced quad per (clip-passing) star — no equirect seam duplicates in screen space.
+      expect(expectedCount).toBeGreaterThan(0);
+      expect(geometry.instanceCount).toBe(expectedCount);
+      expect(geometry.getAttribute("iDirection").count).toBe(expectedCount);
+      // Glints draw over the composited sky.
+      expect(mesh.renderOrder).toBeGreaterThan(0);
+      // Live updates must not throw (viewport + appearance uniforms apply in place).
+      expect(() =>
+        glints.setViewport({ renderHeight: 1080, verticalFovRadians: Math.PI / 3 })
+      ).not.toThrow();
+      expect(() =>
+        glints.setParams({ ...params, stars: { ...params.stars, uStarSize: 4, uBright: 5 } })
+      ).not.toThrow();
+    } finally {
+      glints.dispose();
+    }
+  });
+
+  it("keys glint geometry on the distribution only (appearance is a uniform update)", () => {
+    const baseKey = starfieldGlintGeometryKey(DEFAULT_STARFIELD_PARAMS);
+
+    // Size/brightness/glare/color are uniforms — the same stars exist, so no geometry rebuild.
+    expect(
+      starfieldGlintGeometryKey({
+        ...DEFAULT_STARFIELD_PARAMS,
+        stars: { ...DEFAULT_STARFIELD_PARAMS.stars, uStarSize: 4, uBright: 5, uGlareSize: 3, uColorVar: 1 },
+      })
+    ).toBe(baseKey);
+
+    // Seed / density / large-star rarity change which stars exist → geometry must rebuild.
+    expect(
+      starfieldGlintGeometryKey({
+        ...DEFAULT_STARFIELD_PARAMS,
+        stars: { ...DEFAULT_STARFIELD_PARAMS.stars, uSeed: DEFAULT_STARFIELD_PARAMS.stars.uSeed + 1 },
+      })
+    ).not.toBe(baseKey);
+    expect(
+      starfieldGlintGeometryKey({
+        ...DEFAULT_STARFIELD_PARAMS,
+        stars: { ...DEFAULT_STARFIELD_PARAMS.stars, uDensity: DEFAULT_STARFIELD_PARAMS.stars.uDensity + 50 },
+      })
+    ).not.toBe(baseKey);
   });
 
   it("folds starfield equirect UVs across pole guard regions like the source shader", () => {

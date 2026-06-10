@@ -1,10 +1,20 @@
-import { B as e, C as t, E as n, P as r, S as i, T as a, Y as o, Z as s, _ as c, a as l, b as u, c as d, d as f, f as p, g as m, h, i as g, l as _, m as v, n as y, o as b, p as x, r as S, s as C, u as w, v as T, w as E, x as D, y as O } from "./starfield-bake-registry-DrgMw3WJ.js";
+import { B as e, C as t, E as n, P as r, S as i, T as a, Y as o, Z as s, _ as c, a as l, b as u, c as d, d as f, f as p, g as m, h, i as g, l as _, m as v, n as y, o as b, p as x, r as S, s as C, u as w, v as T, w as E, x as D, y as O } from "./starfield-bake-registry-C0-DJPT5.js";
 import * as k from "three";
 import { MeshBasicNodeMaterial as A } from "three/webgpu";
-import { Fn as j, If as M, Loop as N, PI as P, acos as ee, attribute as F, clamp as I, cos as te, dot as ne, exp as L, float as R, floor as z, int as re, max as B, min as ie, mix as V, mod as ae, mx_fractal_noise_float as oe, normalize as se, positionGeometry as ce, pow as H, select as U, sin as le, smoothstep as W, step as G, texture as ue, uniform as de, uniformArray as fe, uniformTexture as pe, uv as me, varyingProperty as he, vec2 as K, vec3 as q, vec4 as J } from "three/tsl";
+import { Fn as j, If as M, Loop as ee, PI as N, acos as te, attribute as P, cameraProjectionMatrix as ne, cameraViewMatrix as re, clamp as F, cos as ie, dot as ae, exp as I, float as L, floor as oe, int as se, length as ce, max as R, min as le, mix as z, mod as ue, modelWorldMatrix as de, mx_fractal_noise_float as fe, normalize as pe, positionGeometry as me, pow as B, screenSize as he, screenUV as ge, select as V, sin as _e, smoothstep as H, step as U, texture as ve, uniform as ye, uniformArray as be, uniformTexture as xe, uv as Se, varyingProperty as W, vec2 as G, vec3 as K, vec4 as q } from "three/tsl";
 //#region src/baking/starfield-gpu-bake.ts
 Math.PI * 2;
-var ge = 8, _e = _ / 2, ve = 1.75, ye = 3.25, be = 1, xe = 1.5, Se = 8, Ce = .1, we = 5, Te = 12, Ee = .35, De = .25, Oe = new Float32Array([
+var Ce = 8, J = _ / 2, we = 1.75, Te = 3.25, Y = 1, Ee = 1.5, De = 8, Oe = .1, ke = 5, Ae = 12, je = .35, Me = .25;
+function Ne(e, t) {
+	return e && e.renderHeight > 0 && e.verticalFovRadians > 0 ? {
+		displayPixelAngle: 2 * Math.tan(e.verticalFovRadians / 2) / e.renderHeight,
+		screenPixelScale: 1
+	} : {
+		displayPixelAngle: Math.PI / J,
+		screenPixelScale: t / J
+	};
+}
+var Pe = new Float32Array([
 	-1,
 	-1,
 	0,
@@ -24,88 +34,88 @@ var ge = 8, _e = _ / 2, ve = 1.75, ye = 3.25, be = 1, xe = 1.5, Se = 8, Ce = .1,
 	1,
 	0
 ]);
-function ke(e) {
+function Fe(e) {
 	let t = e;
 	return !!(t && typeof t.render == "function" && typeof t.setRenderTarget == "function" && typeof t.getRenderTarget == "function");
 }
-function Ae(e) {
+function Ie(e) {
 	let t = e.backend, n = t?.device, r = t?.gl;
 	return typeof n?.limits?.maxTextureDimension2D == "number" ? n.limits.maxTextureDimension2D : r ? Number(r.getParameter(r.MAX_TEXTURE_SIZE)) : _;
 }
-function Y(e, t) {
+function X(e, t) {
 	let n = e[t];
 	if (n?.isUniformNode) return n;
-	let r = de(Number(n?.value ?? 0));
+	let r = ye(Number(n?.value ?? 0));
 	return e[t] = r, r;
 }
-function X(e, t) {
+function Z(e, t) {
 	let n = e[t], r = n?.value instanceof k.Vector2 ? n.value.clone() : new k.Vector2();
 	if (n?.isUniformNode) return n;
-	let i = de(r);
+	let i = ye(r);
 	return e[t] = i, i;
 }
-function je(e, t) {
+function Le(e, t) {
 	let n = e[t], r = n?.value instanceof k.Vector3 ? n.value.clone() : new k.Vector3();
 	if (n?.isUniformNode) return n;
-	let i = de(r);
+	let i = ye(r);
 	return e[t] = i, i;
 }
-function Me(e) {
-	let t = e.x.sub(.5).mul(P).mul(2), n = e.y.mul(P), r = le(n);
-	return se(q(r.mul(le(t)), te(n), r.mul(te(t))));
-}
-function Ne(e) {
-	let t = ae(e.y, 2), n = G(1, t);
-	return K(e.x.add(n.mul(.5)), V(t, R(2).sub(t), n));
-}
-function Pe(e) {
-	return Me(Ne(e));
-}
-function Fe(e, t) {
-	return P.mul(B(t.y, 1e-6)).div(B(e.y, 1));
-}
-function Ie(e, t) {
-	return B(B(e.negate(), e.sub(t)), 0);
-}
-function Le(e, t, n) {
-	let r = e.sub(t), i = r.add(1), a = r.sub(1), o = Ie(r, n), s = Ie(i, n), c = Ie(a, n);
-	return U(s.lessThan(o).and(s.lessThanEqual(c)), i, U(c.lessThan(o).and(c.lessThan(s)), a, r));
-}
-function Re(e, t, n) {
-	return K(Le(e.x, t.x, n.x).div(n.x), e.y.sub(t.y).div(n.y));
+function Re(e) {
+	let t = e.x.sub(.5).mul(N).mul(2), n = e.y.mul(N), r = _e(n);
+	return pe(K(r.mul(_e(t)), ie(n), r.mul(ie(t))));
 }
 function ze(e) {
-	return G(0, e.x).mul(G(e.x, 1)).mul(G(0, e.y)).mul(G(e.y, 1));
+	let t = ue(e.y, 2), n = U(1, t);
+	return G(e.x.add(n.mul(.5)), z(t, L(2).sub(t), n));
 }
 function Be(e) {
-	let t = q(1, .55, .3), n = q(1, .96, .92), r = q(.7, .8, 1);
-	return U(e.lessThan(.5), V(t, n, e.mul(2)), V(n, r, e.sub(.5).mul(2)));
+	return Re(ze(e));
 }
-function Ve(e, t, n) {
-	let r = H(I(e, 0, 1), we), i = V(1, H(I(t, 0, 1), Te), n);
+function Ve(e, t) {
+	return N.mul(R(t.y, 1e-6)).div(R(e.y, 1));
+}
+function He(e, t) {
+	return R(R(e.negate(), e.sub(t)), 0);
+}
+function Ue(e, t, n) {
+	let r = e.sub(t), i = r.add(1), a = r.sub(1), o = He(r, n), s = He(i, n), c = He(a, n);
+	return V(s.lessThan(o).and(s.lessThanEqual(c)), i, V(c.lessThan(o).and(c.lessThan(s)), a, r));
+}
+function We(e, t, n) {
+	return G(Ue(e.x, t.x, n.x).div(n.x), e.y.sub(t.y).div(n.y));
+}
+function Ge(e) {
+	return U(0, e.x).mul(U(e.x, 1)).mul(U(0, e.y)).mul(U(e.y, 1));
+}
+function Ke(e) {
+	let t = K(1, .55, .3), n = K(1, .96, .92), r = K(.7, .8, 1);
+	return V(e.lessThan(.5), z(t, n, e.mul(2)), z(n, r, e.sub(.5).mul(2)));
+}
+function qe(e, t, n) {
+	let r = B(F(e, 0, 1), ke), i = z(1, B(F(t, 0, 1), Ae), n);
 	return r.mul(i);
 }
-function He(e, t, n, r) {
-	return V(1, V(Ce, 1, Ve(e, t, n)), r);
+function Je(e, t, n, r) {
+	return z(1, z(Oe, 1, qe(e, t, n)), r);
 }
-function Z(e, t, n, r) {
-	let i = I(t, 1, 8), a = B(n, .001), o = I(r, .001, .999), s = q(e).toVar(), c = R(.5).toVar(), l = R(0).toVar(), u = R(0).toVar();
-	return N(8, ({ i: e }) => {
-		M(R(e).lessThan(i), () => {
-			let e = oe(s, re(1), a, o).mul(.5).add(.5);
+function Q(e, t, n, r) {
+	let i = F(t, 1, 8), a = R(n, .001), o = F(r, .001, .999), s = K(e).toVar(), c = L(.5).toVar(), l = L(0).toVar(), u = L(0).toVar();
+	return ee(8, ({ i: e }) => {
+		M(L(e).lessThan(i), () => {
+			let e = fe(s, se(1), a, o).mul(.5).add(.5);
 			l.addAssign(c.mul(e)), u.addAssign(c), s.mulAssign(a), c.mulAssign(o);
 		});
-	}), l.div(B(u, 1e-4));
+	}), l.div(R(u, 1e-4));
 }
-function Ue(e, t) {
-	let r = n(e.nebulaField), i = Array.from({ length: ge }, (e, t) => {
+function Ye(e, t) {
+	let r = n(e.nebulaField), i = Array.from({ length: Ce }, (e, t) => {
 		let n = r.anchors[t];
 		return new k.Vector3(...n?.dir ?? [
 			0,
 			1,
 			0
 		]);
-	}), a = Array.from({ length: ge }, (e, t) => {
+	}), a = Array.from({ length: Ce }, (e, t) => {
 		let n = r.anchors[t];
 		return new k.Vector3(...n?.color ?? [
 			0,
@@ -113,7 +123,7 @@ function Ue(e, t) {
 			0
 		]);
 	}), o = e.nebula, s = {
-		uAnchorCount: { value: Math.min(r.anchors.length, ge) },
+		uAnchorCount: { value: Math.min(r.anchors.length, Ce) },
 		uBaseScale: { value: o.uBaseScale },
 		uBlend: { value: +(r.blend === "gaussian") },
 		uCloudCore: { value: new k.Vector3(...o.uCloudCore) },
@@ -137,33 +147,33 @@ function Ue(e, t) {
 		uSoftness: { value: o.uSoftness },
 		uTileUvMin: { value: new k.Vector2(t.storageUvMin.x, t.storageUvMin.y) },
 		uTileUvSize: { value: new k.Vector2(t.storageUvSize.x, t.storageUvSize.y) }
-	}, c = X(s, "uTileUvMin"), l = X(s, "uTileUvSize"), u = Y(s, "uAnchorCount"), d = Y(s, "uBlend"), f = Y(s, "uPower"), p = Y(s, "uSigma"), m = Y(s, "uColorWarpAmp"), h = Y(s, "uColorWarpFreq"), g = Y(s, "uSeed"), _ = Y(s, "uCoverage"), v = Y(s, "uDensity"), y = Y(s, "uSoftness"), b = Y(s, "uContrast"), x = Y(s, "uBaseScale"), S = Y(s, "uOctaves"), C = Y(s, "uOpacity"), w = Y(s, "uLightFocus"), T = Y(s, "uLightLining"), E = Y(s, "uLightIntensity");
-	Y(s, "uNebulaExposure");
-	let D = Y(s, "uNebulaStrength"), O = je(s, "uCloudShadow"), P = je(s, "uCloudHighlight"), ee = je(s, "uCloudCore"), F = fe(i, "vec3"), te = fe(a, "vec3"), z = new A({
+	}, c = Z(s, "uTileUvMin"), l = Z(s, "uTileUvSize"), u = X(s, "uAnchorCount"), d = X(s, "uBlend"), f = X(s, "uPower"), p = X(s, "uSigma"), m = X(s, "uColorWarpAmp"), h = X(s, "uColorWarpFreq"), g = X(s, "uSeed"), _ = X(s, "uCoverage"), v = X(s, "uDensity"), y = X(s, "uSoftness"), b = X(s, "uContrast"), x = X(s, "uBaseScale"), S = X(s, "uOctaves"), C = X(s, "uOpacity"), w = X(s, "uLightFocus"), T = X(s, "uLightLining"), E = X(s, "uLightIntensity");
+	X(s, "uNebulaExposure");
+	let D = X(s, "uNebulaStrength"), O = Le(s, "uCloudShadow"), N = Le(s, "uCloudHighlight"), te = Le(s, "uCloudCore"), P = be(i, "vec3"), ne = be(a, "vec3"), re = new A({
 		depthTest: !1,
 		depthWrite: !1
 	});
-	return z.uniforms = s, z.colorNode = j(() => {
-		let e = ce.xy.mul(.5).add(.5), t = Pe(c.add(e.mul(l))), n = I(S, 1, 8), r = t.mul(B(h, .001)).add(q(g, g.mul(.37), g.mul(-.21))), i = q(Z(r, n, 2.02, .52), Z(r.add(q(5.2, 1.3, 7.1)), n, 2.03, .5), Z(r.add(q(9.1, 8.4, 2.8)), n, 2.01, .51)).mul(2).sub(1), a = se(t.add(i.mul(B(m, 0)))), o = q(0).toVar(), s = R(0).toVar();
-		N(ge, ({ i: e }) => {
-			M(R(e).lessThan(u), () => {
-				let t = se(F.element(e)), n = te.element(e), r = R(1).sub(ne(a, t)), i = R(1).div(H(r.add(1e-4), B(f, 1e-4))), c = L(r.mul(r).negate().div(B(1e-4, R(2).mul(p).mul(p)))), l = U(d.lessThan(.5), i, c);
+	return re.uniforms = s, re.colorNode = j(() => {
+		let e = me.xy.mul(.5).add(.5), t = Be(c.add(e.mul(l))), n = F(S, 1, 8), r = t.mul(R(h, .001)).add(K(g, g.mul(.37), g.mul(-.21))), i = K(Q(r, n, 2.02, .52), Q(r.add(K(5.2, 1.3, 7.1)), n, 2.03, .5), Q(r.add(K(9.1, 8.4, 2.8)), n, 2.01, .51)).mul(2).sub(1), a = pe(t.add(i.mul(R(m, 0)))), o = K(0).toVar(), s = L(0).toVar();
+		ee(Ce, ({ i: e }) => {
+			M(L(e).lessThan(u), () => {
+				let t = pe(P.element(e)), n = ne.element(e), r = L(1).sub(ae(a, t)), i = L(1).div(B(r.add(1e-4), R(f, 1e-4))), c = I(r.mul(r).negate().div(R(1e-4, L(2).mul(p).mul(p)))), l = V(d.lessThan(.5), i, c);
 				o.addAssign(n.mul(l)), s.addAssign(l);
 			});
-		}), o.assign(o.div(B(s, 1e-4)));
-		let k = q(g.mul(13.17), g.mul(-7.31), g.mul(5.19)), A = t.mul(B(x, .001)).add(k), j = q(Z(A, n, 2.02, .5), Z(A.add(q(5.2, 1.3, 2.8)), n, 2.02, .5), Z(A.add(q(2.1, 4.7, 9.2)), n, 2.02, .5)), z = I(Z(A.add(j.mul(3)), n, 2.02, .5), 0, 1), re = H(I(W(_, _.add(B(y, .001)), z), 0, 1), B(b, .05)), ie = H(I(B(B(o.r, o.g), o.b).mul(B(E, 0)), 0, 1), B(w, .001)), ae = H(B(V(V(O, o.mul(P).mul(B(E, 0)), ie), ee, I(re.mul(.4), 0, 1)).add(o.mul(ie).mul(re.oneMinus()).mul(B(T, 0)).mul(B(E, 0))).mul(B(v, 0)), q(0)), q(.92)), oe = I(re.mul(C), 0, 1);
-		return J(B(q(.004, .005, .011).add(ae.mul(oe).mul(B(D, 0))), q(0)), 1);
-	})(), z;
+		}), o.assign(o.div(R(s, 1e-4)));
+		let k = K(g.mul(13.17), g.mul(-7.31), g.mul(5.19)), A = t.mul(R(x, .001)).add(k), j = K(Q(A, n, 2.02, .5), Q(A.add(K(5.2, 1.3, 2.8)), n, 2.02, .5), Q(A.add(K(2.1, 4.7, 9.2)), n, 2.02, .5)), re = F(Q(A.add(j.mul(3)), n, 2.02, .5), 0, 1), ie = B(F(H(_, _.add(R(y, .001)), re), 0, 1), R(b, .05)), oe = B(F(R(R(o.r, o.g), o.b).mul(R(E, 0)), 0, 1), R(w, .001)), se = B(R(z(z(O, o.mul(N).mul(R(E, 0)), oe), te, F(ie.mul(.4), 0, 1)).add(o.mul(oe).mul(ie.oneMinus()).mul(R(T, 0)).mul(R(E, 0))).mul(R(v, 0)), K(0)), K(.92)), ce = F(ie.mul(C), 0, 1);
+		return q(R(K(.004, .005, .011).add(se.mul(ce).mul(R(D, 0))), K(0)), 1);
+	})(), re;
 }
-function We(e, t, n) {
+function Xe(e, t, n) {
 	let r = x(e.stars, t, n, { includeSeamCopies: !0 }), i = [], a = [], o = [], s = [], c = [];
 	r.forEach((e) => {
 		i.push(e.x, e.y, e.z), a.push(e.u, e.v), o.push(e.rSize, e.rBright, e.rGlare, e.rColor), s.push(e.rSizeGate), c.push(e.classId);
 	});
 	let l = new k.InstancedBufferGeometry();
-	return l.setAttribute("position", new k.BufferAttribute(Oe, 3)), l.setAttribute("iDirection", new k.InstancedBufferAttribute(new Float32Array(i), 3)), l.setAttribute("iUv", new k.InstancedBufferAttribute(new Float32Array(a), 2)), l.setAttribute("iRandoms", new k.InstancedBufferAttribute(new Float32Array(o), 4)), l.setAttribute("iSizeGate", new k.InstancedBufferAttribute(new Float32Array(s), 1)), l.setAttribute("iClass", new k.InstancedBufferAttribute(new Float32Array(c), 1)), l.instanceCount = c.length, l;
+	return l.setAttribute("position", new k.BufferAttribute(Pe, 3)), l.setAttribute("iDirection", new k.InstancedBufferAttribute(new Float32Array(i), 3)), l.setAttribute("iUv", new k.InstancedBufferAttribute(new Float32Array(a), 2)), l.setAttribute("iRandoms", new k.InstancedBufferAttribute(new Float32Array(o), 4)), l.setAttribute("iSizeGate", new k.InstancedBufferAttribute(new Float32Array(s), 1)), l.setAttribute("iClass", new k.InstancedBufferAttribute(new Float32Array(c), 1)), l.instanceCount = c.length, l;
 }
-function Ge(e, t, n = {}) {
+function Ze(e, t, n = {}) {
 	let r = e.stars, i = n.bakeWidth ?? t.storageSize.width, a = n.bakeHeight ?? t.storageSize.height, o = {
 		uBakeSize: { value: new k.Vector2(i, a) },
 		uBright: { value: r.uBright },
@@ -174,34 +184,124 @@ function Ge(e, t, n = {}) {
 		uGlareVar: { value: r.uGlareVar },
 		uLargeStarRarity: { value: r.uLargeStarRarity },
 		uOutputSize: { value: new k.Vector2(t.storageSize.width, t.storageSize.height) },
-		uDisplayPixelAngle: { value: n.displayPixelAngle ?? Math.PI / _e },
+		uDisplayPixelAngle: { value: n.displayPixelAngle ?? Math.PI / J },
 		uScreenPixelScale: { value: n.screenPixelScale ?? 1 },
 		uSizeVar: { value: r.uSizeVar },
 		uStarSize: { value: r.uStarSize },
 		uTileUvMin: { value: new k.Vector2(t.storageUvMin.x, t.storageUvMin.y) },
 		uTileUvSize: { value: new k.Vector2(t.storageUvSize.x, t.storageUvSize.y) }
-	}, s = X(o, "uBakeSize"), c = X(o, "uTileUvMin"), l = X(o, "uTileUvSize"), u = Y(o, "uDisplayPixelAngle"), d = Y(o, "uScreenPixelScale"), f = Y(o, "uStarSize"), p = Y(o, "uSizeVar"), m = Y(o, "uLargeStarRarity"), h = Y(o, "uBright"), g = Y(o, "uBrightVar"), _ = Y(o, "uGlareSize"), v = Y(o, "uGlareStr"), y = Y(o, "uGlareVar"), b = Y(o, "uColorVar"), x = he("vec2", "vStarBakeUv"), S = he("vec3", "vStarBakeDirection"), C = he("vec4", "vStarBakeRandoms"), w = he("float", "vStarBakeSizeGate"), T = new A({
+	}, s = Z(o, "uBakeSize"), c = Z(o, "uTileUvMin"), l = Z(o, "uTileUvSize"), u = X(o, "uDisplayPixelAngle"), d = X(o, "uScreenPixelScale"), f = X(o, "uStarSize"), p = X(o, "uSizeVar"), m = X(o, "uLargeStarRarity"), h = X(o, "uBright"), g = X(o, "uBrightVar"), _ = X(o, "uGlareSize"), v = X(o, "uGlareStr"), y = X(o, "uGlareVar"), b = X(o, "uColorVar"), x = W("vec2", "vStarBakeUv"), S = W("vec3", "vStarBakeDirection"), C = W("vec4", "vStarBakeRandoms"), w = W("float", "vStarBakeSizeGate"), T = new A({
 		blending: k.AdditiveBlending,
 		depthTest: !1,
 		depthWrite: !1,
 		transparent: !0
 	});
 	return T.uniforms = o, T.vertexNode = j(() => {
-		let e = F("iDirection", "vec3"), t = F("iUv", "vec2"), n = F("iRandoms", "vec4"), r = F("iSizeGate", "float"), i = Fe(s, l), a = He(n.x, r, m, p), o = f.mul(a).mul(u), h = W(be, xe, f.mul(a).mul(d)).oneMinus(), g = B(B(o, V(R(ve).mul(u), u.mul(.5), h)).mul(.45), u.mul(.5)), y = _.mul(V(1, a, p)).mul(u), b = B(B(g, B(B(o.add(y), R(ye).mul(u)).mul(.36), u.mul(.5)).mul(G(1e-6, _)).mul(G(1e-6, v))), i).mul(Se), T = B(le(t.y.mul(P)), .015), E = K(ie(1.5, b.div(P.mul(2).mul(T))), b.div(P)), D = t.add(ce.xy.mul(E)), O = D.sub(c).div(l);
-		return x.assign(D), S.assign(e), C.assign(n), w.assign(r), J(O.mul(2).sub(1), 0, 1);
+		let e = P("iDirection", "vec3"), t = P("iUv", "vec2"), n = P("iRandoms", "vec4"), r = P("iSizeGate", "float"), i = Ve(s, l), a = Je(n.x, r, m, p), o = f.mul(a).mul(u), h = H(Y, Ee, f.mul(a).mul(d)).oneMinus(), g = R(R(o, z(L(we).mul(u), u.mul(.5), h)).mul(.45), u.mul(.5)), y = _.mul(z(1, a, p)).mul(u), b = R(R(g, R(R(o.add(y), L(Te).mul(u)).mul(.36), u.mul(.5)).mul(U(1e-6, _)).mul(U(1e-6, v))), i).mul(De), T = R(_e(t.y.mul(N)), .015), E = G(le(1.5, b.div(N.mul(2).mul(T))), b.div(N)), D = t.add(me.xy.mul(E)), O = D.sub(c).div(l);
+		return x.assign(D), S.assign(e), C.assign(n), w.assign(r), q(O.mul(2).sub(1), 0, 1);
 	})(), T.colorNode = j(() => {
-		let e = ee(I(ne(Pe(x), se(S)), -1, 1)), t = Ve(C.x, w, m), n = He(C.x, w, m, p), r = f.mul(n).mul(u), i = f.mul(n).mul(d), a = W(be * .75, be, i).oneMinus(), o = W(xe, 1.75, i), s = B(r, u.mul(.1)), c = V(1, B(.08, W(0, be, i)), a), l = B(s.mul(.45), u.mul(.5)), T = L(e.mul(e).negate().div(B(l.mul(l).mul(2), 1e-10))).mul(c), E = _.mul(V(1, n, p)).mul(u), D = B(B(r.add(E), u.mul(.1)).mul(.36), u.mul(.5)), O = L(e.mul(e).negate().div(B(D.mul(D).mul(2), 1e-10))).mul(o).mul(G(1e-6, _)).mul(G(1e-6, v)), k = V(C.y, B(C.y, t), p.mul(Ee)), A = V(C.z, B(C.z, t), p.mul(De)), j = v.mul(V(1, H(A, 8), y)), M = h.mul(V(1, H(k, 3).mul(3), g));
-		return J(Be(V(.5, C.w, b)).mul(T.add(O.mul(j))).mul(M), 1);
+		let e = te(F(ae(Be(x), pe(S)), -1, 1)), t = qe(C.x, w, m), n = Je(C.x, w, m, p), r = f.mul(n).mul(u), i = f.mul(n).mul(d), a = H(Y * .75, Y, i).oneMinus(), o = H(Ee, 1.75, i), s = R(r, u.mul(.1)), c = z(1, R(.08, H(0, Y, i)), a), l = R(s.mul(.45), u.mul(.5)), T = I(e.mul(e).negate().div(R(l.mul(l).mul(2), 1e-10))).mul(c), E = _.mul(z(1, n, p)).mul(u), D = R(R(r.add(E), u.mul(.1)).mul(.36), u.mul(.5)), O = I(e.mul(e).negate().div(R(D.mul(D).mul(2), 1e-10))).mul(o).mul(U(1e-6, _)).mul(U(1e-6, v)), k = z(C.y, R(C.y, t), p.mul(je)), A = z(C.z, R(C.z, t), p.mul(Me)), j = v.mul(z(1, B(A, 8), y)), M = h.mul(z(1, B(k, 3).mul(3), g));
+		return q(Ke(z(.5, C.w, b)).mul(T.add(O.mul(j))).mul(M), 1);
 	})(), T;
 }
-function Ke(e, t, n, r, i, a) {
+function Qe(e) {
+	let t = e.stars;
+	return JSON.stringify({
+		density: t.uDensity,
+		largeStarRarity: t.uLargeStarRarity,
+		seed: t.uSeed,
+		clip: e.clip
+	});
+}
+function $e(e) {
+	let t = c(e.clip), n = p(e.stars, t, J, { includeSeamCopies: !1 }), r = [], i = [], o = [];
+	n.forEach((t) => {
+		a([
+			t.x,
+			t.y,
+			t.z
+		], e.clip) && (r.push(t.x, t.y, t.z), i.push(t.rSize, t.rBright, t.rGlare, t.rColor), o.push(t.rSizeGate));
+	});
+	let s = new k.InstancedBufferGeometry();
+	return s.setAttribute("position", new k.BufferAttribute(Pe, 3)), s.setAttribute("iDirection", new k.InstancedBufferAttribute(new Float32Array(r), 3)), s.setAttribute("iRandoms", new k.InstancedBufferAttribute(new Float32Array(i), 4)), s.setAttribute("iSizeGate", new k.InstancedBufferAttribute(new Float32Array(o), 1)), s.instanceCount = o.length, s.boundingSphere = new k.Sphere(new k.Vector3(0, 0, 0), Infinity), s;
+}
+function et(e) {
+	let t = e.stars;
+	return {
+		uBright: t.uBright,
+		uBrightVar: t.uBrightVar,
+		uColorVar: t.uColorVar,
+		uGlareSize: t.uGlareSize,
+		uGlareStr: t.uGlareStr,
+		uGlareVar: t.uGlareVar,
+		uLargeStarRarity: t.uLargeStarRarity,
+		uSizeVar: t.uSizeVar,
+		uStarSize: t.uStarSize
+	};
+}
+function tt(e) {
+	let t = et(e), n = {
+		uBright: { value: t.uBright },
+		uBrightVar: { value: t.uBrightVar },
+		uColorVar: { value: t.uColorVar },
+		uGlareSize: { value: t.uGlareSize },
+		uGlareStr: { value: t.uGlareStr },
+		uGlareVar: { value: t.uGlareVar },
+		uCoverageEnabled: { value: 0 },
+		uCoverageTexture: { value: dt() },
+		uLargeStarRarity: { value: t.uLargeStarRarity },
+		uRenderHeight: { value: J },
+		uSizeVar: { value: t.uSizeVar },
+		uStarSize: { value: t.uStarSize }
+	}, r = X(n, "uCoverageEnabled"), i = xe(dt());
+	n.uCoverageTexture = i;
+	let a = X(n, "uStarSize"), o = X(n, "uSizeVar"), s = X(n, "uLargeStarRarity"), c = X(n, "uBright"), l = X(n, "uBrightVar"), u = X(n, "uGlareSize"), d = X(n, "uGlareStr"), f = X(n, "uGlareVar"), p = X(n, "uColorVar"), m = X(n, "uRenderHeight"), h = W("vec2", "vStarGlintLocalPx"), g = W("vec4", "vStarGlintRandoms"), _ = W("float", "vStarGlintSizeGate"), v = new A({
+		blending: k.AdditiveBlending,
+		depthTest: !1,
+		depthWrite: !1,
+		toneMapped: !1,
+		transparent: !0
+	});
+	return v.uniforms = n, v.vertexNode = j(() => {
+		let e = P("iDirection", "vec3"), t = P("iRandoms", "vec4"), n = P("iSizeGate", "float"), r = Je(t.x, n, s, o), i = a.mul(r), c = H(Y, Ee, i).oneMinus(), l = R(R(i, z(L(we), L(.5), c)).mul(.45), L(.5)), f = u.mul(z(1, r, o)), p = R(R(l, R(R(i.add(f), L(Te)).mul(.36), L(.5)).mul(U(1e-6, u)).mul(U(1e-6, d))), L(.5)).mul(De), v = me.xy, y = he, b = de.mul(q(pe(e), 0)).xyz, x = re.mul(q(b, 0)).xyz, S = ne.mul(q(x, 1)), C = y.y.div(R(m, 1)), w = q(v.mul(p).mul(C).div(y.mul(.5)).mul(S.w), 0, 0);
+		return h.assign(v.mul(p)), g.assign(t), _.assign(n), V(S.w.greaterThan(0), S.add(w), q(2, 2, 2, 1));
+	})(), v.colorNode = j(() => {
+		let e = ce(h), t = qe(g.x, _, s), n = Je(g.x, _, s, o), m = a.mul(n), v = H(Y * .75, Y, m).oneMinus(), y = H(Ee, 1.75, m), b = R(m, L(.1)), x = z(1, R(.08, H(0, Y, m)), v), S = R(b.mul(.45), L(.5)), C = I(e.mul(e).negate().div(R(S.mul(S).mul(2), 1e-10))).mul(x), w = u.mul(z(1, n, o)), T = R(R(m.add(w), L(.1)).mul(.36), L(.5)), E = I(e.mul(e).negate().div(R(T.mul(T).mul(2), 1e-10))).mul(y).mul(U(1e-6, u)).mul(U(1e-6, d)), D = z(g.y, R(g.y, t), o.mul(je)), O = z(g.z, R(g.z, t), o.mul(Me)), k = d.mul(z(1, B(O, 8), f)), A = c.mul(z(1, B(D, 3).mul(3), l)), j = Ke(z(.5, g.w, p)).mul(C.add(E.mul(k))).mul(A), M = ve(i, ge).r;
+		return q(j.mul(z(1, M, r)), 1);
+	})(), {
+		material: v,
+		uniforms: n
+	};
+}
+function nt(e) {
+	let t = T(e), n = $e(t), { material: r, uniforms: i } = tt(t), a = new k.Mesh(n, r);
+	return a.name = "Starfield glints", a.frustumCulled = !1, a.renderOrder = 1, {
+		object: a,
+		setViewport: (e) => {
+			i.uRenderHeight.value = e && e.renderHeight > 0 ? e.renderHeight : J;
+		},
+		setParams: (e) => {
+			let t = et(T(e));
+			Object.entries(t).forEach(([e, t]) => {
+				i[e].value = t;
+			});
+		},
+		setCoverageTexture: (e) => {
+			i.uCoverageTexture.value = e ?? dt(), i.uCoverageEnabled.value = +!!e;
+		},
+		dispose: () => {
+			n.dispose(), r.dispose();
+		}
+	};
+}
+function rt(e, t, n, r, i, a) {
 	let o = {
 		uExposure: { value: 1 },
 		uSourcePerTarget: { value: a },
 		uSourceSize: { value: new k.Vector2(t, n) },
 		uSourceTexture: { value: e },
 		uTargetSize: { value: new k.Vector2(r, i) }
-	}, s = pe(e), c = X(o, "uSourceSize"), l = X(o, "uTargetSize"), u = Y(o, "uSourcePerTarget"), d = Y(o, "uExposure"), f = new A({
+	}, s = xe(e), c = Z(o, "uSourceSize"), l = Z(o, "uTargetSize"), u = X(o, "uSourcePerTarget"), d = X(o, "uExposure"), f = new A({
 		depthTest: !1,
 		depthWrite: !1
 	});
@@ -209,20 +309,20 @@ function Ke(e, t, n, r, i, a) {
 		...o,
 		uSourceTexture: s
 	}, f.colorNode = j(() => {
-		let e = z(me().mul(l)), t = z(u.add(.5)), n = J(0).toVar(), r = R(0).toVar();
-		N(8, ({ i }) => {
-			N(8, ({ i: a }) => {
-				M(R(a).lessThan(t).and(R(i).lessThan(t)), () => {
-					let t = e.mul(u).add(K(R(a), R(i))).add(.5);
-					n.addAssign(ue(s, t.div(c))), r.addAssign(1);
+		let e = oe(Se().mul(l)), t = oe(u.add(.5)), n = q(0).toVar(), r = L(0).toVar();
+		ee(8, ({ i }) => {
+			ee(8, ({ i: a }) => {
+				M(L(a).lessThan(t).and(L(i).lessThan(t)), () => {
+					let t = e.mul(u).add(G(L(a), L(i))).add(.5);
+					n.addAssign(ve(s, t.div(c))), r.addAssign(1);
 				});
 			});
 		});
-		let i = n.rgb.div(B(r, 1)), a = q(.004, .005, .011), o = q(1).sub(L(a.mul(d).negate())), f = B(q(1).sub(L(a.add(i).mul(d).negate())).sub(o), q(0));
-		return J(f, I(B(B(f.r, f.g), f.b), 0, 1));
+		let i = n.rgb.div(R(r, 1)), a = K(.004, .005, .011), o = K(1).sub(I(a.mul(d).negate())), f = R(K(1).sub(I(a.add(i).mul(d).negate())).sub(o), K(0));
+		return q(f, F(R(R(f.r, f.g), f.b), 0, 1));
 	})(), f;
 }
-function qe(e, t, n, r) {
+function it(e, t, n, r) {
 	let i = {
 		uContentUvMin: { value: new k.Vector2(n.uvMin.x, n.uvMin.y) },
 		uContentUvSize: { value: new k.Vector2(n.uvSize.x, n.uvSize.y) },
@@ -235,23 +335,23 @@ function qe(e, t, n, r) {
 		uStorageUvMin: { value: new k.Vector2(n.storageUvMin.x, n.storageUvMin.y) },
 		uStorageUvSize: { value: new k.Vector2(n.storageUvSize.x, n.storageUvSize.y) },
 		uStarTexture: { value: t }
-	}, a = pe(e), o = pe(t), s = X(i, "uContentUvMin"), c = X(i, "uContentUvSize"), l = X(i, "uStorageUvMin"), u = X(i, "uStorageUvSize"), d = Y(i, "uHasLeftNeighbor"), f = Y(i, "uHasRightNeighbor"), p = Y(i, "uHasTopNeighbor"), m = Y(i, "uHasBottomNeighbor"), h = Y(i, "uNebulaExposure"), g = new A({
+	}, a = xe(e), o = xe(t), s = Z(i, "uContentUvMin"), c = Z(i, "uContentUvSize"), l = Z(i, "uStorageUvMin"), u = Z(i, "uStorageUvSize"), d = X(i, "uHasLeftNeighbor"), f = X(i, "uHasRightNeighbor"), p = X(i, "uHasTopNeighbor"), m = X(i, "uHasBottomNeighbor"), h = X(i, "uNebulaExposure"), g = new A({
 		depthTest: !1,
 		depthWrite: !1,
 		transparent: !0
 	}), _ = +(n.uvSize.x >= .999), v = .28;
 	return g.blending = k.CustomBlending, g.blendEquation = k.AddEquation, g.blendSrc = k.OneFactor, g.blendDst = k.OneFactor, g.blendEquationAlpha = k.AddEquation, g.blendSrcAlpha = k.OneFactor, g.blendDstAlpha = k.OneMinusSrcAlphaFactor, i.uNebulaTexture = a, i.uStarTexture = o, g.uniforms = i, g.colorNode = j(() => {
-		let e = ce.xy.mul(.5).add(.5), t = K(e.x, R(1).sub(e.y)), n = B(R(1).sub(W(0, v, t.y)), R(1).sub(W(0, v, R(1).sub(t.y)))).mul(_), r = Re(t, l, u), i = I(r, 0, 1), g = ze(r), y = K(Le(t.x, s.x, c.x).div(c.x), t.y.sub(s.y).div(c.y)), b = B(u.sub(c).div(c.mul(2)), K(0)), x = B(b, K(1e-6)), S = U(d.greaterThan(.5), W(x.x.negate(), x.x, y.x), 1), C = U(f.greaterThan(.5), R(1).sub(W(R(1).sub(x.x), R(1).add(x.x), y.x)), 1), w = U(b.x.lessThanEqual(0), 1, S.mul(C)), T = U(p.greaterThan(.5), W(x.y.negate(), x.y, y.y), 1), E = U(m.greaterThan(.5), R(1).sub(W(R(1).sub(x.y), R(1).add(x.y), y.y)), 1), D = U(b.y.lessThanEqual(0), 1, T.mul(E)), O = I(w.mul(D).mul(g), 0, 1), k = ue(a, i).rgb, A = q(0).toVar(), j = R(0).toVar();
-		N(32, ({ i: e }) => {
-			let n = Re(K(R(e).add(.5).div(32), t.y), l, u), r = I(n, 0, 1), i = ze(n);
-			A.addAssign(ue(a, r).rgb.mul(i)), j.addAssign(i);
+		let e = me.xy.mul(.5).add(.5), t = G(e.x, L(1).sub(e.y)), n = R(L(1).sub(H(0, v, t.y)), L(1).sub(H(0, v, L(1).sub(t.y)))).mul(_), r = We(t, l, u), i = F(r, 0, 1), g = Ge(r), y = G(Ue(t.x, s.x, c.x).div(c.x), t.y.sub(s.y).div(c.y)), b = R(u.sub(c).div(c.mul(2)), G(0)), x = R(b, G(1e-6)), S = V(d.greaterThan(.5), H(x.x.negate(), x.x, y.x), 1), C = V(f.greaterThan(.5), L(1).sub(H(L(1).sub(x.x), L(1).add(x.x), y.x)), 1), w = V(b.x.lessThanEqual(0), 1, S.mul(C)), T = V(p.greaterThan(.5), H(x.y.negate(), x.y, y.y), 1), E = V(m.greaterThan(.5), L(1).sub(H(L(1).sub(x.y), L(1).add(x.y), y.y)), 1), D = V(b.y.lessThanEqual(0), 1, T.mul(E)), O = F(w.mul(D).mul(g), 0, 1), k = ve(a, i).rgb, A = K(0).toVar(), j = L(0).toVar();
+		ee(32, ({ i: e }) => {
+			let n = We(G(L(e).add(.5).div(32), t.y), l, u), r = F(n, 0, 1), i = Ge(n);
+			A.addAssign(ve(a, r).rgb.mul(i)), j.addAssign(i);
 		});
-		let M = V(k, A.div(B(j, 1)), n), P = ue(o, i);
-		return J(q(1).sub(L(M.mul(B(h, .001)).negate())).add(P.rgb), 1).mul(O);
+		let M = z(k, A.div(R(j, 1)), n), N = ve(o, i);
+		return q(K(1).sub(I(M.mul(R(h, .001)).negate())).add(N.rgb), 1).mul(O);
 	})(), g.name = `Starfield composite ${n.id}`, g;
 }
-function Je(e) {
-	return Xe(e).map(({ end: t, offset: n, skyV0: r, skyV1: i, start: a }) => {
+function at(e) {
+	return st(e).map(({ end: t, offset: n, skyV0: r, skyV1: i, start: a }) => {
 		let o = (a + n - e.storageUvMin.x) / e.storageUvSize.x, s = (t + n - e.storageUvMin.x) / e.storageUvSize.x, c = (r - e.storageUvMin.y) / e.storageUvSize.y, l = (i - e.storageUvMin.y) / e.storageUvSize.y, u = a * 2 - 1, d = t * 2 - 1, f = 1 - r * 2, p = 1 - i * 2, m = new k.BufferGeometry();
 		return m.setAttribute("position", new k.BufferAttribute(new Float32Array([
 			u,
@@ -288,7 +388,7 @@ function Je(e) {
 		]), 2)), m;
 	});
 }
-function Ye(e, t) {
+function ot(e, t) {
 	if (t >= 1) return [{
 		end: 1,
 		offset: 0,
@@ -309,18 +409,18 @@ function Ye(e, t) {
 		start: 0
 	}];
 }
-function Xe(e) {
+function st(e) {
 	let t = e.hasLeftNeighbor ? e.storageUvMin.x : e.uvMin.x, n = e.hasRightNeighbor ? e.storageUvMin.x + e.storageUvSize.x : e.uvMin.x + e.uvSize.x, r = e.hasTopNeighbor ? e.storageUvMin.y : e.uvMin.y, i = e.hasBottomNeighbor ? e.storageUvMin.y + e.storageUvSize.y : e.uvMin.y + e.uvSize.y, a = Math.max(0, r), o = Math.min(1, i);
-	return o <= a ? [] : Ye(t, n - t).map((e) => ({
+	return o <= a ? [] : ot(t, n - t).map((e) => ({
 		...e,
 		skyV0: a,
 		skyV1: o
 	}));
 }
-function Q(e) {
+function $(e) {
 	return e === "repeat" ? k.RepeatWrapping : k.ClampToEdgeWrapping;
 }
-function $(e, t, n, r = {}) {
+function ct(e, t, n, r = {}) {
 	let i = new k.RenderTarget(e, t, {
 		depthBuffer: !1,
 		format: k.RGBAFormat,
@@ -334,16 +434,42 @@ function $(e, t, n, r = {}) {
 	});
 	return i.texture.name = n, i.texture.colorSpace = r.colorSpace ?? k.SRGBColorSpace, i.texture.generateMipmaps = !1, i;
 }
-function Ze(e) {
+function lt(e) {
 	e.dispose();
 }
-function Qe(e) {
+var ut = null;
+function dt() {
+	if (!ut) {
+		let e = new k.DataTexture(new Uint8Array([
+			255,
+			255,
+			255,
+			255
+		]), 1, 1, k.RGBAFormat);
+		e.needsUpdate = !0, ut = e;
+	}
+	return ut;
+}
+var ft = null;
+function pt() {
+	if (!ft) {
+		let e = new k.DataTexture(new Uint8Array([
+			0,
+			0,
+			0,
+			255
+		]), 1, 1, k.RGBAFormat);
+		e.colorSpace = k.SRGBColorSpace, e.needsUpdate = !0, ft = e;
+	}
+	return ft;
+}
+function mt(e) {
 	return Math.max(1, Math.floor(e ?? 8192));
 }
-function $e(e, t) {
+function ht(e, t) {
 	return Math.max(1, Math.min(e, t));
 }
-var et = class {
+var gt = class {
 	#e = /* @__PURE__ */ new Map();
 	#t = /* @__PURE__ */ new Map();
 	#n;
@@ -352,135 +478,147 @@ var et = class {
 	#a = new k.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 	#o = new k.PlaneGeometry(2, 2);
 	constructor(e) {
-		this.#r = e, this.#n = Ae(e);
+		this.#r = e, this.#n = Ie(e);
 	}
-	createBakeKey(e, t) {
-		let n = T(e), r = m(n.quality), i = Qe(t);
-		return v(n, i, Math.floor(i / 2), {
-			budgetBytes: r.budgetBytes,
-			maxTextureSize: this.#n
+	createBakeKey(e, t, n, r) {
+		let i = T(e), a = m(i.quality), o = mt(t), s = v(i, o, Math.floor(o / 2), {
+			budgetBytes: a.budgetBytes,
+			maxTextureSize: this.#n,
+			viewport: n
 		});
+		return r?.starsOmitted ? `nebula-only:${s}` : s;
 	}
 	previewWidthFor(e) {
 		return Math.max(1, Math.min(_, this.#n));
 	}
-	bakeTexture(e, t, n) {
-		return this.#c(e, t, n).texture;
+	bakeTexture(e, t, n, r, i) {
+		return this.#c(e, t, n, r, i).texture;
 	}
-	bakePatchTextures(e, t, n) {
-		return this.#s(e, t, n);
+	createGlints(e) {
+		return nt(e);
 	}
-	async bakeImageData(e, t, n) {
-		let r = this.#c(e, t, n), { height: i, width: a } = r.target, o = r.target, s = this.#r.readRenderTargetPixelsAsync ? await this.#r.readRenderTargetPixelsAsync(o, 0, 0, a, i) : null, c = new Uint8Array(a * i * 4);
-		if (s) c.set(new Uint8Array(s.buffer, s.byteOffset, s.byteLength));
-		else if (this.#r.readRenderTargetPixels) this.#r.readRenderTargetPixels(o, 0, 0, a, i, c);
+	glintGeometryKey(e) {
+		return Qe(T(e));
+	}
+	bakePatchTextures(e, t, n, r) {
+		return this.#s(e, t, n, r);
+	}
+	async bakeImageData(e, t, n, r) {
+		let i = this.#c(e, t, n, r), { height: a, width: o } = i.target, s = i.target, c = this.#r.readRenderTargetPixelsAsync ? await this.#r.readRenderTargetPixelsAsync(s, 0, 0, o, a) : null, l = new Uint8Array(o * a * 4);
+		if (c) l.set(new Uint8Array(c.buffer, c.byteOffset, c.byteLength));
+		else if (this.#r.readRenderTargetPixels) this.#r.readRenderTargetPixels(s, 0, 0, o, a, l);
 		else throw Error("GPU Starfield bake readback is not available.");
 		return {
-			data: new Uint8ClampedArray(c.buffer),
-			height: i,
-			width: a
+			data: new Uint8ClampedArray(l.buffer),
+			height: a,
+			width: o
 		};
 	}
 	canBake() {
-		return ke(this.#r);
+		return Fe(this.#r);
 	}
 	dispose() {
 		this.#e.forEach((e) => e.target.dispose()), this.#e.clear(), this.#t.forEach((e) => {
 			e.targets.forEach((e) => e.dispose());
 		}), this.#t.clear(), this.#o.dispose();
 	}
-	#s(e, t, n) {
-		let r = T(e), i = m(r.quality), a = Qe(n), o = Math.floor(a / 2), s = t ?? this.createBakeKey(r, a), c = this.#t.get(s);
-		if (c) return c;
-		let l = h({
-			budgetBytes: i.budgetBytes,
-			clip: r.clip,
-			height: o,
+	#s(e, t, n, r) {
+		let i = T(e), a = m(i.quality), o = mt(n), s = Math.floor(o / 2), c = t ?? this.createBakeKey(i, o, r), l = this.#t.get(c);
+		if (l) return l;
+		let u = h({
+			budgetBytes: a.budgetBytes,
+			clip: i.clip,
+			height: s,
 			maxTextureSize: this.#n,
-			width: a
-		}), u = this.#r.getRenderTarget(), d = this.#r.autoClear, f = Object.assign(new k.Color(), { a: 1 }), p = this.#r.getClearAlpha(), g = [], _ = [];
-		this.#r.getClearColor(f), this.#r.autoClear = !0, this.#r.setClearColor(0, 0), l.descriptors.forEach((e) => {
-			let t = $(e.storageSize.width, e.storageSize.height, `GPU baked starfield nebula ${e.id}`, {
+			width: o
+		}), d = this.#r.getRenderTarget(), f = this.#r.autoClear, p = Object.assign(new k.Color(), { a: 1 }), g = this.#r.getClearAlpha(), _ = [], v = [];
+		this.#r.getClearColor(p), this.#r.autoClear = !0, this.#r.setClearColor(0, 0), u.descriptors.forEach((e) => {
+			let t = ct(e.storageSize.width, e.storageSize.height, `GPU baked starfield nebula ${e.id}`, {
 				colorSpace: k.LinearSRGBColorSpace,
 				type: k.HalfFloatType,
-				wrapS: Q(e.wrapS),
-				wrapT: Q(e.wrapT)
-			}), n = $(e.storageSize.width, e.storageSize.height, `GPU baked starfield stars ${e.id}`, {
+				wrapS: $(e.wrapS),
+				wrapT: $(e.wrapT)
+			}), n = ct(e.storageSize.width, e.storageSize.height, `GPU baked starfield stars ${e.id}`, {
 				colorSpace: k.SRGBColorSpace,
 				type: k.UnsignedByteType,
-				wrapS: Q(e.wrapS),
-				wrapT: Q(e.wrapT)
+				wrapS: $(e.wrapS),
+				wrapT: $(e.wrapT)
 			});
-			this.#l(Ue(r, e), t), this.#u(r, e, n, o, l.supersample), g.push(t, n), _.push({
+			this.#l(Ye(i, e), t), this.#u(i, e, n, s, u.supersample, r ?? null), _.push(t, n), v.push({
 				descriptor: e,
 				nebulaTexture: t.texture,
 				starTexture: n.texture
 			});
-		}), this.#r.setRenderTarget(u), this.#r.autoClear = d, this.#r.setClearColor(f, p);
-		let v = {
-			key: s,
-			patches: _,
-			targets: g
+		}), this.#r.setRenderTarget(d), this.#r.autoClear = f, this.#r.setClearColor(p, g);
+		let y = {
+			key: c,
+			patches: v,
+			targets: _
 		};
-		return this.#t.set(s, v), v;
+		return this.#t.set(c, y), y;
 	}
-	#c(e, t, n) {
-		let r = T(e), i = m(r.quality), a = Qe(n), o = Math.floor(a / 2), s = $e(a, this.#n), c = Math.floor(s / 2), l = t ?? this.createBakeKey(r, a), u = this.#e.get(l);
-		if (u && u.target.width === s && u.target.height === c) return u;
-		let d = $(s, c, "GPU baked starfield layer", {
+	#c(e, t, n, r, i) {
+		let a = T(e), o = m(a.quality), s = mt(n), c = Math.floor(s / 2), l = ht(s, this.#n), u = Math.floor(l / 2), d = i?.starsOmitted ?? !1, f = t ?? this.createBakeKey(a, s, r, i), p = this.#e.get(f);
+		if (p && p.target.width === l && p.target.height === u) return p;
+		let g = ct(l, u, "GPU baked starfield layer", {
 			colorSpace: k.SRGBColorSpace,
 			type: k.UnsignedByteType,
 			wrapS: k.RepeatWrapping,
 			wrapT: k.ClampToEdgeWrapping
-		}), f = h({
-			budgetBytes: i.budgetBytes,
-			clip: r.clip,
-			height: o,
+		}), _ = h({
+			budgetBytes: o.budgetBytes,
+			clip: a.clip,
+			height: c,
 			maxTextureSize: this.#n,
-			width: a
-		}), p = this.#r.getRenderTarget(), g = this.#r.autoClear, _ = Object.assign(new k.Color(), { a: 1 }), v = this.#r.getClearAlpha();
-		return this.#r.getClearColor(_), this.#r.autoClear = !0, this.#r.setClearColor(0, 0), this.#r.setRenderTarget(d), this.#r.clear(), f.descriptors.forEach((e) => {
-			let t = $(e.storageSize.width, e.storageSize.height, `GPU baked starfield nebula ${e.id}`, {
+			width: s
+		}), v = this.#r.getRenderTarget(), y = this.#r.autoClear, b = Object.assign(new k.Color(), { a: 1 }), x = this.#r.getClearAlpha();
+		return this.#r.getClearColor(b), this.#r.autoClear = !0, this.#r.setClearColor(0, 0), this.#r.setRenderTarget(g), this.#r.clear(), _.descriptors.forEach((e) => {
+			let t = ct(e.storageSize.width, e.storageSize.height, `GPU baked starfield nebula ${e.id}`, {
 				colorSpace: k.LinearSRGBColorSpace,
 				type: k.HalfFloatType,
-				wrapS: Q(e.wrapS),
-				wrapT: Q(e.wrapT)
-			}), n = $(e.storageSize.width, e.storageSize.height, `GPU baked starfield stars ${e.id}`, {
+				wrapS: $(e.wrapS),
+				wrapT: $(e.wrapT)
+			});
+			if (this.#l(Ye(a, e), t), d) {
+				this.#d(a, e, t.texture, pt(), g), t.dispose();
+				return;
+			}
+			let n = ct(e.storageSize.width, e.storageSize.height, `GPU baked starfield stars ${e.id}`, {
 				colorSpace: k.SRGBColorSpace,
 				type: k.UnsignedByteType,
-				wrapS: Q(e.wrapS),
-				wrapT: Q(e.wrapT)
+				wrapS: $(e.wrapS),
+				wrapT: $(e.wrapT)
 			});
-			this.#l(Ue(r, e), t), this.#u(r, e, n, o, f.supersample), this.#d(r, e, t.texture, n.texture, d), t.dispose(), n.dispose();
-		}), this.#r.setRenderTarget(p), this.#r.autoClear = g, this.#r.setClearColor(_, v), d.texture.userData.starfieldRenderTarget = d, this.#e.get(l)?.target.dispose(), this.#e.set(l, {
-			key: l,
-			target: d,
-			texture: d.texture
+			this.#u(a, e, n, c, _.supersample, r ?? null), this.#d(a, e, t.texture, n.texture, g), t.dispose(), n.dispose();
+		}), this.#r.setRenderTarget(v), this.#r.autoClear = y, this.#r.setClearColor(b, x), g.texture.userData.starfieldRenderTarget = g, this.#e.get(f)?.target.dispose(), this.#e.set(f, {
+			key: f,
+			target: g,
+			texture: g.texture
 		}), {
-			key: l,
-			target: d,
-			texture: d.texture
+			key: f,
+			target: g,
+			texture: g.texture
 		};
 	}
 	#l(e, t) {
 		let n = new k.Mesh(this.#o, e);
-		n.frustumCulled = !1, this.#i.clear(), this.#i.add(n), this.#r.setRenderTarget(t), this.#r.clear(), this.#r.render(this.#i, this.#a), this.#i.remove(n), Ze(e);
+		n.frustumCulled = !1, this.#i.clear(), this.#i.add(n), this.#r.setRenderTarget(t), this.#r.clear(), this.#r.render(this.#i, this.#a), this.#i.remove(n), lt(e);
 	}
-	#u(e, t, n, r, i) {
-		let a = We(e, t, r), o = Math.max(1, Math.floor(i)), s = t.storageSize.width * o, c = t.storageSize.height * o, l = s / t.storageSize.width, u = Ge(e, t, {
-			bakeHeight: c,
-			bakeWidth: s,
-			displayPixelAngle: Math.PI / _e,
-			screenPixelScale: r / _e
-		}), d = new k.Mesh(a, u), f = $(s, c, `GPU baked starfield stars accumulation ${t.id}`, {
+	#u(e, t, n, r, i, a) {
+		let o = Xe(e, t, r), s = Math.max(1, Math.floor(i)), c = t.storageSize.width * s, l = t.storageSize.height * s, u = c / t.storageSize.width, { displayPixelAngle: d, screenPixelScale: f } = Ne(a, r), p = Ze(e, t, {
+			bakeHeight: l,
+			bakeWidth: c,
+			displayPixelAngle: d,
+			screenPixelScale: f
+		}), m = new k.Mesh(o, p), h = ct(c, l, `GPU baked starfield stars accumulation ${t.id}`, {
 			colorSpace: k.LinearSRGBColorSpace,
 			type: k.HalfFloatType,
 			wrapS: k.ClampToEdgeWrapping
 		});
-		d.frustumCulled = !1, this.#i.clear(), this.#i.add(d), this.#r.setRenderTarget(f), this.#r.clear(), this.#r.render(this.#i, this.#a), this.#i.remove(d), a.dispose(), Ze(u), this.#l(Ke(f.texture, s, c, t.storageSize.width, t.storageSize.height, l), n), f.dispose();
+		m.frustumCulled = !1, this.#i.clear(), this.#i.add(m), this.#r.setRenderTarget(h), this.#r.clear(), this.#r.render(this.#i, this.#a), this.#i.remove(m), o.dispose(), lt(p), this.#l(rt(h.texture, c, l, t.storageSize.width, t.storageSize.height, u), n), h.dispose();
 	}
 	#d(e, t, n, r, i) {
-		let a = qe(n, r, t, e), o = Je(t);
+		let a = it(n, r, t, e), o = at(t);
 		this.#i.clear(), o.forEach((e) => {
 			let t = new k.Mesh(e, a);
 			t.frustumCulled = !1, this.#i.add(t);
@@ -493,15 +631,15 @@ var et = class {
 		}
 		this.#i.children.forEach((e) => {
 			e instanceof k.Mesh && e.geometry.dispose();
-		}), this.#i.clear(), Ze(a);
+		}), this.#i.clear(), lt(a);
 	}
 };
-function tt(e) {
-	return ke(e) ? new et(e) : null;
+function _t(e) {
+	return Fe(e) ? new gt(e) : null;
 }
 //#endregion
 //#region src/starfield.ts
-function nt(t, n, i, a = {}) {
+function vt(t, n, i, a = {}) {
 	let o = a.starfieldBakes?.get(t);
 	if (o) {
 		let t = E(n), i = (t.u % 1 + 1) % 1 * o.width - .5, a = s(t.v, 0, 1) * o.height - .5, c = Math.floor(i), l = Math.floor(a), u = c + 1, d = l + 1, f = i - c, p = a - l;
@@ -509,12 +647,12 @@ function nt(t, n, i, a = {}) {
 	}
 	return D(n, i, { sampleHeight: a.sampleHeight });
 }
-y(tt), o({
+y(_t), o({
 	type: "starfield",
-	sampleCpu: (e, t, n) => nt(n.layerId, e, t, {
+	sampleCpu: (e, t, n) => vt(n.layerId, e, t, {
 		sampleHeight: n.sampleHeight,
 		starfieldBakes: n.starfieldBakes
 	})
 });
 //#endregion
-export { S as DEFAULT_STARFIELD_CLIP, g as DEFAULT_STARFIELD_NEBULA, l as DEFAULT_STARFIELD_NEBULA_FIELD, b as DEFAULT_STARFIELD_PARAMS, C as DEFAULT_STARFIELD_QUALITY, d as DEFAULT_STARFIELD_STARS, _ as STARFIELD_PREVIEW_BAKE_WIDTH, w as STARFIELD_QUALITY_PRESETS, et as StarfieldGpuBakeService, f as bakeStarfieldImageData, p as createStarCatalogForCoverage, x as createStarCatalogForDescriptor, v as createStarfieldBakeCacheKey, tt as createStarfieldGpuBakeService, h as createStarfieldPatchLayout, m as getStarfieldQualityPreset, c as normalizeStarfieldCoverage, T as normalizeStarfieldParams, O as normalizeStarfieldQuality, u as qFromV, D as sampleStarfieldLayer, i as sourceDirectionFromUv, t as sourceFoldEquirectUv, E as sourceUvFromDirection, a as starfieldClipContainsDirection, n as starfieldFieldGradientToSourceField };
+export { S as DEFAULT_STARFIELD_CLIP, g as DEFAULT_STARFIELD_NEBULA, l as DEFAULT_STARFIELD_NEBULA_FIELD, b as DEFAULT_STARFIELD_PARAMS, C as DEFAULT_STARFIELD_QUALITY, d as DEFAULT_STARFIELD_STARS, _ as STARFIELD_PREVIEW_BAKE_WIDTH, w as STARFIELD_QUALITY_PRESETS, gt as StarfieldGpuBakeService, f as bakeStarfieldImageData, p as createStarCatalogForCoverage, x as createStarCatalogForDescriptor, v as createStarfieldBakeCacheKey, nt as createStarfieldGlints, _t as createStarfieldGpuBakeService, h as createStarfieldPatchLayout, m as getStarfieldQualityPreset, c as normalizeStarfieldCoverage, T as normalizeStarfieldParams, O as normalizeStarfieldQuality, u as qFromV, D as sampleStarfieldLayer, i as sourceDirectionFromUv, t as sourceFoldEquirectUv, E as sourceUvFromDirection, a as starfieldClipContainsDirection, n as starfieldFieldGradientToSourceField, Qe as starfieldGlintGeometryKey };

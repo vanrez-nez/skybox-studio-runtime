@@ -5,6 +5,7 @@ export { bakeSkyboxImageData, createBakeCacheKey, DEFAULT_BAKE_WIDTH, invalidate
 export type { BakedSkyboxImageData, SkyboxImageBakeOptions } from "./baking/bake";
 export { createSkyboxGpuBakeService, SkyboxGpuBakeService } from "./baking/skybox-gpu-bake";
 export type { SkyboxGpuBakeTarget } from "./baking/skybox-gpu-bake";
+export type { StarGlintViewport } from "./baking/starfield-gpu-bake";
 export { blendChannel, clamp, compositeBlendChannel, compositeOver, linearChannelToSrgb, linearRgbToSrgbBytes, parseHexColor, srgbChannelToLinear, } from "./math";
 export { createAngularDecalPlacement, createImagePlacementTangents, directionFromPosition, IMAGE_PLACEMENT_ELEVATION_LIMIT, normalizeImagePlacement, normalizeVector, placementFromPosition, placementFromRotation, placementFromScale, positionFromPlacement, projectDirectionToImageUv, rotationFromPlacement, scaleFromPlacement, type ImageProjectionUv, type Point2, type VectorTuple, } from "./image-placement-transform";
 export { createDefaultSpotParams, DEFAULT_SPOT_BASE_ANGULAR_RADIUS, normalizeSpotParams, positionFromSpot, radiusScaleFromSpot, spotContainsDirection, spotFromPosition, spotFromRadiusScale, } from "./spot-transform";

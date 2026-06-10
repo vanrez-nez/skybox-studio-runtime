@@ -1812,6 +1812,10 @@ export function createStarfieldBakeCacheKey(
     budgetBytes?: number;
     maxTextureSize?: number;
     residentBytesPerPixel?: number;
+    // When set, stars are sized to a fixed logical-pixel size for this viewport
+    // (displayPixelAngle = verticalFovRadians / renderHeight). Folded into the key so a
+    // FOV/height change re-bakes. Rounded to avoid thrashing on sub-pixel resize jitter.
+    viewport?: { verticalFovRadians: number; renderHeight: number } | null;
   } = {}
 ) {
   const normalizedParams = normalizeStarfieldParams(params);
@@ -1850,6 +1854,12 @@ export function createStarfieldBakeCacheKey(
       supersample: layout.supersample,
     },
     params: normalizedParams,
+    viewport: options.viewport
+      ? {
+          renderHeight: Math.round(options.viewport.renderHeight),
+          verticalFovRadians: Math.round(options.viewport.verticalFovRadians * 1000) / 1000,
+        }
+      : null,
     width,
   }));
 }

@@ -21,6 +21,7 @@ import {
 
 import { bakeSkyboxImageData } from "../baking/bake";
 import {
+  composeCoverageExpression,
   composeNodesExpression,
   compositionNodeValues,
   createBindingMapFromLayers,
@@ -506,6 +507,92 @@ export function createWebGpuMaterial(
   material.userData.applyStarfieldTextures = (textures: Map<string, THREE.Texture>) =>
     updateStarfieldTextureNodes(starfieldSamples?.sampleData ?? new Map(), textures);
   material.userData.debugImageTextureSlots = layerRuntime.textureSlotsByLayerId;
+
+  return material;
+}
+
+// --- Coverage (transmittance) material for screen-space glint occlusion (Phase B) ---------------
+//
+// Same per-fragment ray + per-layer sampling as the live composite, but instead of a color it outputs
+// the transmittance Π(1 − sourceAlpha) of the layers ABOVE the topmost starfield. The Skybox renders
+// this into an offscreen target each frame (a pre-pass) and the glint shader multiplies its radiance
+// by the sampled transmittance, so opaque upper layers hide the glints behind them.
+export { manifestHasLayerAboveStarfield } from "./composition";
+
+function createSkyboxCoverageFunction(
+  manifest: SkyboxManifestV2,
+  layerRuntime: WebGpuCompositionRuntime
+) {
+  const body = composeCoverageExpression(manifest.nodes, layerRuntime);
+  const layerParameters = Array.from(layerRuntime.adapters.values())
+    .map((adapterRuntime) => adapterRuntime.adapter.createParameterDeclarations(adapterRuntime.bindings))
+    .join("");
+
+  return wgslFn(`
+    fn skyboxStudioCoverage(
+      direction: vec3<f32>${layerParameters}
+    ) -> vec4<f32> {
+      var coverageAbove = 0.0;
+      ${body}
+      let transmittance = clamp(1.0 - coverageAbove, 0.0, 1.0);
+      return vec4<f32>(transmittance, transmittance, transmittance, 1.0);
+    }
+  `);
+}
+
+export function createWebGpuCoverageMaterial(
+  manifest: SkyboxManifestV2,
+  imageTextures: Map<string, THREE.Texture>,
+  starfieldTextures: Map<string, THREE.Texture>,
+  starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>
+) {
+  const material = new NodeMaterial();
+
+  material.side = THREE.BackSide;
+  material.depthTest = false;
+  material.depthWrite = false;
+  material.vertexNode = Fn(() => {
+    const position = modelViewProjection as any;
+
+    position.z.assign(position.w);
+
+    return position;
+  })() as any;
+
+  const direction = skyboxViewDirectionNode();
+  const layerRuntime = createWebGpuLayerRuntime(
+    manifest,
+    direction,
+    imageTextures,
+    starfieldTextures,
+    starfieldPatchTextures
+  );
+  const imageRuntime = getWebGpuAdapterRuntime<"image", ImageLayerShaderBinding, ImagePlacementUniformNodes>(
+    layerRuntime,
+    "image"
+  );
+  const imageSamples = imageRuntime?.samples as WebGpuImageLayerSampleNodes | undefined;
+  const imageUniforms = imageRuntime?.uniforms ?? [];
+  const starfieldRuntime = getWebGpuAdapterRuntime<"starfield", StarfieldLayerShaderBinding, never>(
+    layerRuntime,
+    "starfield"
+  );
+  const starfieldSamples = starfieldRuntime?.samples as WebGpuStarfieldLayerSampleNodes | undefined;
+  const coverage = createSkyboxCoverageFunction(manifest, layerRuntime);
+
+  material.colorNode = coverage({
+    direction,
+    ...layerRuntime.sampleParameters,
+  }) as any;
+  material.userData.applyLayerParams = (layer: SkyboxManifestLayer) =>
+    applyWebGpuLayerParamsToRuntime(layerRuntime, layer);
+  attachImagePlacementUpdater(material, (layerId, placement) =>
+    applyImageLayerPlacementToUniformNodes(imageUniforms, layerId, placement)
+  );
+  material.userData.applyImageTextures = (textures: Map<string, THREE.Texture>) =>
+    updateImageTextureNodes(imageSamples?.sampleData ?? new Map(), textures);
+  material.userData.applyStarfieldTextures = (textures: Map<string, THREE.Texture>) =>
+    updateStarfieldTextureNodes(starfieldSamples?.sampleData ?? new Map(), textures);
 
   return material;
 }
