@@ -4,11 +4,14 @@ import * as THREE from "three";
 import {
   bakeSkyboxImageData,
   blendChannel,
+  compositeOver,
   createAngularDecalPlacement,
   createDefaultSpotParams,
   evaluateSkyboxDirection,
+  linearRgbToSrgbBytes,
   migrateManifestToV2,
   normalizeImagePlacement,
+  parseHexColor,
   placementFromPosition,
   placementFromRotation,
   placementFromScale,
@@ -224,6 +227,27 @@ describe("runtime evaluator", () => {
 
   it("keeps overlay equivalent to hard-light with swapped values", () => {
     expect(blendChannel("overlay", 0.2, 0.8)).toBeCloseTo(blendChannel("hard-light", 0.8, 0.2));
+  });
+
+  // The stack carries linear light but the separable operators are defined on gamma-encoded values,
+  // so `compositeOver` encodes before blending. Regression guard: blending the raw linear values
+  // instead drives overlay into its dark `2*b*s` branch and the layer all but disappears.
+  it("applies separable blend modes in sRGB space, not linear light", () => {
+    const backdrop = parseHexColor("#808080");
+    const source = parseHexColor("#ff8800");
+    const composited = linearRgbToSrgbBytes(compositeOver(backdrop, source, 1, "overlay"));
+
+    // Photoshop / CSS mix-blend-mode: overlay on 50% grey returns the source at full strength.
+    expect(composited[0]).toBeGreaterThanOrEqual(254);
+    expect(composited[1]).toBeCloseTo(136, -1);
+    expect(composited[2]).toBeLessThanOrEqual(2);
+  });
+
+  it("leaves normal blending untouched by the sRGB round trip", () => {
+    const backdrop = parseHexColor("#4a90d9");
+    const source = parseHexColor("#ff8800");
+
+    expect(compositeOver(backdrop, source, 1, "normal")).toEqual(source);
   });
 
   it("evaluates linear gradient midpoint interpolation", () => {

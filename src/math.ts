@@ -95,6 +95,8 @@ export function blendChannel(
   }
 }
 
+// Blends two values that are already in the same encoding. `blendChannel` above is the W3C separable
+// operator set, so this is the CSS `mix-blend-mode` / Photoshop contract on unit values.
 export function compositeBlendChannel(
   mode: SkyboxLayerBlendMode,
   backdrop: number,
@@ -108,6 +110,43 @@ export function compositeBlendChannel(
   return clamp(blended * clampedAlpha + clampedBackdrop * (1 - clampedAlpha));
 }
 
+// Composites one layer over the stack, which carries LINEAR light.
+//
+// The separable blend operators are defined on gamma-encoded values — `overlay`, `hard-light` and
+// `soft-light` all pivot on 0.5, which is mid-grey only after encoding, and `color-dodge`/`color-burn`
+// divide by an encoded quantity. Run on linear values they collapse: linear 0.5 is sRGB 0.73, so
+// overlay takes its dark `2*b*s` branch for nearly every sky pixel and the layer reads as a slight
+// darkening instead of a contrast boost. So each blend encodes its operands, applies the operator, and
+// decodes the result.
+//
+// The alpha-over stays in linear light: it is a physical coverage average, it has to agree with
+// `normal` (which skips the round trip entirely), and antialiased layer edges depend on it.
+function compositeLinearChannel(
+  mode: SkyboxLayerBlendMode,
+  backdrop: number,
+  source: number,
+  alpha: number
+) {
+  const clampedBackdrop = clamp(backdrop);
+  const clampedAlpha = clamp(alpha);
+
+  if (mode === "normal") {
+    return clamp(clamp(source) * clampedAlpha + clampedBackdrop * (1 - clampedAlpha));
+  }
+
+  const blended = srgbChannelToLinear(
+    clamp(
+      blendChannel(
+        mode,
+        linearChannelToSrgb(clampedBackdrop),
+        linearChannelToSrgb(clamp(source))
+      )
+    )
+  );
+
+  return clamp(blended * clampedAlpha + clampedBackdrop * (1 - clampedAlpha));
+}
+
 export function compositeOver(
   backdrop: Rgb,
   source: Rgb,
@@ -115,9 +154,9 @@ export function compositeOver(
   blendMode: SkyboxLayerBlendMode
 ): Rgb {
   return [
-    compositeBlendChannel(blendMode, backdrop[0], source[0], alpha),
-    compositeBlendChannel(blendMode, backdrop[1], source[1], alpha),
-    compositeBlendChannel(blendMode, backdrop[2], source[2], alpha),
+    compositeLinearChannel(blendMode, backdrop[0], source[0], alpha),
+    compositeLinearChannel(blendMode, backdrop[1], source[1], alpha),
+    compositeLinearChannel(blendMode, backdrop[2], source[2], alpha),
   ];
 }
 

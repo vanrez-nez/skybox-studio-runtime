@@ -63,12 +63,24 @@ export function compositionNodeValues(node: SkyboxManifestNode) {
   };
 }
 
+// Encode/decode emitted inline: the composition body is pasted into one generated function and WGSL
+// forbids nested function declarations, so these are expressions. Each references its argument three
+// times — only ever pass a `let` name, never an expression.
+function srgbEncodeExpression(value: string) {
+  return `select(1.055 * pow(${value}, ${vectorLiteral(1 / 2.4)}) - ${vectorLiteral(0.055)}, ${value} * 12.92, ${value} <= ${vectorLiteral(0.0031308)})`;
+}
+
+function srgbDecodeExpression(value: string) {
+  return `select(pow((${value} + ${vectorLiteral(0.055)}) / ${vectorLiteral(1.055)}, ${vectorLiteral(2.4)}), ${value} / 12.92, ${value} <= ${vectorLiteral(0.04045)})`;
+}
+
 function blendColorExpression(mode: SkyboxLayerBlendMode) {
   const one = vectorLiteral(1);
   const half = vectorLiteral(0.5);
   const zero = vectorLiteral(0);
-  const source = "effectColor.rgb";
-  const backdrop = "composedColor";
+  // Both operands are sRGB-encoded here — see `compositeOver` in math.ts for why.
+  const source = "blendSource";
+  const backdrop = "blendBackdrop";
 
   switch (mode) {
     case "darken":
@@ -129,9 +141,9 @@ function blendColorExpression(mode: SkyboxLayerBlendMode) {
 
 function blendSoftLightSetupExpression() {
   return `let softLightD = ${selectExpression(
-    `composedColor <= vec3<f32>(0.25)`,
-    `((16.0 * composedColor - vec3<f32>(12.0)) * composedColor + vec3<f32>(4.0)) * composedColor`,
-    "sqrt(composedColor)"
+    `blendBackdrop <= vec3<f32>(0.25)`,
+    `((16.0 * blendBackdrop - vec3<f32>(12.0)) * blendBackdrop + vec3<f32>(4.0)) * blendBackdrop`,
+    "sqrt(blendBackdrop)"
   )};`;
 }
 
@@ -157,14 +169,25 @@ function blendAssignmentBlock(blendModeRef: string) {
   ];
   const branches = blendModes
     .map((mode, index) => `${index === 0 ? "if" : "else if"} (${blendModeCondition(blendModeRef, mode)}) {
-          blendedColor = ${blendColorExpression(mode)};
-        }`)
+            blendedSrgb = ${blendColorExpression(mode)};
+          }`)
     .join("\n");
 
-  return `${blendSoftLightSetupExpression()}
-        ${mutableDeclaration("blendedColor", "vec3<f32>", "effectColor.rgb")}
-        ${branches}
-        blendedColor = clamp(blendedColor, vec3<f32>(0.0), vec3<f32>(1.0));`;
+  // `normal` (blend mode 0) keeps the untouched linear source, so the common path stays bit-exact and
+  // skips the encode/decode round trip entirely. Every other mode blends sRGB-encoded operands and
+  // decodes back to linear before the caller's alpha-over. Mirrors `compositeOver` in math.ts.
+  return `let blendSourceLinear = clamp(effectColor.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+        ${mutableDeclaration("blendedColor", "vec3<f32>", "blendSourceLinear")}
+        if (${blendModeRef} >= ${numberLiteral(0.5)}) {
+          let blendBackdropLinear = clamp(composedColor, vec3<f32>(0.0), vec3<f32>(1.0));
+          let blendBackdrop = ${srgbEncodeExpression("blendBackdropLinear")};
+          let blendSource = ${srgbEncodeExpression("blendSourceLinear")};
+          ${blendSoftLightSetupExpression()}
+          ${mutableDeclaration("blendedSrgb", "vec3<f32>", "blendSource")}
+          ${branches}
+          let blendedSrgbClamped = clamp(blendedSrgb, vec3<f32>(0.0), vec3<f32>(1.0));
+          blendedColor = ${srgbDecodeExpression("blendedSrgbClamped")};
+        }`;
 }
 
 export function composeNodesExpression(
