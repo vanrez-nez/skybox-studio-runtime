@@ -15,6 +15,11 @@ export type ImageLayerShaderBinding = {
   layer: Extract<SkyboxManifestLayer, { type: "image" }>;
   parameterName: string;
 };
+export type CloudsLayerShaderBinding = {
+  index: number;
+  layer: Extract<SkyboxManifestLayer, { type: "clouds" }>;
+  parameterPrefix: string;
+};
 export type GradientLayerShaderBinding = {
   index: number;
   layer: Extract<SkyboxManifestLayer, { type: "gradient" }>;
@@ -39,6 +44,17 @@ export type StarfieldLayerShaderBinding = {
   parameterName: string;
 };
 
+export type CloudsUniformNodes = {
+  color: ReturnType<typeof uniform>;
+  coverage: ReturnType<typeof uniform>;
+  density: ReturnType<typeof uniform>;
+  elevation: ReturnType<typeof uniform>;
+  layerId: string;
+  offset: ReturnType<typeof uniform>;
+  scale: ReturnType<typeof uniform>;
+  shadowColor: ReturnType<typeof uniform>;
+  sunDirection: ReturnType<typeof uniform>;
+};
 export type GradientUniformNodes = {
   axis: ReturnType<typeof uniform>;
   layerId: string;

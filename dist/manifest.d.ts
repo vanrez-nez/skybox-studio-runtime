@@ -1,6 +1,6 @@
 export type SkyboxCompositionMode = "alpha-over";
 export type SkyboxCompositionOrder = "bottom-to-top";
-export type SkyboxEffectType = "field-gradient" | "gradient" | "image" | "spot" | "starfield";
+export type SkyboxEffectType = "clouds" | "field-gradient" | "gradient" | "image" | "spot" | "starfield";
 export type SkyboxLayerBlendMode = "normal" | "darken" | "multiply" | "color-burn" | "lighten" | "screen" | "color-dodge" | "overlay" | "soft-light" | "hard-light" | "difference" | "exclusion";
 export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
@@ -129,6 +129,26 @@ export type SkyboxStarfieldParams = {
     quality: SkyboxStarfieldQuality;
     stars: SkyboxStarfieldStarsParams;
 };
+export type SkyboxCloudsParams = {
+    color: string;
+    coverage: number;
+    density: number;
+    elevation: number;
+    phase: number;
+    scale: number;
+    shadowColor: string;
+    speed: number;
+    sunDirection: [number, number, number];
+};
+export type SkyboxCloudsLayer = {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxCloudsParams;
+    type: "clouds";
+};
 export type SkyboxGradientLayer = {
     blendMode: SkyboxLayerBlendMode;
     enabled: boolean;
@@ -174,7 +194,7 @@ export type SkyboxStarfieldLayer = {
     params: SkyboxStarfieldParams;
     type: "starfield";
 };
-export type SkyboxManifestLayer = SkyboxGradientLayer | SkyboxFieldGradientLayer | SkyboxImageLayer | SkyboxSpotLayer | SkyboxStarfieldLayer;
+export type SkyboxManifestLayer = SkyboxCloudsLayer | SkyboxGradientLayer | SkyboxFieldGradientLayer | SkyboxImageLayer | SkyboxSpotLayer | SkyboxStarfieldLayer;
 export type SkyboxManifestGroup = {
     blendMode: SkyboxLayerBlendMode;
     children: SkyboxManifestNode[];

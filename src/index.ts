@@ -72,6 +72,8 @@ export type {
 } from "./layer-addons";
 export type {
   SkyboxBakeOptions,
+  SkyboxCloudsLayer,
+  SkyboxCloudsParams,
   SkyboxCompositionMode,
   SkyboxCompositionOrder,
   SkyboxEffectType,

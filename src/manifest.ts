@@ -1,6 +1,12 @@
 export type SkyboxCompositionMode = "alpha-over";
 export type SkyboxCompositionOrder = "bottom-to-top";
-export type SkyboxEffectType = "field-gradient" | "gradient" | "image" | "spot" | "starfield";
+export type SkyboxEffectType =
+  | "clouds"
+  | "field-gradient"
+  | "gradient"
+  | "image"
+  | "spot"
+  | "starfield";
 export type SkyboxLayerBlendMode =
   | "normal"
   | "darken"
@@ -155,6 +161,31 @@ export type SkyboxStarfieldParams = {
   stars: SkyboxStarfieldStarsParams;
 };
 
+// Procedural clouds: a 2D fBm on an infinite plane projected through the view direction, ported from
+// three's SkyMesh cloud term. Upper hemisphere only. `phase` replaces SkyMesh's `time` node so the
+// result is deterministic and bakes identically to what the viewport shows.
+export type SkyboxCloudsParams = {
+  color: string;
+  coverage: number;
+  density: number;
+  elevation: number;
+  phase: number;
+  scale: number;
+  shadowColor: string;
+  speed: number;
+  sunDirection: [number, number, number];
+};
+
+export type SkyboxCloudsLayer = {
+  blendMode: SkyboxLayerBlendMode;
+  enabled: boolean;
+  id: string;
+  name: string;
+  opacity: number;
+  params: SkyboxCloudsParams;
+  type: "clouds";
+};
+
 export type SkyboxGradientLayer = {
   blendMode: SkyboxLayerBlendMode;
   enabled: boolean;
@@ -206,6 +237,7 @@ export type SkyboxStarfieldLayer = {
 };
 
 export type SkyboxManifestLayer =
+  | SkyboxCloudsLayer
   | SkyboxGradientLayer
   | SkyboxFieldGradientLayer
   | SkyboxImageLayer
