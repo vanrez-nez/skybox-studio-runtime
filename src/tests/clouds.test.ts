@@ -1,125 +1,162 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateSkyboxDirection, type SkyboxManifestV2 } from "../index";
-import { sampleCloudsLayer } from "../layer-addons/builtins/clouds";
-import type { SkyboxCloudsParams } from "../manifest";
+import {
+  DEFAULT_SKYBOX_CLOUDS_PARAMS,
+  cloneSkyboxCloudsParams,
+  createDefaultSkyboxCloudsParams,
+  syncCloudFieldTextures,
+} from "../layer-addons/builtins/clouds";
+import { resolveCloudLightReferences, type SkyboxManifestV2 } from "../manifest";
+import { Skybox } from "../skybox";
 
-function createParams(overrides: Partial<SkyboxCloudsParams> = {}): SkyboxCloudsParams {
+function manifest(): SkyboxManifestV2 {
   return {
-    color: "#ffffff",
-    coverage: 0.5,
-    density: 1,
-    elevation: 0.5,
-    phase: 0,
-    scale: 0.0002,
-    shadowColor: "#000000",
-    speed: 0.0001,
-    sunDirection: [0, 1, 0],
-    ...overrides,
+    composition: { mode: "alpha-over", order: "bottom-to-top" },
+    nodes: [
+      {
+        blendMode: "normal",
+        enabled: true,
+        id: "clouds",
+        name: "Clouds",
+        opacity: 100,
+        params: createDefaultSkyboxCloudsParams(),
+        type: "clouds",
+      },
+    ],
+    version: 2,
   };
 }
 
-describe("clouds layer", () => {
-  it("is fully transparent below the horizon", () => {
-    expect(sampleCloudsLayer([0, -1, 0], createParams())).toEqual([0, 0, 0, 0]);
-    expect(sampleCloudsLayer([0.5, -0.5, 0.5], createParams())).toEqual([0, 0, 0, 0]);
+describe("custom SkyMesh clouds", () => {
+  it("defaults to static motion and clones nested state", () => {
+    const params = createDefaultSkyboxCloudsParams();
+    const clone = cloneSkyboxCloudsParams(params);
+
+    expect(params.motionMode).toBe("static");
+    expect(params).toEqual(DEFAULT_SKYBOX_CLOUDS_PARAMS);
+    expect(clone).not.toBe(params);
+    expect(clone.field).not.toBe(params.field);
+    expect(clone.cloudLow).not.toBe(params.cloudLow);
   });
 
-  it("is fully transparent with zero coverage", () => {
-    expect(sampleCloudsLayer([0, 1, 0], createParams({ coverage: 0 }))).toEqual([0, 0, 0, 0]);
+  it("keeps the baked field texture for non-field changes", () => {
+    const textures = new Map();
+    const first = manifest();
+    expect(syncCloudFieldTextures(first, textures)).toBe(true);
+    const texture = textures.get("clouds");
+
+    const changed = manifest();
+    const clouds = changed.nodes[0];
+    if (clouds.type !== "clouds") throw new Error("Expected Clouds");
+    clouds.params.exposure = 4;
+    clouds.params.motionMode = "dynamic";
+
+    expect(syncCloudFieldTextures(changed, textures)).toBe(false);
+    expect(textures.get("clouds")).toBe(texture);
+    texture.dispose();
   });
 
-  it("is fully opaque straight up at full coverage", () => {
-    const [, , , alpha] = sampleCloudsLayer([0, 1, 0], createParams({ coverage: 1 }));
+  it("keeps the baked field texture while a layer is disabled", () => {
+    const textures = new Map();
+    const next = manifest();
+    syncCloudFieldTextures(next, textures);
+    const texture = textures.get("clouds");
+    next.nodes[0].enabled = false;
 
-    expect(alpha).toBeCloseTo(1);
+    expect(syncCloudFieldTextures(next, textures)).toBe(false);
+    expect(textures.get("clouds")).toBe(texture);
+
+    next.nodes[0].enabled = true;
+    expect(syncCloudFieldTextures(next, textures)).toBe(false);
+    expect(textures.get("clouds")).toBe(texture);
+    texture.dispose();
   });
 
-  it("fades out toward the horizon", () => {
-    const params = createParams({ coverage: 1 });
-    const overhead = sampleCloudsLayer([0, 1, 0], params)[3];
-    // Just above the horizon: inside the horizonFade ramp (0 .. 0.1 + 0.2 * elevation = 0.2).
-    const nearHorizon = sampleCloudsLayer([0.9999, 0.01, 0], params)[3];
+  it("replaces the baked field texture only when field generation changes", () => {
+    const textures = new Map();
+    const first = manifest();
+    syncCloudFieldTextures(first, textures);
+    const texture = textures.get("clouds");
 
-    expect(nearHorizon).toBeLessThan(overhead);
-    expect(nearHorizon).toBeGreaterThanOrEqual(0);
+    const changed = manifest();
+    const clouds = changed.nodes[0];
+    if (clouds.type !== "clouds") throw new Error("Expected Clouds");
+    clouds.params.field.seed += 1;
+
+    expect(syncCloudFieldTextures(changed, textures)).toBe(true);
+    expect(textures.get("clouds")).not.toBe(texture);
+    textures.get("clouds")?.dispose();
   });
 
-  it("scales alpha by density", () => {
-    const full = sampleCloudsLayer([0, 1, 0], createParams({ coverage: 1, density: 1 }))[3];
-    const half = sampleCloudsLayer([0, 1, 0], createParams({ coverage: 1, density: 0.5 }))[3];
+  it("updates Dynamic time as a uniform without rebuilding material or field", () => {
+    const next = manifest();
+    const clouds = next.nodes[0];
+    if (clouds.type !== "clouds") throw new Error("Expected Clouds");
+    clouds.params.motionMode = "dynamic";
 
-    expect(half).toBeCloseTo(full * 0.5);
+    const skybox = new Skybox()
+      .setRenderMode("live-webgpu")
+      .fromManifest(next)
+      .load();
+    const material = skybox.material;
+    const field = material.userData.debugImageTextureSlots.clouds;
+    const runtime = material.userData.webGpuLayerRuntime.adapters.get("clouds");
+    const time = runtime.uniforms[0].time;
+
+    expect(time.value).toBe(0);
+    skybox.setTime(12.5);
+    expect(time.value).toBe(12.5);
+    expect(skybox.material).toBe(material);
+    expect(skybox.material.userData.debugImageTextureSlots.clouds).toBe(field);
+
+    skybox.dispose();
   });
 
-  it("is deterministic for a given phase and shifts with it", () => {
-    // A spread of upward directions: a single one can sit at a saturated end of the coverage
-    // smoothstep and look unchanged even when the field has moved.
-    const directions: Array<[number, number, number]> = [
-      [0.3, 0.8, 0.2],
-      [-0.4, 0.6, 0.5],
-      [0.1, 0.95, -0.3],
-      [0.6, 0.5, 0.1],
-    ];
-    const params = createParams({ coverage: 0.5, scale: 0.002, speed: 1 });
-    const alphasAt = (phase: number) =>
-      directions.map((direction) => sampleCloudsLayer(direction, { ...params, phase })[3]);
+  it("resolves Spot and Image positions without borrowing their light properties", () => {
+    const input = manifest();
+    const clouds = input.nodes[0];
+    if (clouds.type !== "clouds") throw new Error("Expected Clouds");
+    clouds.params.sun.directionLayerId = "spot";
+    input.nodes.push({
+      blendMode: "normal",
+      enabled: false,
+      id: "spot",
+      name: "Reference",
+      opacity: 100,
+      params: {
+        angularRadius: 1,
+        baseAngularRadius: 1,
+        brightness: 99,
+        centerDirection: [1, 0, 0],
+        colorMode: "light",
+        coreRadius: 0,
+        coreSoftness: 0,
+        dispersion: 0,
+        dogSpread: 0,
+        dogStrength: 0,
+        dogStretch: 0,
+        glareSize: 0,
+        glareStrength: 0,
+        glow: 0,
+        glowSize: 0,
+        glowStrength: 0,
+        halo: 0,
+        haloInnerWidth: 0,
+        haloOuterWidth: 0,
+        haloRadius: 0,
+        haloStrength: 0,
+        lightColor: "#ff0000",
+        stops: [],
+      },
+      type: "spot",
+    });
 
-    // Same phase in, same field out — this is what makes the bake match the viewport.
-    expect(alphasAt(0)).toEqual(alphasAt(0));
-    expect(alphasAt(0)).not.toEqual(alphasAt(500));
-  });
+    const resolved = resolveCloudLightReferences(input);
+    const result = resolved.nodes[0];
+    if (result.type !== "clouds") throw new Error("Expected Clouds");
 
-  it("mixes shadow to lit colour by sun influence", () => {
-    const params = createParams({ color: "#ffffff", coverage: 1, shadowColor: "#000000" });
-    // Sun straight up: a direction facing it is fully lit, one facing away is fully shadowed.
-    const lit = sampleCloudsLayer([0, 1, 0], { ...params, sunDirection: [0, 1, 0] });
-    const shadowed = sampleCloudsLayer([0, 1, 0], { ...params, sunDirection: [0, -1, 0] });
-
-    expect(lit[0]).toBeGreaterThan(shadowed[0]);
-    expect(lit[0]).toBeCloseTo(1);
-    expect(shadowed[0]).toBeCloseTo(0);
-  });
-
-  it("composes through evaluateSkyboxDirection over a lower layer", () => {
-    const manifest: SkyboxManifestV2 = {
-      composition: { mode: "alpha-over", order: "bottom-to-top" },
-      geometry: { type: "sphere" },
-      nodes: [
-        {
-          blendMode: "normal",
-          enabled: true,
-          id: "clouds",
-          name: "Clouds",
-          opacity: 100,
-          params: createParams({ color: "#ffffff", coverage: 1, shadowColor: "#ffffff" }),
-          type: "clouds",
-        },
-        {
-          blendMode: "normal",
-          enabled: true,
-          id: "base",
-          name: "Base",
-          opacity: 100,
-          params: {
-            mode: "linear",
-            rotation: 0,
-            stops: [
-              { color: "#000000", location: 0, midpoint: 50, opacity: 100 },
-              { color: "#000000", location: 100, midpoint: 50, opacity: 100 },
-            ],
-          },
-          type: "gradient",
-        },
-      ],
-      version: 2,
-    };
-    // Straight up the clouds are opaque white, so they must fully cover the black gradient.
-    const up = evaluateSkyboxDirection(manifest, [0, 1, 0]);
-    // Straight down they are transparent, leaving the gradient.
-    const down = evaluateSkyboxDirection(manifest, [0, -1, 0]);
-
-    expect(up[0]).toBeCloseTo(1);
-    expect(down[0]).toBeCloseTo(0);
+    expect(result.params.sun.direction).toEqual([1, 0, 0]);
+    expect(result.params.sun.intensity).toBe(20);
+    expect(result.params.sun.tint).toBe("#ffffff");
   });
 });

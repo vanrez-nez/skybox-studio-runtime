@@ -11,6 +11,12 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     setBakeOptions(options: SkyboxBakeOptions): this;
     setRenderer(renderer: SupportedRenderer | null): this;
     setRenderMode(mode: SkyboxRenderMode): this;
+    /**
+     * Supplies deterministic host time to Dynamic Clouds layers. This is a
+     * uniform-only update: it never rebuilds the material or regenerates the
+     * baked cloud-field texture. The host remains responsible for rendering.
+     */
+    setTime(timeSeconds: number): this;
     setStarGlintViewport(viewport: StarGlintViewport | null): this;
     setImageTexture(layerId: string, texture: THREE.Texture | null): this;
     setImageTextures(textures: ImageTextureMap): this;

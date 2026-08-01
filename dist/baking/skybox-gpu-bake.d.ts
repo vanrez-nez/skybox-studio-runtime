@@ -10,6 +10,7 @@ export type SkyboxGpuBakeOptions = {
     hdr?: boolean;
     height: number;
     imageTextures?: Map<string, THREE.Texture>;
+    cloudFieldTextures?: Map<string, THREE.Texture>;
     starfieldTextures?: Map<string, THREE.Texture>;
     width: number;
 };

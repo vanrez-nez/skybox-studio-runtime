@@ -320,15 +320,26 @@ export function composeCoverageExpression(
       if (node.type === "group") {
         return `{
         let sourceAlpha = clamp(${opacityRef}, 0.0, 1.0);
-        coverageAbove = sourceAlpha + coverageAbove * (1.0 - sourceAlpha);
+        transmissionAbove = transmissionAbove * vec3<f32>(1.0 - sourceAlpha);
       }`;
+      }
+
+      const adapterRuntime = webGpuRuntime.adapters.get(node.type);
+      const customCoverage = adapterRuntime?.adapter.createCoverageExpression?.(
+        node as never,
+        "wgsl",
+        { bindingsByLayerId: adapterRuntime.bindingsByLayerId },
+      );
+
+      if (customCoverage) {
+        return `{ ${customCoverage} }`;
       }
 
       return `{
         ${mutableDeclaration("effectColor", "vec4<f32>", "vec4<f32>(0.0)")}
         ${webGpuEffectExpression(node, webGpuRuntime)}
         let sourceAlpha = clamp(effectColor.a * ${opacityRef}, 0.0, 1.0);
-        coverageAbove = sourceAlpha + coverageAbove * (1.0 - sourceAlpha);
+        transmissionAbove = transmissionAbove * vec3<f32>(1.0 - sourceAlpha);
       }`;
     })
     .filter(Boolean)

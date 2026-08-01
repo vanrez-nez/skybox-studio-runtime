@@ -843,8 +843,8 @@ function createStarGlintMaterial(params: SkyboxStarfieldParams) {
     const radiance = color.mul(core.add(glare.mul(glareStrength))).mul(bright);
     // Phase B: attenuate by the transmittance of layers stacked above the starfield (sampled at this
     // screen pixel) so opaque upper layers occlude the glints. Defaults to 1 (no coverage bound).
-    const transmittance = texture(uCoverageTexture, screenUV as any).r;
-    const occluded = radiance.mul(mix(1.0, transmittance, uCoverageEnabled));
+    const transmittance = texture(uCoverageTexture, screenUV as any).rgb;
+    const occluded = radiance.mul(mix(vec3(1.0), transmittance, uCoverageEnabled));
 
     return vec4(occluded, 1.0);
   })();

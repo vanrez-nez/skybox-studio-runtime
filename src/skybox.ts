@@ -7,6 +7,10 @@ import {
 } from "./skybox/geometry";
 import { DEFAULT_EDITOR_LAYER_STATE } from "./skybox/editor-presentation";
 import { disposeStarfieldTexture } from "./layer-addons/builtins/starfield";
+import {
+  disposeCloudFieldTextures,
+  syncCloudFieldTextures,
+} from "./layer-addons/builtins/clouds";
 // Side-effect: register every built-in layer adapter (CPU + GPU halves) before materials build.
 import "./layer-addons/builtins";
 import type {
@@ -21,7 +25,11 @@ import type {
   SkyboxSpotParams,
   SkyboxStarfieldParams,
 } from "./manifest";
-import { DEFAULT_SKYBOX_GEOMETRY, migrateManifestToV2 } from "./manifest";
+import {
+  DEFAULT_SKYBOX_GEOMETRY,
+  migrateManifestToV2,
+  resolveCloudLightReferences,
+} from "./manifest";
 import { createStarfieldBakeService } from "./baking/starfield-bake-registry";
 import type {
   StarfieldGlintHandle,
@@ -67,6 +75,7 @@ const DEFAULT_MANIFEST: SkyboxManifestV2 = {
 
 export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #bakeOptions: SkyboxBakeOptions = {};
+  #cloudFieldTextures = new Map<string, THREE.Texture>();
   #editorLayerState: SkyboxEditorLayerState = { ...DEFAULT_EDITOR_LAYER_STATE };
   #editorPresentationEnabled = false;
   #geometryOptions: SkyboxGeometryOptions = DEFAULT_SKYBOX_GEOMETRY;
@@ -96,6 +105,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   #starfieldBakeTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   #starfieldTextureKeys = new Map<string, string>();
   #starfieldTextures = new Map<string, THREE.Texture>();
+  #time = 0;
   // Live screen-space star glints (constant-pixel stars), one child mesh per starfield layer. The
   // equirect texture above carries nebula only on the live path; the glints render the star cores.
   #starfieldGlints = new Map<string, { handle: StarfieldGlintHandle; geometryKey: string }>();
@@ -113,7 +123,15 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
   constructor() {
     super(
       createSkyboxGeometry(DEFAULT_SKYBOX_GEOMETRY),
-      createWebGpuMaterial(DEFAULT_MANIFEST, DEFAULT_EDITOR_LAYER_STATE, new Map(), new Map(), new Map(), false)
+      createWebGpuMaterial(
+        DEFAULT_MANIFEST,
+        DEFAULT_EDITOR_LAYER_STATE,
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        false,
+      )
     );
     this.frustumCulled = false;
     this.renderOrder = -1;
@@ -150,6 +168,23 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
 
   setRenderMode(mode: SkyboxRenderMode) {
     this.#renderMode = mode;
+    return this;
+  }
+
+  /**
+   * Supplies deterministic host time to Dynamic Clouds layers. This is a
+   * uniform-only update: it never rebuilds the material or regenerates the
+   * baked cloud-field texture. The host remains responsible for rendering.
+   */
+  setTime(timeSeconds: number) {
+    if (!Number.isFinite(timeSeconds) || this.#time === timeSeconds) {
+      return this;
+    }
+
+    this.#time = timeSeconds;
+    this.material.userData.applyTime?.(timeSeconds);
+    this.#coverageMaterial?.userData.applyTime?.(timeSeconds);
+
     return this;
   }
 
@@ -349,8 +384,10 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         this.#manifest,
         this.#imageTextures,
         this.#starfieldTextures,
-        new Map()
+        new Map(),
+        this.#cloudFieldTextures,
       );
+      this.#coverageMaterial.userData.applyTime?.(this.#time);
       this.#coverageMaterial.userData.applyImageTextures?.(this.#imageTextures);
       this.#imagePlacementOverrides.forEach((placement, layerId) => {
         this.#coverageMaterial?.userData.applyImageLayerPlacement?.(layerId, placement);
@@ -550,6 +587,8 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       nextMaterial.userData.applyImageLayerPlacement?.(layerId, placement);
     });
     nextMaterial.userData.applyStarfieldTextures?.(this.#starfieldTextures);
+    nextMaterial.userData.applyCloudFieldTextures?.(this.#cloudFieldTextures);
+    nextMaterial.userData.applyTime?.(this.#time);
     previousMaterial.dispose();
     this.disposeOwnedTexture();
     this.#ownedTexture = ownedTexture;
@@ -562,6 +601,8 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     }
     this.material.userData.applyImageTextures?.(this.#imageTextures);
     this.material.userData.applyStarfieldTextures?.(this.#starfieldTextures);
+    this.material.userData.applyCloudFieldTextures?.(this.#cloudFieldTextures);
+    this.material.userData.applyTime?.(this.#time);
     this.material.userData.applyEditorLayerState?.(this.#editorLayerState);
     this.#imagePlacementOverrides.forEach((placement, layerId) => {
       this.material.userData.applyImageLayerPlacement?.(layerId, placement);
@@ -573,6 +614,10 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         forEachRenderableLayer(this.#manifest.nodes, this.#coverageMaterial.userData.applyLayerParams);
       }
       this.#coverageMaterial.userData.applyImageTextures?.(this.#imageTextures);
+      this.#coverageMaterial.userData.applyCloudFieldTextures?.(
+        this.#cloudFieldTextures,
+      );
+      this.#coverageMaterial.userData.applyTime?.(this.#time);
       this.#imagePlacementOverrides.forEach((placement, layerId) => {
         this.#coverageMaterial?.userData.applyImageLayerPlacement?.(layerId, placement);
       });
@@ -647,6 +692,12 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#imagePlacementOverrides.set(layerId, placement);
     this.material.userData.applyImageLayerPlacement?.(layerId, placement);
     this.#coverageMaterial?.userData.applyImageLayerPlacement?.(layerId, placement);
+    this.#manifest = resolveCloudLightReferences(this.#manifest);
+    forEachRenderableLayer(this.#manifest.nodes, (layer) => {
+      if (layer.type === "clouds") {
+        this.#liveUpdateContext.applyLayerParams(layer);
+      }
+    });
 
     return this;
   }
@@ -684,7 +735,40 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     }
 
     (node as { params: unknown }).params = params;
-    getLayerRuntimeAdapter(node.type)?.updateLive?.(this.#liveUpdateContext, node);
+    this.#manifest = resolveCloudLightReferences(this.#manifest);
+    const resolvedNode = findManifestNodeById(this.#manifest.nodes, layerId);
+
+    if (!resolvedNode || resolvedNode.type === "group") {
+      return this;
+    }
+
+    const cloudFieldChanged = syncCloudFieldTextures(
+      this.#manifest,
+      this.#cloudFieldTextures,
+    );
+    if (cloudFieldChanged) {
+      this.material.userData.applyCloudFieldTextures?.(this.#cloudFieldTextures);
+      this.#coverageMaterial?.userData.applyCloudFieldTextures?.(
+        this.#cloudFieldTextures,
+      );
+    }
+
+    getLayerRuntimeAdapter(resolvedNode.type)?.updateLive?.(
+      this.#liveUpdateContext,
+      resolvedNode,
+    );
+
+    // Image/Spot movement can drive either Clouds light. Re-resolve and push
+    // only those dependent sky uniforms; the field texture and material stay put.
+    if (resolvedNode.type === "image" || resolvedNode.type === "spot") {
+      forEachRenderableLayer(this.#manifest.nodes, (layer) => {
+        if (layer.type === "clouds") {
+          this.#liveUpdateContext.applyLayerParams(layer);
+        }
+      });
+    }
+    this.material.userData.applyTime?.(this.#time);
+    this.#coverageMaterial?.userData.applyTime?.(this.#time);
 
     return this;
   }
@@ -709,6 +793,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     const nextManifest = migrateManifestToV2(manifest);
     this.#manifest = nextManifest;
     this.applyGeometry(this.#manifest.geometry ?? this.#geometryOptions);
+    syncCloudFieldTextures(this.#manifest, this.#cloudFieldTextures);
     this.syncStarfieldTextures();
     const renderMode = resolveRenderMode(this.#renderMode);
     const nextTopologyKey = createMaterialTopologyKey(
@@ -730,6 +815,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         this.#imageTextures,
         this.#starfieldTextures,
         new Map(),
+        this.#cloudFieldTextures,
         this.#editorPresentationEnabled
       ));
     } else {
@@ -738,6 +824,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     }
 
     this.#materialTopologyKey = nextTopologyKey;
+    this.material.userData.applyTime?.(this.#time);
     this.syncCoverage(nextTopologyKey);
 
     return this;
@@ -759,6 +846,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.geometry.dispose();
     this.material.dispose();
     this.disposeOwnedTexture();
+    disposeCloudFieldTextures(this.#cloudFieldTextures);
     this.disposeStarfieldTextures();
     this.disposeStarfieldGlints();
     this.disposeCoverage();

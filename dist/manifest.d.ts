@@ -129,16 +129,50 @@ export type SkyboxStarfieldParams = {
     quality: SkyboxStarfieldQuality;
     stars: SkyboxStarfieldStarsParams;
 };
-export type SkyboxCloudsParams = {
-    color: string;
+export type SkyboxCloudMotionMode = "static" | "dynamic";
+export type SkyboxCloudFieldParams = {
+    octaves: number;
+    persistence: number;
+    seed: number;
+    size: number;
+    tiles: number;
+};
+export type SkyboxCloudLayerParams = {
+    altitude: number;
     coverage: number;
     density: number;
-    elevation: number;
-    phase: number;
-    scale: number;
-    shadowColor: string;
+    enabled: boolean;
+    featureSize: number;
+    morphBlend: number;
+    morphScale: number;
+    morphSpeed: number;
+    phaseG: number;
     speed: number;
-    sunDirection: [number, number, number];
+};
+export type SkyboxCloudLightParams = {
+    direction: [number, number, number];
+    directionLayerId: string | null;
+    disc: boolean;
+    intensity: number;
+    tint: string;
+};
+export type SkyboxCloudsParams = {
+    cloudHigh: SkyboxCloudLayerParams;
+    cloudLow: SkyboxCloudLayerParams;
+    debugLayers: boolean;
+    exposure: number;
+    eyeHeight: number;
+    field: SkyboxCloudFieldParams;
+    km: number;
+    kr: number;
+    mieDirectionalG: number;
+    mistDensity: number;
+    mistHeight: number;
+    moon: SkyboxCloudLightParams;
+    motionMode: SkyboxCloudMotionMode;
+    samples: number;
+    sun: SkyboxCloudLightParams;
+    time: number;
 };
 export type SkyboxCloudsLayer = {
     blendMode: SkyboxLayerBlendMode;
@@ -266,4 +300,10 @@ export type SkyboxManifestV2 = {
 export type SkyboxManifest = SkyboxManifestV1 | SkyboxManifestV2;
 export type SkyboxRenderMode = "auto" | "live-webgpu" | "live-webgl" | "baked-texture";
 export declare const DEFAULT_SKYBOX_GEOMETRY: SkyboxGeometryOptions;
+/**
+ * Resolves Clouds light links without importing editor state. Image/Spot
+ * appearance never leaks into the sky model; only their direction is copied.
+ * Invalid links are cleared while the last stored direction is retained.
+ */
+export declare function resolveCloudLightReferences(manifest: SkyboxManifestV2): SkyboxManifestV2;
 export declare function migrateManifestToV2(manifest: SkyboxManifest): SkyboxManifestV2;

@@ -15,6 +15,7 @@ export type WebGpuLayerSampleContext<TBinding, TUniforms> = {
   bindings: TBinding[];
   direction: unknown;
   imageTextures: Map<string, THREE.Texture>;
+  resourceTextures: Map<string, THREE.Texture>;
   uniforms: TUniforms[];
 };
 
@@ -34,6 +35,11 @@ export type WebGpuLayerAdapter<
     language: "wgsl",
     context: WebGpuLayerExpressionContext<TBinding>
   ): string;
+  createCoverageExpression?(
+    layer: TLayer,
+    language: "wgsl",
+    context: WebGpuLayerExpressionContext<TBinding>
+  ): string;
   createSampleNodes?(
     context: WebGpuLayerSampleContext<TBinding, TUniforms>
   ): WebGpuLayerSampleNodes;
@@ -45,6 +51,7 @@ export type WebGpuLayerAdapter<
   createUniforms(bindings: TBinding[]): TUniforms[];
   getTopologyKey(layer: TLayer): unknown;
   type: TLayer["type"];
+  updateTime?(uniforms: TUniforms[], time: number): void;
   updateUniforms(uniforms: TUniforms[], layer: TLayer): void;
 };
 

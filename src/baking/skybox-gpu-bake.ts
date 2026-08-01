@@ -3,6 +3,10 @@ import * as THREE from "three";
 import type { BakedSkyboxImageData } from "./bake";
 import { migrateManifestToV2, type SkyboxManifest } from "../manifest";
 import { createWebGpuEquirectBakeMaterial } from "../skybox/materials";
+import {
+  disposeCloudFieldTextures,
+  syncCloudFieldTextures,
+} from "../layer-addons/builtins/clouds";
 
 export type SkyboxGpuBakeOptions = {
   /** When true (and `hdr`), bake into a full 32-bit float target instead of 16-bit half-float. */
@@ -13,6 +17,7 @@ export type SkyboxGpuBakeOptions = {
   hdr?: boolean;
   height: number;
   imageTextures?: Map<string, THREE.Texture>;
+  cloudFieldTextures?: Map<string, THREE.Texture>;
   starfieldTextures?: Map<string, THREE.Texture>;
   width: number;
 };
@@ -117,10 +122,19 @@ export class SkyboxGpuBakeService {
     const width = Math.max(1, Math.floor(options.width));
     const height = Math.max(1, Math.floor(options.height));
     const migratedManifest = migrateManifestToV2(manifest);
+    const ownedCloudFieldTextures = options.cloudFieldTextures
+      ? null
+      : new Map<string, THREE.Texture>();
+    const cloudFieldTextures =
+      options.cloudFieldTextures ?? ownedCloudFieldTextures ?? new Map();
+    if (ownedCloudFieldTextures) {
+      syncCloudFieldTextures(migratedManifest, ownedCloudFieldTextures);
+    }
     const material = createWebGpuEquirectBakeMaterial(
       migratedManifest,
       options.imageTextures ?? new Map(),
       options.starfieldTextures ?? new Map(),
+      cloudFieldTextures,
       { flipY: options.flipY }
     );
     const target = createEquirectRenderTarget(
@@ -162,6 +176,9 @@ export class SkyboxGpuBakeService {
       dispose: () => {
         material.dispose();
         target.dispose();
+        if (ownedCloudFieldTextures) {
+          disposeCloudFieldTextures(ownedCloudFieldTextures);
+        }
       },
     };
   }

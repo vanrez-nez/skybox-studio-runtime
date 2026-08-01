@@ -12,6 +12,7 @@ export type WebGpuLayerSampleContext<TBinding, TUniforms> = {
     bindings: TBinding[];
     direction: unknown;
     imageTextures: Map<string, THREE.Texture>;
+    resourceTextures: Map<string, THREE.Texture>;
     uniforms: TUniforms[];
 };
 export type WebGpuLayerExpressionContext<TBinding> = {
@@ -21,11 +22,13 @@ export type WebGpuLayerAdapter<TLayer extends SkyboxManifestLayer = SkyboxManife
     collect(nodes: SkyboxManifestNode[]): TBinding[];
     createParameterDeclarations(bindings: TBinding[]): string;
     createSampleExpression(layer: TLayer, language: "wgsl", context: WebGpuLayerExpressionContext<TBinding>): string;
+    createCoverageExpression?(layer: TLayer, language: "wgsl", context: WebGpuLayerExpressionContext<TBinding>): string;
     createSampleNodes?(context: WebGpuLayerSampleContext<TBinding, TUniforms>): WebGpuLayerSampleNodes;
     createSampleParameters?(bindings: TBinding[], uniforms: TUniforms[], samples?: WebGpuLayerSampleNodes): Record<string, unknown>;
     createUniforms(bindings: TBinding[]): TUniforms[];
     getTopologyKey(layer: TLayer): unknown;
     type: TLayer["type"];
+    updateTime?(uniforms: TUniforms[], time: number): void;
     updateUniforms(uniforms: TUniforms[], layer: TLayer): void;
 };
 export type WebGpuLayerAdapterRuntime<TLayer extends SkyboxManifestLayer = SkyboxManifestLayer, TBinding = unknown, TUniforms = unknown> = {

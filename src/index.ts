@@ -1,4 +1,10 @@
 export { createSkyboxGeometry, createSkyboxWireGeometry } from "./skybox/geometry";
+export {
+  DEFAULT_SKYBOX_CLOUDS_PARAMS,
+  FULL_MOON_SKYBOX_CLOUDS_PARAMS,
+  cloneSkyboxCloudsParams,
+  createDefaultSkyboxCloudsParams,
+} from "./layer-addons/builtins/clouds";
 export { createBakedSkyboxTexture } from "./skybox/materials";
 export { Skybox } from "./skybox";
 export {
@@ -72,6 +78,10 @@ export type {
 } from "./layer-addons";
 export type {
   SkyboxBakeOptions,
+  SkyboxCloudFieldParams,
+  SkyboxCloudLayerParams,
+  SkyboxCloudLightParams,
+  SkyboxCloudMotionMode,
   SkyboxCloudsLayer,
   SkyboxCloudsParams,
   SkyboxCompositionMode,
@@ -105,7 +115,7 @@ export type {
   SkyboxStarfieldQuality,
   SkyboxStarfieldStarsParams,
 } from "./manifest";
-export { migrateManifestToV2 } from "./manifest";
+export { migrateManifestToV2, resolveCloudLightReferences } from "./manifest";
 export {
   Loader,
   LoaderAssetError,
