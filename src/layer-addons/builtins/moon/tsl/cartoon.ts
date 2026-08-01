@@ -39,8 +39,6 @@ const {
 } = TSL as any;
 
 import { hash43 } from "./fields";
-import { rimTerm } from "./light";
-
 // Loop bound. The active count is a uniform; inactive craters are masked out.
 export const MAX_CARTOON_CRATERS = 64;
 
@@ -186,22 +184,18 @@ export function cartoon(
   const glow = smoothstep(edge, edge.add(0.13), signedDist)
     .oneMinus().mul(phase).mul(U.cartoonEdgeGlow);
 
-  // Shared light rig on top of the drawn surface. `lightIntensity` scales only what
-  // the light contributes, so overshooting it blows the lit side out without also
-  // lifting the ambient fill. The rim is gated by the phase so it hugs the crescent.
-  const rim = rimTerm(n.z, phase, U);
+  // Deliberately artistic controls stay isolated to the cartoon pipeline. The
+  // realistic pipeline has no corresponding light/fill knobs.
   const lit = inked
     .add(inked.mul(glow))
-    .mul(U.lightIntensity)
-    .add(inked.mul(U.ambient))
-    .add(U.rimColor.mul(rim));
+    .mul(U.cartoonLightIntensity)
+    .add(inked.mul(U.cartoonFill));
 
   // Cropped: the unlit side is discarded entirely, leaving a shaded crescent with
   // nothing behind it. Otherwise it is filled with the night colour.
-  const night = U.nightColor.mul(U.earthshine.mul(6.0));
+  const night = U.nightColor.mul(U.cartoonNightStrength);
   const color = mix(mix(night, lit, phase), lit, U.cartoonCrop);
   const alpha = mix(float(1.0), phase, U.cartoonCrop);
 
   return vec4(color.mul(U.exposure), alpha);
 }
-

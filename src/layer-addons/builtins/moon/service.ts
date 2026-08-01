@@ -10,6 +10,7 @@ import { MoonBaker } from "./baker";
 import {
   MOON_RESOLUTION_MAX,
   MOON_RESOLUTION_MIN,
+  normalizeSkyboxMoonParams,
   type MoonBakeParams,
 } from "./params";
 
@@ -74,7 +75,8 @@ export function resolveMoonBakeResolution(
 }
 
 export function createMoonBakeKey(params: SkyboxMoonParams, resolution: number) {
-  const { placement: _placement, resolutionMode: _resolutionMode, ...appearance } = params;
+  const normalized = normalizeSkyboxMoonParams(params);
+  const { placement: _placement, resolutionMode: _resolutionMode, ...appearance } = normalized;
 
   return JSON.stringify({ appearance, resolution });
 }
@@ -124,10 +126,11 @@ export class MoonGpuBakeService {
       throw new Error("Moon bake service has been disposed.");
     }
 
-    const resolution = resolveMoonBakeResolution(params, target);
+    const normalized = normalizeSkyboxMoonParams(params);
+    const resolution = resolveMoonBakeResolution(normalized, target);
     const request: MoonBakeRequest = {
-      key: createMoonBakeKey(params, resolution),
-      params: { ...params, resolution },
+      key: createMoonBakeKey(normalized, resolution),
+      params: { ...normalized, resolution },
       resolution,
     };
     let record = this.#records.get(layerId);

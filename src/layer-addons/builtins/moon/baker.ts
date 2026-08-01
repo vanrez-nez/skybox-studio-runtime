@@ -16,16 +16,22 @@
 //  literally its xy — which makes the shadow march in pass C exact rather than
 //  approximate.
 //
-//  pass A  terrain   craters + maria + regolith    → height, albedo, mare, bright
-//  pass B  derive    normals + ambient occlusion   → normal.xyz, ao
-//  pass C  shade     sun, shadows, style           → the finished RGBA image
+//  pass A  terrain   craters + maria + regolith    → height, mottle, mare, bright
+//  pass B  derive    height-field normals          → normal.xyz
+//  pass C  shade     Hapke photometry + shadows    → the finished RGBA image
 // ─────────────────────────────────────────────────────────────────────────────
 import * as THREE from "three/webgpu";
 import * as TSL from "three/tsl";
 import type { MoonBakeParams } from "./params";
+import { SUN_ANGULAR_RADIUS_RADIANS } from "./photometry";
 import { surface, librate } from "./tsl/fields";
 import { cartoon } from "./tsl/cartoon";
-import { rimTerm, haloTerm } from "./tsl/light";
+import {
+  earthshineIrradiance,
+  hapkeReflectance,
+  lunarHapkeMaterial,
+  normalizeLunarReflectance,
+} from "./tsl/hapke";
 import { DISC_FILL } from "./disc";
 
 // See the note in tsl/fields.ts — TSL's exact node typings are more trouble than
@@ -33,12 +39,12 @@ import { DISC_FILL } from "./disc";
 const {
   Fn, instanceIndex, uniform, textureStore, textureLoad,
   int, float, vec2, vec3, vec4, ivec2,
-  floor, sqrt, length, dot, min, max, mix, clamp, smoothstep, normalize,
+  floor, sqrt, length, dot, min, max, mix, clamp, smoothstep, normalize, acos,
 } = TSL as any;
 
-const AO_DIRS = 6;
-const AO_STEPS = 4;
-const SHADOW_STEPS = 14;
+const SHADOW_STEPS = 24;
+const MAX_CRATER_EJECTA_DIAMETER = 0.76 * 2.6;
+const SOLAR_PENUMBRA_SLOPE = Math.tan(SUN_ANGULAR_RADIUS_RADIANS);
 
 type Uniforms = Record<string, any>;
 
@@ -46,9 +52,9 @@ export class MoonBaker {
   private renderer: THREE.WebGPURenderer;
   private size: number;
 
-  /** R = height, G = albedo, B = mare mask, A = fresh-crater brightness */
+  /** R = height, G = reflectance mottle, B = mare mask, A = fresh-ray mask */
   terrainTex!: THREE.StorageTexture;
-  /** RGB = perturbed normal, A = ambient occlusion */
+  /** RGB = height-field normal. */
   deriveTex!: THREE.StorageTexture;
   /** The finished, fully lit moon. This is the only texture the scene samples. */
   outputTex!: THREE.StorageTexture;
@@ -69,34 +75,20 @@ export class MoonBaker {
       craterFreq: uniform(params.craterFreq),
       craterDepth: uniform(params.craterDepth),
       maria: uniform(params.maria),
-      mariaDarkness: uniform(params.mariaDarkness),
       mariaDepth: uniform(params.mariaDepth),
       regolith: uniform(params.regolith),
       rays: uniform(params.rays),
-      albedo: uniform(params.albedo),
       tilt: uniform(params.bodyTilt),
       rotation: uniform(params.bodyRotation),
-      bumpStrength: uniform(params.bumpStrength),
-      ao: uniform(params.ao),
-      shadowStrength: uniform(params.shadowStrength),
-      shadowReach: uniform(params.shadowReach),
-      backscatter: uniform(params.backscatter),
-      earthshine: uniform(params.earthshine),
       exposure: uniform(params.exposure),
-      lightIntensity: uniform(params.lightIntensity),
-      ambient: uniform(params.ambient),
-      rimStrength: uniform(params.rimStrength),
-      rimPower: uniform(params.rimPower),
-      rimColor: uniform(new THREE.Color(params.rimColor)),
-      glowStrength: uniform(params.glowStrength),
-      glowWidth: uniform(params.glowWidth),
-      glowWrap: uniform(params.glowWrap),
-      glowColor: uniform(new THREE.Color(params.glowColor)),
       sunDir: uniform(new THREE.Vector3(0, 0, 1)),
       // Illuminated fraction, 0 at new and 1 at full. Only the drawn crescent uses
       // it — the real terminator falls out of sunDir on its own.
       phaseT: uniform(1),
 
+      cartoonLightIntensity: uniform(params.cartoonLightIntensity),
+      cartoonFill: uniform(params.cartoonFill),
+      cartoonNightStrength: uniform(params.cartoonNightStrength),
       cartoonCraters: uniform(params.cartoonCraters),
       cartoonCraterSize: uniform(params.cartoonCraterSize),
       cartoonWobble: uniform(params.cartoonWobble),
@@ -180,12 +172,11 @@ export class MoonBaker {
       textureStore(this.terrainTex, ivec2(x, y), surface(sp, U)).toWriteOnly();
     })().compute(size * size);
 
-    // ── pass B · normals + ambient occlusion ──────────────────────────────────
+    // ── pass B · height-field normals ─────────────────────────────────────────
     const derivePass = Fn(() => {
       const { x, y, pc, z, n } = frame();
 
       const h = (ix: any, iy: any) => textureLoad(this.terrainTex, at(ix, iy)).x;
-      const h0 = h(x, y);
       const dp = 2.0 / (size * DISC_FILL); // disc units per texel
       const hx = h(x.add(1), y).sub(h(x.sub(1), y)).div(2.0 * dp);
       const hy = h(x, y.add(1)).sub(h(x, y.sub(1))).div(2.0 * dp);
@@ -207,104 +198,89 @@ export class MoonBaker {
       // Near the limb a single texel spans an enormous arc, so the gradient is
       // undersampled and would alias into a bright fringe. Fade it out.
       const limbFade = smoothstep(0.0, 0.22, z);
-      const nrm = normalize(n.sub(grad.mul(U.bumpStrength.mul(limbFade))));
+      const nrm = normalize(n.sub(grad.mul(limbFade)));
 
-      // Ambient occlusion by horizon scan. Marched in disc space with the sphere's
-      // own fall-off (arc²/2) subtracted, so only genuine relief occludes. The
-      // foreshortening error near the limb is invisible in an AO term.
-      const occl = float(0).toVar();
-      for (let d = 0; d < AO_DIRS; d++) {
-        const ang = (d / AO_DIRS) * Math.PI * 2.0;
-        const dir = vec2(Math.cos(ang), Math.sin(ang));
-        const horizon = float(0).toVar();
-        for (let s = 1; s <= AO_STEPS; s++) {
-          const arc = U.shadowReach.mul(s / AO_STEPS);
-          const rise = loadHeight(pc.add(dir.mul(arc))).sub(h0).sub(arc.mul(arc).mul(0.5));
-          const t = max(rise.div(arc), 0.0);
-          horizon.assign(max(horizon, t.div(sqrt(t.mul(t).add(1.0)))));
-        }
-        occl.addAssign(horizon);
-      }
-      const ao = occl.div(AO_DIRS).mul(U.ao).oneMinus().clamp(0.0, 1.0);
-
-      textureStore(this.deriveTex, ivec2(x, y), vec4(nrm, ao)).toWriteOnly();
+      textureStore(this.deriveTex, ivec2(x, y), vec4(nrm, 1.0)).toWriteOnly();
     })().compute(size * size);
 
     // ── pass C · shade ────────────────────────────────────────────────────────
     const shadePass = Fn(() => {
-      const { x, y, r, pc, z, n } = frame();
+      const { x, y, r, pc, n } = frame();
 
       const terrain = textureLoad(this.terrainTex, ivec2(x, y));
       const derived = textureLoad(this.deriveTex, ivec2(x, y));
       const h0 = terrain.x;
-      const albedo = terrain.y;
+      const mottle = terrain.y;
+      const mare = terrain.z;
+      const brightRays = terrain.w.mul(U.rays);
       const nrm = derived.xyz;
-      const ao = derived.w;
 
       const L = U.sunDir;
-      const ndl = max(dot(nrm, L), 0.0);
+      const V = vec3(0.0, 0.0, 1.0);
+      const ndl = dot(nrm, L);
       const ndlBase = dot(n, L);
-      const ndv = max(z, 0.0);
+      const ndv = dot(nrm, V);
+      const phaseCosine = clamp(dot(L, V), -1.0, 1.0);
+      const phaseAngle = acos(phaseCosine);
+      const material = lunarHapkeMaterial(mare, mottle, brightRays);
 
       // Cast shadows. The disc coordinate *is* the sphere point's xy under an
       // orthographic view, so stepping the tangential light direction by arc
       // length `s` is exactly a disc step of Lt.xy * s — no reprojection. The
       // sphere curving away under the ray is the arc²/2 term.
-      const tangent = normalize(L.sub(n.mul(ndlBase)));
+      const tangent = normalize(L.sub(n.mul(ndlBase)).add(vec3(1e-6, 0.0, 0.0)));
       const tanElev = ndlBase.div(sqrt(max(ndlBase.mul(ndlBase).oneMinus(), 1e-4)));
+      const shadowReach = clamp(
+        float(MAX_CRATER_EJECTA_DIAMETER).div(max(U.craterFreq, 0.1)),
+        0.11,
+        0.4,
+      );
       const shadow = float(1.0).toVar();
       for (let s = 1; s <= SHADOW_STEPS; s++) {
-        const arc = U.shadowReach.mul(s / SHADOW_STEPS);
+        const arc = shadowReach.mul(s / SHADOW_STEPS);
         const surfH = loadHeight(pc.add(tangent.xy.mul(arc))).sub(arc.mul(arc).mul(0.5));
         const rayH = h0.add(arc.mul(tanElev));
-        shadow.assign(min(shadow, smoothstep(0.0, U.craterDepth.mul(0.3), rayH.sub(surfH))));
+        const halfPenumbra = max(arc.mul(SOLAR_PENUMBRA_SLOPE), 1e-5);
+        shadow.assign(min(
+          shadow,
+          smoothstep(halfPenumbra.negate(), halfPenumbra, rayH.sub(surfH)),
+        ));
       }
-      // Only meaningful where the sun is actually above the local horizon.
-      const shadowTerm = mix(
-        float(1.0), shadow,
-        U.shadowStrength.mul(smoothstep(0.0, 0.18, ndlBase)),
-      );
 
-      // Lambert is wrong for the moon: a full moon is famously *flat*, not bright
-      // in the middle and dark at the edges. Lommel-Seeliger backscattering gives
-      // that — at zero phase ndl ≈ ndv, so the disc reads uniform.
-      const lommel = ndl.div(ndl.add(ndv).add(1e-4)).mul(2.0);
-      const shading = mix(ndl, lommel, U.backscatter).clamp(0.0, 2.0);
-
-      const sunColor = vec3(1.0, 0.97, 0.92);
-      const earthColor = vec3(0.35, 0.5, 0.9);
-      const earthshine = shading.oneMinus().clamp(0.0, 1.0).mul(ndv).mul(U.earthshine);
-
-      // `lightIntensity` scales only the direct term, so pushing it past 1 blows out
-      // the lit side while leaving earthshine and ambient where they were.
-      const direct = shading.mul(shadowTerm).mul(ao).mul(U.lightIntensity);
-      const rim = rimTerm(z, smoothstep(0.0, 0.25, ndlBase), U);
-
-      const surfaceColor = vec3(albedo)
-        .mul(direct.add(U.ambient))
-        .mul(sunColor)
-        .add(vec3(albedo).mul(earthshine).mul(earthColor))
-        .add(U.rimColor.mul(rim))
+      const direct = hapkeReflectance({
+        cosPhase: phaseCosine,
+        material,
+        mu: ndv,
+        mu0: ndl,
+      }).mul(shadow);
+      const earthshine = hapkeReflectance({
+        cosPhase: 1.0,
+        material,
+        mu: ndv,
+        mu0: ndv,
+      }).mul(earthshineIrradiance(phaseAngle));
+      const surfaceLuminance = normalizeLunarReflectance(direct.add(earthshine))
         .mul(U.exposure);
+      const surfaceColor = vec3(surfaceLuminance);
 
       // Antialiased limb, ~1.5 texels wide.
       const edge = (2.0 / (size * DISC_FILL)) * 1.5;
       const discAlpha = smoothstep(1.0, 1.0 - edge, r);
-      const halo = haloTerm(r, pc, L, U).mul(U.exposure);
 
-      // The disc stays opaque and the halo carries its own alpha into the margin, so
-      // one quad gives both without needing an additive pass.
-      const color = mix(U.glowColor.mul(halo), surfaceColor, discAlpha);
-      const alpha = clamp(discAlpha.add(halo), 0.0, 1.0);
-
-      textureStore(this.outputTex, ivec2(x, y), vec4(color, alpha)).toWriteOnly();
+      textureStore(
+        this.outputTex,
+        ivec2(x, y),
+        // The layer compositor expects straight alpha and applies sourceAlpha
+        // itself. Keep the edge colour unassociated so AA is not multiplied twice.
+        vec4(surfaceColor, discAlpha),
+      ).toWriteOnly();
     })().compute(size * size);
 
     // ── cartoon · a single pass, sharing nothing with the three above ─────────
     // No height field, so no derive pass and no shade pass — the shapes are drawn
     // and coloured in one go.
     const cartoonPass = Fn(() => {
-      const { x, y, p, r, pc, n } = frame();
+      const { x, y, p, r, n } = frame();
       const sp = librate(n, U.tilt, U.rotation);
       const sunBody = librate(U.sunDir, U.tilt, U.rotation);
       // A fixed upper-left key. It never moves with the phase — it is what gives the
@@ -320,15 +296,13 @@ export class MoonBaker {
       const surfaceColor = mix(drawn.xyz, U.mareColor.mul(0.22), limb.mul(U.cartoonOutline));
 
       const edge = (2.0 / (size * DISC_FILL)) * 1.5;
-      // `drawn.w` is the phase crop, so on a cropped crescent the halo has to be
-      // gated by it too — otherwise the glow keeps ringing the whole disc after the
-      // dark side has been discarded.
       const discAlpha = smoothstep(1.0, 1.0 - edge, r).mul(drawn.w);
-      const halo = haloTerm(r, pc, U.sunDir, U).mul(U.exposure).mul(drawn.w);
 
-      const color = mix(U.glowColor.mul(halo), surfaceColor, discAlpha);
-      const alpha = clamp(discAlpha.add(halo), 0.0, 1.0);
-      textureStore(this.outputTex, ivec2(x, y), vec4(color, alpha)).toWriteOnly();
+      textureStore(
+        this.outputTex,
+        ivec2(x, y),
+        vec4(surfaceColor, discAlpha),
+      ).toWriteOnly();
     })().compute(size * size);
 
     this.realisticPasses = [terrainPass, derivePass, shadePass];

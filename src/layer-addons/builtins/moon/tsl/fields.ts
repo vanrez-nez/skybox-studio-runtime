@@ -103,7 +103,7 @@ export const craterOctave = /*#__PURE__*/ Fn(([p, freq, depth, seed]: any) => {
 
 // ── The full surface ─────────────────────────────────────────────────────────
 //
-// Composites the layers into vec4(height, albedo, mareMask, brightAccum).
+// Composites the layers into vec4(height, reflectanceMottle, mareMask, brightAccum).
 // `sp` is a point on the unit sphere in the moon's own body frame.
 export function surface(sp: any, U: any) {
   const c0 = craterOctave(sp, U.craterFreq, U.craterDepth, vec3(0.0, 0.0, 0.0));
@@ -137,12 +137,7 @@ export function surface(sp: any, U: any) {
   const mottle = mx_fractal_noise_float(sp.mul(3.1).add(vec3(17.0, 3.0, 21.0)), 3, 2.0, 0.5)
     .mul(0.07);
 
-  const albedo = mix(U.albedo, U.albedo.mul(U.mariaDarkness), mare)
-    .mul(float(1.0).add(mottle))
-    .add(brightAccum.mul(U.rays).mul(U.albedo).mul(0.55))
-    .clamp(0.0, 1.0);
-
-  return vec4(height, albedo, mare, brightAccum);
+  return vec4(height, mottle, mare, brightAccum);
 }
 
 // Rotate a point about X then Y — the moon's libration, i.e. which sliver of the
@@ -155,4 +150,3 @@ export function librate(n: any, lat: any, lon: any) {
   const sy = lon.sin();
   return vec3(p1.x.mul(cy).add(p1.z.mul(sy)), p1.y, p1.z.mul(cy).sub(p1.x.mul(sy)));
 }
-

@@ -98,6 +98,7 @@ export type {
   SkyboxImageParams,
   SkyboxMoonLayer,
   SkyboxMoonParams,
+  SkyboxMoonPhotometryModel,
   SkyboxMoonResolutionMode,
   SkyboxMoonStyle,
   SkyboxImagePlacement,

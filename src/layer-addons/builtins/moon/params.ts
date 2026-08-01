@@ -13,8 +13,14 @@ export const MOON_RESOLUTION_MAX = 2048;
 export const DEFAULT_MOON_SPRITE_ANGULAR_SIZE = 2 * Math.atan(1 / 4);
 
 export const STYLE_EXPOSURE: Record<SkyboxMoonStyle, number> = {
-  realistic: 2.6,
+  realistic: 1,
   cartoon: 1,
+};
+
+type LegacyMoonParams = Partial<SkyboxMoonParams> & {
+  ambient?: number;
+  earthshine?: number;
+  lightIntensity?: number;
 };
 
 export function createDefaultSkyboxMoonParams(
@@ -27,6 +33,7 @@ export function createDefaultSkyboxMoonParams(
       centerDirection: normalizeVector(centerDirection),
     }),
     resolutionMode: "auto",
+    photometryModel: "hapke-wac-643",
     phase: 0.5,
     sunTilt: 0.12,
     bodyRotation: 0,
@@ -34,28 +41,14 @@ export function createDefaultSkyboxMoonParams(
     craterFreq: 7,
     craterDepth: 0.012,
     maria: 0.42,
-    mariaDarkness: 0.5,
     mariaDepth: 0.004,
     regolith: 0.5,
     rays: 1,
-    albedo: 0.13,
-    bumpStrength: 1,
-    ao: 0.8,
-    shadowStrength: 0.9,
-    shadowReach: 0.055,
-    backscatter: 0.75,
-    earthshine: 0.05,
     exposure: STYLE_EXPOSURE.realistic,
-    lightIntensity: 1,
-    ambient: 0,
-    rimStrength: 0.35,
-    rimPower: 3,
-    rimColor: "#ffffff",
-    glowStrength: 0.5,
-    glowWidth: 0.22,
-    glowWrap: 0.25,
-    glowColor: "#cfe2ff",
     style: "realistic",
+    cartoonLightIntensity: 1,
+    cartoonFill: 0,
+    cartoonNightStrength: 0.3,
     cartoonCraters: 44,
     cartoonCraterSize: 0.13,
     cartoonWobble: 0.34,
@@ -81,16 +74,50 @@ export function cloneSkyboxMoonParams(params: SkyboxMoonParams): SkyboxMoonParam
 }
 
 export function normalizeSkyboxMoonParams(
-  value: Partial<SkyboxMoonParams> | null | undefined,
+  value: LegacyMoonParams | null | undefined,
 ): SkyboxMoonParams {
   const defaults = createDefaultSkyboxMoonParams(
     value?.placement?.centerDirection,
   );
-  const params = { ...defaults, ...(value ?? {}) };
+  const legacy = value ?? {};
+  const params = { ...defaults, ...legacy };
 
   return cloneSkyboxMoonParams({
-    ...params,
     placement: normalizeImagePlacement(params.placement),
+    resolutionMode: params.resolutionMode,
+    photometryModel: "hapke-wac-643",
+    phase: params.phase,
+    sunTilt: params.sunTilt,
+    bodyRotation: params.bodyRotation,
+    bodyTilt: params.bodyTilt,
+    craterFreq: params.craterFreq,
+    craterDepth: params.craterDepth,
+    maria: params.maria,
+    mariaDepth: params.mariaDepth,
+    regolith: params.regolith,
+    rays: params.rays,
+    exposure: params.exposure,
+    style: params.style,
+    cartoonLightIntensity:
+      legacy.cartoonLightIntensity ?? legacy.lightIntensity ?? defaults.cartoonLightIntensity,
+    cartoonFill: legacy.cartoonFill ?? legacy.ambient ?? defaults.cartoonFill,
+    cartoonNightStrength:
+      legacy.cartoonNightStrength ??
+      (typeof legacy.earthshine === "number" ? legacy.earthshine * 6 : defaults.cartoonNightStrength),
+    cartoonCraters: params.cartoonCraters,
+    cartoonCraterSize: params.cartoonCraterSize,
+    cartoonWobble: params.cartoonWobble,
+    cartoonRelief: params.cartoonRelief,
+    cartoonForm: params.cartoonForm,
+    cartoonSunLean: params.cartoonSunLean,
+    cartoonOutline: params.cartoonOutline,
+    cartoonSoftness: params.cartoonSoftness,
+    cartoonShadowSize: params.cartoonShadowSize,
+    cartoonEdgeGlow: params.cartoonEdgeGlow,
+    cartoonCrop: params.cartoonCrop,
+    baseColor: params.baseColor,
+    mareColor: params.mareColor,
+    nightColor: params.nightColor,
   });
 }
 

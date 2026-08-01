@@ -3,9 +3,9 @@ import type { MoonBakeParams } from "./params";
 export declare class MoonBaker {
     private renderer;
     private size;
-    /** R = height, G = albedo, B = mare mask, A = fresh-crater brightness */
+    /** R = height, G = reflectance mottle, B = mare mask, A = fresh-ray mask */
     terrainTex: THREE.StorageTexture;
-    /** RGB = perturbed normal, A = ambient occlusion */
+    /** RGB = height-field normal. */
     deriveTex: THREE.StorageTexture;
     /** The finished, fully lit moon. This is the only texture the scene samples. */
     outputTex: THREE.StorageTexture;

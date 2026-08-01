@@ -1,3 +1,5 @@
+import { normalizeSkyboxMoonParams } from "./layer-addons/builtins/moon/params";
+
 export type SkyboxCompositionMode = "alpha-over";
 export type SkyboxCompositionOrder = "bottom-to-top";
 export type SkyboxEffectType =
@@ -87,11 +89,13 @@ export type SkyboxImageParams = {
 };
 
 export type SkyboxMoonStyle = "realistic" | "cartoon";
+export type SkyboxMoonPhotometryModel = "hapke-wac-643";
 export type SkyboxMoonResolutionMode = "auto" | "128" | "256" | "512" | "1024" | "2048";
 
 export type SkyboxMoonParams = {
   placement: SkyboxImagePlacement;
   resolutionMode: SkyboxMoonResolutionMode;
+  photometryModel: SkyboxMoonPhotometryModel;
   phase: number;
   sunTilt: number;
   bodyRotation: number;
@@ -99,28 +103,14 @@ export type SkyboxMoonParams = {
   craterFreq: number;
   craterDepth: number;
   maria: number;
-  mariaDarkness: number;
   mariaDepth: number;
   regolith: number;
   rays: number;
-  albedo: number;
-  bumpStrength: number;
-  ao: number;
-  shadowStrength: number;
-  shadowReach: number;
-  backscatter: number;
-  earthshine: number;
   exposure: number;
-  lightIntensity: number;
-  ambient: number;
-  rimStrength: number;
-  rimPower: number;
-  rimColor: string;
-  glowStrength: number;
-  glowWidth: number;
-  glowWrap: number;
-  glowColor: string;
   style: SkyboxMoonStyle;
+  cartoonLightIntensity: number;
+  cartoonFill: number;
+  cartoonNightStrength: number;
   cartoonCraters: number;
   cartoonCraterSize: number;
   cartoonWobble: number;
@@ -488,6 +478,13 @@ export function resolveCloudLightReferences(
     nodes.map((node) => {
       if (node.type === "group") {
         return { ...node, children: resolveNodes(node.children) };
+      }
+
+      if (node.type === "moon") {
+        return {
+          ...node,
+          params: normalizeSkyboxMoonParams(node.params),
+        };
       }
 
       if (node.type !== "clouds") {
