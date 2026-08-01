@@ -96,6 +96,10 @@ export type {
   SkyboxGeometryOptions,
   SkyboxGeometryType,
   SkyboxImageParams,
+  SkyboxMoonLayer,
+  SkyboxMoonParams,
+  SkyboxMoonResolutionMode,
+  SkyboxMoonStyle,
   SkyboxImagePlacement,
   SkyboxLayerBlendMode,
   SkyboxManifest,
@@ -115,6 +119,23 @@ export type {
   SkyboxStarfieldQuality,
   SkyboxStarfieldStarsParams,
 } from "./manifest";
+
+export {
+  createMoonBakeKey,
+  createMoonGpuBakeService,
+  MoonGpuBakeService,
+  resolveMoonBakeResolution,
+} from "./layer-addons/builtins/moon/service";
+export type { MoonBakeTarget } from "./layer-addons/builtins/moon/service";
+export {
+  cloneSkyboxMoonParams,
+  createDefaultSkyboxMoonParams,
+  DEFAULT_MOON_SPRITE_ANGULAR_SIZE,
+  MOON_RESOLUTION_MAX,
+  MOON_RESOLUTION_MIN,
+  normalizeSkyboxMoonParams,
+  STYLE_EXPOSURE as MOON_STYLE_EXPOSURE,
+} from "./layer-addons/builtins/moon/params";
 export { migrateManifestToV2, resolveCloudLightReferences } from "./manifest";
 export {
   Loader,

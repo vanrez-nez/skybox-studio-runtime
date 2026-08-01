@@ -1,6 +1,6 @@
 export type SkyboxCompositionMode = "alpha-over";
 export type SkyboxCompositionOrder = "bottom-to-top";
-export type SkyboxEffectType = "clouds" | "field-gradient" | "gradient" | "image" | "spot" | "starfield";
+export type SkyboxEffectType = "clouds" | "field-gradient" | "gradient" | "image" | "moon" | "spot" | "starfield";
 export type SkyboxLayerBlendMode = "normal" | "darken" | "multiply" | "color-burn" | "lighten" | "screen" | "color-dodge" | "overlay" | "soft-light" | "hard-light" | "difference" | "exclusion";
 export type SkyboxGradientMode = "linear";
 export type SkyboxFieldGradientMode = "gaussian" | "inverse-distance";
@@ -57,6 +57,55 @@ export type SkyboxImageParams = {
     placement: SkyboxImagePlacement | null;
     src: string | null;
     width: number;
+};
+export type SkyboxMoonStyle = "realistic" | "cartoon";
+export type SkyboxMoonResolutionMode = "auto" | "128" | "256" | "512" | "1024" | "2048";
+export type SkyboxMoonParams = {
+    placement: SkyboxImagePlacement;
+    resolutionMode: SkyboxMoonResolutionMode;
+    phase: number;
+    sunTilt: number;
+    bodyRotation: number;
+    bodyTilt: number;
+    craterFreq: number;
+    craterDepth: number;
+    maria: number;
+    mariaDarkness: number;
+    mariaDepth: number;
+    regolith: number;
+    rays: number;
+    albedo: number;
+    bumpStrength: number;
+    ao: number;
+    shadowStrength: number;
+    shadowReach: number;
+    backscatter: number;
+    earthshine: number;
+    exposure: number;
+    lightIntensity: number;
+    ambient: number;
+    rimStrength: number;
+    rimPower: number;
+    rimColor: string;
+    glowStrength: number;
+    glowWidth: number;
+    glowWrap: number;
+    glowColor: string;
+    style: SkyboxMoonStyle;
+    cartoonCraters: number;
+    cartoonCraterSize: number;
+    cartoonWobble: number;
+    cartoonRelief: number;
+    cartoonForm: number;
+    cartoonSunLean: number;
+    cartoonOutline: number;
+    cartoonSoftness: number;
+    cartoonShadowSize: number;
+    cartoonEdgeGlow: number;
+    cartoonCrop: boolean;
+    baseColor: string;
+    mareColor: string;
+    nightColor: string;
 };
 export type SkyboxSpotParams = {
     angularRadius: number;
@@ -210,6 +259,15 @@ export type SkyboxImageLayer = {
     params: SkyboxImageParams;
     type: "image";
 };
+export type SkyboxMoonLayer = {
+    blendMode: SkyboxLayerBlendMode;
+    enabled: boolean;
+    id: string;
+    name: string;
+    opacity: number;
+    params: SkyboxMoonParams;
+    type: "moon";
+};
 export type SkyboxSpotLayer = {
     blendMode: SkyboxLayerBlendMode;
     enabled: boolean;
@@ -228,7 +286,7 @@ export type SkyboxStarfieldLayer = {
     params: SkyboxStarfieldParams;
     type: "starfield";
 };
-export type SkyboxManifestLayer = SkyboxCloudsLayer | SkyboxGradientLayer | SkyboxFieldGradientLayer | SkyboxImageLayer | SkyboxSpotLayer | SkyboxStarfieldLayer;
+export type SkyboxManifestLayer = SkyboxCloudsLayer | SkyboxGradientLayer | SkyboxFieldGradientLayer | SkyboxImageLayer | SkyboxMoonLayer | SkyboxSpotLayer | SkyboxStarfieldLayer;
 export type SkyboxManifestGroup = {
     blendMode: SkyboxLayerBlendMode;
     children: SkyboxManifestNode[];

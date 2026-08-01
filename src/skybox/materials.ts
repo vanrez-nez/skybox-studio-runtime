@@ -42,6 +42,10 @@ import {
   updateCloudFieldTextureNodes,
   type CloudsLayerSampleNodes,
 } from "../layer-addons/builtins/clouds";
+import {
+  updateMoonTextureNodes,
+  type MoonLayerSampleNodes,
+} from "../layer-addons/builtins/moon";
 import type { WebGpuImageLayerSampleNodes, WebGpuStarfieldLayerSampleNodes } from "./types";
 import {
   updateStarfieldScreenTextureNodes,
@@ -217,7 +221,8 @@ function createWebGpuLayerRuntime(
   starfieldTextures: Map<string, THREE.Texture>,
   starfieldScreenTextures: Map<string, THREE.Texture>,
   _starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
-  cloudFieldTextures: Map<string, THREE.Texture>
+  cloudFieldTextures: Map<string, THREE.Texture>,
+  moonTextures: Map<string, THREE.Texture>
 ): WebGpuCompositionRuntime {
   const adapters = new Map<string, WebGpuLayerAdapterRuntime>();
   const editorProjectionByLayerId = new Map<string, { uv: unknown; valid: unknown }>();
@@ -236,6 +241,8 @@ function createWebGpuLayerRuntime(
         resourceTextures:
           adapter.type === "clouds"
             ? cloudFieldTextures
+            : adapter.type === "moon"
+              ? moonTextures
             : adapter.type === "starfield"
               ? starfieldScreenTextures
               : new Map(),
@@ -363,7 +370,8 @@ function buildSkyboxComposition(
   starfieldTextures: Map<string, THREE.Texture>,
   starfieldScreenTextures: Map<string, THREE.Texture>,
   starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
-  cloudFieldTextures: Map<string, THREE.Texture>
+  cloudFieldTextures: Map<string, THREE.Texture>,
+  moonTextures: Map<string, THREE.Texture>
 ) {
   const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
   const compositionUniforms = createCompositionUniformNodes(compositionBindings);
@@ -374,7 +382,8 @@ function buildSkyboxComposition(
     starfieldTextures,
     starfieldScreenTextures,
     starfieldPatchTextures,
-    cloudFieldTextures
+    cloudFieldTextures,
+    moonTextures
   );
   const imageRuntime = getWebGpuAdapterRuntime<"image", ImageLayerShaderBinding, ImagePlacementUniformNodes>(
     layerRuntime,
@@ -440,6 +449,7 @@ export function createWebGpuMaterial(
   starfieldScreenTextures: Map<string, THREE.Texture>,
   starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
   cloudFieldTextures: Map<string, THREE.Texture>,
+  moonTextures: Map<string, THREE.Texture>,
   editorPresentationEnabled: boolean
 ) {
   const material = new NodeMaterial();
@@ -470,7 +480,8 @@ export function createWebGpuMaterial(
     starfieldTextures,
     starfieldScreenTextures,
     starfieldPatchTextures,
-    cloudFieldTextures
+    cloudFieldTextures,
+    moonTextures
   );
   // Per-layer editor selection-rect overlays, opted in via the registry's
   // wgslEditorOverlay flag — no per-type branching here.
@@ -537,6 +548,13 @@ export function createWebGpuMaterial(
       textures,
     );
   };
+  material.userData.applyMoonTextures = (textures: Map<string, THREE.Texture>) => {
+    const moonRuntime = layerRuntime.adapters.get("moon");
+    updateMoonTextureNodes(
+      moonRuntime?.samples as MoonLayerSampleNodes | undefined,
+      textures,
+    );
+  };
   material.userData.applyTime = (time: number) => {
     layerRuntime.adapters.forEach((runtime) => {
       runtime.adapter.updateTime?.(runtime.uniforms, time);
@@ -595,6 +613,7 @@ export function createWebGpuEquirectBakeMaterial(
   imageTextures: Map<string, THREE.Texture>,
   starfieldTextures: Map<string, THREE.Texture>,
   cloudFieldTextures: Map<string, THREE.Texture>,
+  moonTextures: Map<string, THREE.Texture>,
   options: { flipY?: boolean } = {}
 ) {
   const material = new NodeMaterial();
@@ -618,7 +637,8 @@ export function createWebGpuEquirectBakeMaterial(
     starfieldTextures,
     new Map(),
     new Map(),
-    cloudFieldTextures
+    cloudFieldTextures,
+    moonTextures
   );
 
   material.colorNode = colorNode as any;

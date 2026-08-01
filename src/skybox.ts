@@ -11,6 +11,11 @@ import {
   disposeCloudFieldTextures,
   syncCloudFieldTextures,
 } from "./layer-addons/builtins/clouds";
+import {
+  createMoonGpuBakeService,
+  type MoonBakeTarget,
+  type MoonGpuBakeService,
+} from "./layer-addons/builtins/moon/service";
 // Side-effect: register every built-in layer adapter (CPU + GPU halves) before materials build.
 import "./layer-addons/builtins";
 import type {
@@ -21,6 +26,7 @@ import type {
   SkyboxGradientParams,
   SkyboxManifest,
   SkyboxManifestV2,
+  SkyboxMoonParams,
   SkyboxRenderMode,
   SkyboxSpotParams,
   SkyboxStarfieldParams,
@@ -61,6 +67,8 @@ import {
 // Live starfield equirect bakes carry nebula only; star cores render via the screen-space glint
 // pass. (Export bakes — a different service instance, no viewport — keep full fixed-angular stars.)
 const NEBULA_ONLY_BAKE = { starsOmitted: true } as const;
+const DEFAULT_VIEWPORT_FOV_RADIANS = THREE.MathUtils.degToRad(50);
+const DEFAULT_VIEWPORT_HEIGHT = 1024;
 
 const DEFAULT_MANIFEST: SkyboxManifestV2 = {
   composition: { mode: "alpha-over", order: "bottom-to-top" },
@@ -97,11 +105,20 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       this.material.userData.applyImageLayerPlacement?.(layerId, placement);
     },
     scheduleResourceBake: (layerId, params) => {
-      this.scheduleStarfieldTextureBake(layerId, params as SkyboxStarfieldParams);
+      const node = findManifestNodeById(this.#manifest.nodes, layerId);
+
+      if (node?.type === "starfield") {
+        this.scheduleStarfieldTextureBake(layerId, params as SkyboxStarfieldParams);
+      } else if (node?.type === "moon") {
+        this.scheduleMoonTextureBake(layerId, params as SkyboxMoonParams);
+      }
     },
   };
   #manifest: SkyboxManifestV2 = DEFAULT_MANIFEST;
   #materialTopologyKey: string | null = null;
+  #moonBakeTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  #moonGpuBakeService: MoonGpuBakeService | null = null;
+  #moonTextures = new Map<string, THREE.Texture>();
   #ownedTexture: THREE.Texture | null = null;
   #renderMode: SkyboxRenderMode = "auto";
   #renderer: SupportedRenderer | null = null;
@@ -126,6 +143,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       createWebGpuMaterial(
         DEFAULT_MANIFEST,
         DEFAULT_EDITOR_LAYER_STATE,
+        new Map(),
         new Map(),
         new Map(),
         new Map(),
@@ -163,6 +181,9 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#renderer = renderer;
     this.#starfieldGpuBakeService?.dispose();
     this.#starfieldGpuBakeService = createStarfieldBakeService(renderer);
+    this.disposeMoonTextures();
+    this.#moonGpuBakeService = createMoonGpuBakeService(renderer);
+    this.syncMoonTextures();
     this.#starfieldGlints.forEach((entry) => {
       entry.dirty = true;
     });
@@ -190,21 +211,18 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     return this;
   }
 
-  // Tell the runtime which viewport the starfield will be VIEWED through so stars hold a fixed
-  // logical-pixel size regardless of FOV/resolution (displayPixelAngle = verticalFovRadians /
-  // renderHeight). `renderHeight` must be logical/CSS pixels (e.g. canvas client height), not the
-  // device drawing-buffer height, so apparent size stays constant across device-pixel ratios.
-  // Pass null to fall back to the legacy fixed-angular star size. Changing it invalidates only the
-  // cached screen-space star target; it does not re-bake the equirect texture.
-  setStarGlintViewport(viewport: StarGlintViewport | null) {
+  // Tell viewport-aware resources how the sky is being viewed. `renderHeight` is logical/CSS
+  // pixels, not drawing-buffer pixels: Starfield uses it for fixed-pixel cores, while Moon uses it
+  // together with FOV to choose an automatic texture resolution. Pass null for their defaults.
+  setViewport(viewport: StarGlintViewport | null) {
     const next =
       viewport && viewport.renderHeight > 0 && viewport.verticalFovRadians > 0
         ? { renderHeight: viewport.renderHeight, verticalFovRadians: viewport.verticalFovRadians }
         : null;
-    // Only renderHeight reaches the glint shader (logical→device px conversion); FOV is intentionally
-    // ignored now — the screen-space pass is FOV-independent, which is what removes the wide-FOV
-    // streaks. The nebula equirect bake no longer depends on the viewport, so this never re-bakes.
-    const changed = this.#starGlintViewport?.renderHeight !== next?.renderHeight;
+    // Only renderHeight reaches the glint shader; FOV remains relevant to Moon's projected size.
+    const changed =
+      this.#starGlintViewport?.renderHeight !== next?.renderHeight ||
+      this.#starGlintViewport?.verticalFovRadians !== next?.verticalFovRadians;
 
     this.#starGlintViewport = next;
 
@@ -213,9 +231,14 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         entry.handle.setViewport(next);
         entry.dirty = true;
       });
+      this.syncMoonTextures();
     }
 
     return this;
+  }
+
+  setStarGlintViewport(viewport: StarGlintViewport | null) {
+    return this.setViewport(viewport);
   }
 
   setImageTexture(layerId: string, texture: THREE.Texture | null) {
@@ -296,6 +319,116 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.#starfieldTextureKeys.clear();
     this.#starfieldGpuBakeService?.dispose();
     this.#starfieldGpuBakeService = null;
+  }
+
+  private disposeMoonTextures() {
+    this.#moonBakeTimeouts.forEach((timeoutId) => {
+      clearTimeout(timeoutId);
+    });
+    this.#moonBakeTimeouts.clear();
+    this.#moonTextures.clear();
+    this.#moonGpuBakeService?.dispose();
+    this.#moonGpuBakeService = null;
+  }
+
+  private getMoonBakeTarget(): MoonBakeTarget {
+    return {
+      kind: "viewport",
+      renderHeight: this.#starGlintViewport?.renderHeight ?? DEFAULT_VIEWPORT_HEIGHT,
+      verticalFovRadians:
+        this.#starGlintViewport?.verticalFovRadians ?? DEFAULT_VIEWPORT_FOV_RADIANS,
+    };
+  }
+
+  private syncMoonTextures() {
+    const activeLayerIds = new Set<string>();
+
+    forEachRenderableLayer(this.#manifest.nodes, (layer) => {
+      if (layer.type !== "moon") {
+        return;
+      }
+
+      activeLayerIds.add(layer.id);
+      this.scheduleMoonTextureBake(layer.id, layer.params);
+    });
+
+    Array.from(this.#moonTextures.keys()).forEach((layerId) => {
+      if (!activeLayerIds.has(layerId)) {
+        this.#moonGpuBakeService?.disposeLayer(layerId);
+        this.#moonTextures.delete(layerId);
+      }
+    });
+
+    Array.from(this.#moonBakeTimeouts.entries()).forEach(([layerId, timeoutId]) => {
+      if (!activeLayerIds.has(layerId)) {
+        clearTimeout(timeoutId);
+        this.#moonBakeTimeouts.delete(layerId);
+      }
+    });
+
+    this.material.userData.applyMoonTextures?.(this.#moonTextures);
+  }
+
+  private scheduleMoonTextureBake(layerId: string, _params: SkyboxMoonParams) {
+    const pendingTimeout = this.#moonBakeTimeouts.get(layerId);
+    if (pendingTimeout) {
+      clearTimeout(pendingTimeout);
+    }
+
+    const timeoutId = setTimeout(async () => {
+      this.#moonBakeTimeouts.delete(layerId);
+      const node = findManifestNodeById(this.#manifest.nodes, layerId);
+
+      if (node?.type !== "moon") {
+        return;
+      }
+
+      if (!this.#moonGpuBakeService && this.#renderer) {
+        this.#moonGpuBakeService = createMoonGpuBakeService(this.#renderer);
+      }
+
+      const service = this.#moonGpuBakeService;
+      if (!service?.canBake()) {
+        return;
+      }
+
+      try {
+        const previousTexture = this.#moonTextures.get(layerId);
+        const nextTexture = await service.bakeLayer(
+          layerId,
+          node.params,
+          this.getMoonBakeTarget(),
+        );
+
+        if (service !== this.#moonGpuBakeService) {
+          return;
+        }
+
+        const currentNode = findManifestNodeById(this.#manifest.nodes, layerId);
+
+        if (currentNode?.type !== "moon") {
+          service.disposeLayer(layerId);
+          return;
+        }
+
+        this.#moonTextures.set(layerId, nextTexture);
+
+        if (!previousTexture) {
+          this.#materialTopologyKey = null;
+          this.setManifest(this.#manifest);
+        } else {
+          this.material.userData.applyMoonTextures?.(this.#moonTextures);
+        }
+
+        this.dispatchEvent({ type: "moontexturechange" } as never);
+      } catch (error) {
+        if (service === this.#moonGpuBakeService) {
+          console.error(`Failed to bake Moon layer ${layerId}.`, error);
+        }
+      }
+    }, 150);
+
+    this.#moonBakeTimeouts.set(layerId, timeoutId);
   }
 
   private disposeStarfieldGlints() {
@@ -607,6 +740,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     nextMaterial.userData.applyStarfieldTextures?.(this.#starfieldTextures);
     nextMaterial.userData.applyStarfieldScreenTextures?.(this.#starfieldScreenTextures);
     nextMaterial.userData.applyCloudFieldTextures?.(this.#cloudFieldTextures);
+    nextMaterial.userData.applyMoonTextures?.(this.#moonTextures);
     nextMaterial.userData.applyTime?.(this.#time);
     previousMaterial.dispose();
     this.disposeOwnedTexture();
@@ -622,6 +756,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.material.userData.applyStarfieldTextures?.(this.#starfieldTextures);
     this.material.userData.applyStarfieldScreenTextures?.(this.#starfieldScreenTextures);
     this.material.userData.applyCloudFieldTextures?.(this.#cloudFieldTextures);
+    this.material.userData.applyMoonTextures?.(this.#moonTextures);
     this.material.userData.applyTime?.(this.#time);
     this.material.userData.applyEditorLayerState?.(this.#editorLayerState);
     this.#imagePlacementOverrides.forEach((placement, layerId) => {
@@ -789,12 +924,17 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     return this.updateLayer(layerId, params);
   }
 
+  updateMoonLayer(layerId: string, params: SkyboxMoonParams) {
+    return this.updateLayer(layerId, params);
+  }
+
   setManifest(manifest: SkyboxManifest) {
     const nextManifest = migrateManifestToV2(manifest);
     this.#manifest = nextManifest;
     this.applyGeometry(this.#manifest.geometry ?? this.#geometryOptions);
     syncCloudFieldTextures(this.#manifest, this.#cloudFieldTextures);
     this.syncStarfieldTextures();
+    this.syncMoonTextures();
     const renderMode = resolveRenderMode(this.#renderMode);
     const nextTopologyKey = createMaterialTopologyKey(
       this.#manifest,
@@ -816,6 +956,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
         this.#starfieldScreenTextures,
         new Map(),
         this.#cloudFieldTextures,
+        this.#moonTextures,
         this.#editorPresentationEnabled
       ));
     } else {
@@ -846,6 +987,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.material.dispose();
     this.disposeOwnedTexture();
     disposeCloudFieldTextures(this.#cloudFieldTextures);
+    this.disposeMoonTextures();
     this.disposeStarfieldTextures();
     this.disposeStarfieldGlints();
   }

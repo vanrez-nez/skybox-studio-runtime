@@ -56,7 +56,13 @@ const skybox = new Skybox()
   .load();
 
 scene.add(skybox);
-renderer.setAnimationLoop(() => renderer.render(scene, camera));
+renderer.setAnimationLoop(() => {
+  skybox.setViewport({
+    renderHeight: renderer.domElement.clientHeight,
+    verticalFovRadians: THREE.MathUtils.degToRad(camera.fov),
+  });
+  renderer.render(scene, camera);
+});
 ```
 
 ## Render Modes
@@ -89,9 +95,28 @@ When you have a `WebGPURenderer`, you can bake the live composition shader strai
 import { createSkyboxGpuBakeService } from "skybox-studio-runtime";
 
 const bake = createSkyboxGpuBakeService(renderer);
-const target = bake.bakeRenderTarget(manifest, { width: 2048, hdr: true });
-// …or read pixels back: const { data, width, height } = await bake.bakeImageData(manifest, { width: 2048 });
+const moonTextures = await bake.prepareMoonTextures(manifest, 1024);
+const target = bake.bakeRenderTarget(manifest, {
+  width: 2048,
+  height: 1024,
+  hdr: true,
+  moonTextures,
+});
+// `bakeImageData` prepares Moon textures automatically.
+const image = await bake.bakeImageData(manifest, { width: 2048, height: 1024 });
 ```
+
+## Moon Generation
+
+Moon layers are procedural WebGPU resources included in the core runtime. The
+live `Skybox` generates and caches one texture per Moon layer; placement updates
+move the angular decal without regenerating its terrain. Call `setViewport(...)`
+when the viewport height or camera FOV changes so automatic Moon resolution can
+track its projected size.
+
+Moon layers require a WebGPU renderer with compute support. The CPU and WebGL
+baked-texture fallbacks report them as unsupported instead of silently omitting
+the layer.
 
 ## Starfield Generation
 

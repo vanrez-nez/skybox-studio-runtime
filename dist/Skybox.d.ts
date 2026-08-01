@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import "./layer-addons/builtins";
-import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxManifest, SkyboxRenderMode, SkyboxSpotParams, SkyboxStarfieldParams } from "./manifest";
+import type { SkyboxGeometryOptions, SkyboxImagePlacement, SkyboxBakeOptions, SkyboxFieldGradientParams, SkyboxGradientParams, SkyboxManifest, SkyboxMoonParams, SkyboxRenderMode, SkyboxSpotParams, SkyboxStarfieldParams } from "./manifest";
 import type { StarGlintViewport } from "./baking/starfield-gpu-bake";
 import type { ImageTextureMap, LayerCompositionUpdate, RuntimeMaterial, SkyboxEditorImageState, SkyboxEditorLayerState, SupportedRenderer } from "./skybox/types";
 export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
@@ -17,6 +17,7 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
      * baked cloud-field texture. The host remains responsible for rendering.
      */
     setTime(timeSeconds: number): this;
+    setViewport(viewport: StarGlintViewport | null): this;
     setStarGlintViewport(viewport: StarGlintViewport | null): this;
     setImageTexture(layerId: string, texture: THREE.Texture | null): this;
     setImageTextures(textures: ImageTextureMap): this;
@@ -27,6 +28,10 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     private applyGeometry;
     private disposeOwnedTexture;
     private disposeStarfieldTextures;
+    private disposeMoonTextures;
+    private getMoonBakeTarget;
+    private syncMoonTextures;
+    private scheduleMoonTextureBake;
     private disposeStarfieldGlints;
     private disposeStarfieldGlint;
     private createStarfieldGlintTarget;
@@ -53,6 +58,7 @@ export declare class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMate
     updateFieldGradientLayer(layerId: string, params: SkyboxFieldGradientParams): this;
     updateSpotLayer(layerId: string, params: SkyboxSpotParams): this;
     updateStarfieldLayer(layerId: string, params: SkyboxStarfieldParams): this;
+    updateMoonLayer(layerId: string, params: SkyboxMoonParams): this;
     setManifest(manifest: SkyboxManifest): this;
     setBakedTexture(texture: THREE.Texture): this;
     invalidateBakeCache(): this;

@@ -105,6 +105,14 @@ function findBakeGroup(nodes: SkyboxManifestNode[], id: string): SkyboxManifestG
   return null;
 }
 
+function hasEnabledMoon(nodes: SkyboxManifestNode[]): boolean {
+  return nodes.some((node) =>
+    node.enabled &&
+      (node.type === "moon" ||
+        (node.type === "group" && hasEnabledMoon(node.children))),
+  );
+}
+
 function resolveStarfieldBakes(
   manifest: ReturnType<typeof migrateManifestToV2>,
   width: number,
@@ -153,6 +161,14 @@ export function bakeSkyboxImageData(
 ): BakedSkyboxImageData {
   const migratedManifest = migrateManifestToV2(manifest);
   const resolvedOptions = resolveBakeOptions(options);
+  const targetNodes = resolvedOptions.targetGroupId
+    ? findBakeGroup(migratedManifest.nodes, resolvedOptions.targetGroupId)?.children ?? []
+    : migratedManifest.nodes;
+
+  if (hasEnabledMoon(targetNodes)) {
+    throw new Error("Moon layers require WebGPU compute and are not supported by the CPU baker.");
+  }
+
   const cacheKey = resolvedOptions.cache ? createBakeCacheKey(migratedManifest, resolvedOptions) : null;
 
   if (cacheKey) {

@@ -7,6 +7,10 @@ import {
   disposeCloudFieldTextures,
   syncCloudFieldTextures,
 } from "../layer-addons/builtins/clouds";
+import {
+  createMoonGpuBakeService,
+  type MoonGpuBakeService,
+} from "../layer-addons/builtins/moon/service";
 
 export type SkyboxGpuBakeOptions = {
   /** When true (and `hdr`), bake into a full 32-bit float target instead of 16-bit half-float. */
@@ -17,6 +21,7 @@ export type SkyboxGpuBakeOptions = {
   hdr?: boolean;
   height: number;
   imageTextures?: Map<string, THREE.Texture>;
+  moonTextures?: Map<string, THREE.Texture>;
   cloudFieldTextures?: Map<string, THREE.Texture>;
   starfieldTextures?: Map<string, THREE.Texture>;
   width: number;
@@ -67,6 +72,14 @@ function hasRenderTargetApi(renderer: unknown): renderer is SkyboxGpuBakeRendere
   );
 }
 
+function hasEnabledMoon(nodes: ReturnType<typeof migrateManifestToV2>["nodes"]): boolean {
+  return nodes.some((node) =>
+    node.enabled &&
+      (node.type === "moon" ||
+        (node.type === "group" && hasEnabledMoon(node.children))),
+  );
+}
+
 function createEquirectRenderTarget(
   width: number,
   height: number,
@@ -104,13 +117,33 @@ export class SkyboxGpuBakeService {
   #scene = new THREE.Scene();
   #camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   #quadGeometry = new THREE.PlaneGeometry(2, 2);
+  #moonBakeService: MoonGpuBakeService | null;
 
-  constructor(renderer: SkyboxGpuBakeRenderer) {
+  constructor(renderer: SkyboxGpuBakeRenderer & object) {
     this.#renderer = renderer;
+    this.#moonBakeService = createMoonGpuBakeService(renderer);
   }
 
   canBake() {
     return hasRenderTargetApi(this.#renderer);
+  }
+
+  async prepareMoonTextures(manifest: SkyboxManifest, height: number) {
+    const migratedManifest = migrateManifestToV2(manifest);
+    const hasMoon = hasEnabledMoon(migratedManifest.nodes);
+
+    if (!hasMoon) {
+      return new Map<string, THREE.Texture>();
+    }
+
+    if (!this.#moonBakeService) {
+      throw new Error("Moon layers require WebGPU compute support for GPU export.");
+    }
+
+    return this.#moonBakeService.bakeManifest(migratedManifest.nodes, {
+      height: Math.max(1, Math.floor(height)),
+      kind: "equirect",
+    });
   }
 
   /**
@@ -122,6 +155,12 @@ export class SkyboxGpuBakeService {
     const width = Math.max(1, Math.floor(options.width));
     const height = Math.max(1, Math.floor(options.height));
     const migratedManifest = migrateManifestToV2(manifest);
+    const hasMoon = hasEnabledMoon(migratedManifest.nodes);
+    if (hasMoon && !options.moonTextures) {
+      throw new Error(
+        "Moon textures are not prepared. Await prepareMoonTextures() before bakeRenderTarget().",
+      );
+    }
     const ownedCloudFieldTextures = options.cloudFieldTextures
       ? null
       : new Map<string, THREE.Texture>();
@@ -135,6 +174,7 @@ export class SkyboxGpuBakeService {
       options.imageTextures ?? new Map(),
       options.starfieldTextures ?? new Map(),
       cloudFieldTextures,
+      options.moonTextures ?? new Map(),
       { flipY: options.flipY }
     );
     const target = createEquirectRenderTarget(
@@ -187,9 +227,12 @@ export class SkyboxGpuBakeService {
     manifest: SkyboxManifest,
     options: SkyboxGpuBakeOptions
   ): Promise<BakedSkyboxImageData> {
+    const moonTextures =
+      options.moonTextures ?? await this.prepareMoonTextures(manifest, options.height);
     const { dispose, height, target, width } = this.bakeRenderTarget(manifest, {
       ...options,
       hdr: false,
+      moonTextures,
     });
 
     try {
@@ -203,6 +246,8 @@ export class SkyboxGpuBakeService {
 
   dispose() {
     this.#quadGeometry.dispose();
+    this.#moonBakeService?.dispose();
+    this.#moonBakeService = null;
   }
 
   async #readPixels(

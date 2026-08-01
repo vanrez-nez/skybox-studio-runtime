@@ -10,6 +10,7 @@ export type SkyboxGpuBakeOptions = {
     hdr?: boolean;
     height: number;
     imageTextures?: Map<string, THREE.Texture>;
+    moonTextures?: Map<string, THREE.Texture>;
     cloudFieldTextures?: Map<string, THREE.Texture>;
     starfieldTextures?: Map<string, THREE.Texture>;
     width: number;
@@ -40,8 +41,9 @@ type SkyboxGpuBakeRenderer = {
  */
 export declare class SkyboxGpuBakeService {
     #private;
-    constructor(renderer: SkyboxGpuBakeRenderer);
+    constructor(renderer: SkyboxGpuBakeRenderer & object);
     canBake(): boolean;
+    prepareMoonTextures(manifest: SkyboxManifest, height: number): Promise<Map<string, THREE.Texture<unknown, THREE.TextureEventMap>>>;
     /**
      * Renders the composition into an equirect render target and returns it WITHOUT disposing, so a
      * caller (e.g. the EXR exporter) can read the texture. The caller MUST call `dispose()`.
