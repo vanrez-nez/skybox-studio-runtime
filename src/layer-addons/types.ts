@@ -21,6 +21,7 @@ export type WebGpuLayerSampleContext<TBinding, TUniforms> = {
 
 export type WebGpuLayerExpressionContext<TBinding> = {
   bindingsByLayerId: Map<string, TBinding>;
+  opacityRef?: string;
 };
 
 export type WebGpuLayerAdapter<

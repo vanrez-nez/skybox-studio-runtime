@@ -298,6 +298,7 @@ export function manifestHasLayerAboveStarfield(nodes: SkyboxManifestNode[]): boo
 // expressions as the color path, so e.g. a transparent PNG region of an image layer doesn't occlude.
 export function composeCoverageExpression(
   nodes: SkyboxManifestNode[],
+  compositionBindings: Map<string, CompositionNodeShaderBinding>,
   webGpuRuntime: WebGpuCompositionRuntime
 ): string {
   const order = getRenderableNodes(nodes);
@@ -315,7 +316,10 @@ export function composeCoverageExpression(
         return "";
       }
 
-      const opacityRef = numberLiteral(node.opacity / 100);
+      const compositionBinding = compositionBindings.get(node.id);
+      const opacityRef = compositionBinding
+        ? `${compositionBinding.parameterPrefix}Opacity`
+        : numberLiteral(node.opacity / 100);
 
       if (node.type === "group") {
         return `{
@@ -328,7 +332,10 @@ export function composeCoverageExpression(
       const customCoverage = adapterRuntime?.adapter.createCoverageExpression?.(
         node as never,
         "wgsl",
-        { bindingsByLayerId: adapterRuntime.bindingsByLayerId },
+        {
+          bindingsByLayerId: adapterRuntime.bindingsByLayerId,
+          opacityRef,
+        },
       );
 
       if (customCoverage) {

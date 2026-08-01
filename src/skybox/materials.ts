@@ -543,16 +543,26 @@ export { manifestHasLayerAboveStarfield } from "./composition";
 
 function createSkyboxCoverageFunction(
   manifest: SkyboxManifestV2,
+  compositionBindings: CompositionNodeShaderBinding[],
   layerRuntime: WebGpuCompositionRuntime
 ) {
-  const body = composeCoverageExpression(manifest.nodes, layerRuntime);
+  const compositionBindingMap = createCompositionBindingMap(compositionBindings);
+  const body = composeCoverageExpression(
+    manifest.nodes,
+    compositionBindingMap,
+    layerRuntime,
+  );
   const layerParameters = Array.from(layerRuntime.adapters.values())
     .map((adapterRuntime) => adapterRuntime.adapter.createParameterDeclarations(adapterRuntime.bindings))
+    .join("");
+  const compositionParameters = compositionBindings
+    .map((binding) => `,
+      ${binding.parameterPrefix}Opacity: f32`)
     .join("");
 
   return wgslFn(`
     fn skyboxStudioCoverage(
-      direction: vec3<f32>${layerParameters}
+      direction: vec3<f32>${layerParameters}${compositionParameters}
     ) -> vec4<f32> {
       var transmissionAbove = vec3<f32>(1.0);
       ${body}
@@ -569,6 +579,8 @@ export function createWebGpuCoverageMaterial(
   cloudFieldTextures: Map<string, THREE.Texture>
 ) {
   const material = new NodeMaterial();
+  const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
+  const compositionUniforms = createCompositionUniformNodes(compositionBindings);
 
   material.side = THREE.BackSide;
   material.depthTest = false;
@@ -601,14 +613,30 @@ export function createWebGpuCoverageMaterial(
     "starfield"
   );
   const starfieldSamples = starfieldRuntime?.samples as WebGpuStarfieldLayerSampleNodes | undefined;
-  const coverage = createSkyboxCoverageFunction(manifest, layerRuntime);
+  const coverage = createSkyboxCoverageFunction(
+    manifest,
+    compositionBindings,
+    layerRuntime,
+  );
 
   material.colorNode = coverage({
     direction,
     ...layerRuntime.sampleParameters,
+    ...Object.fromEntries(
+      compositionBindings.map((binding) => [
+        `${binding.parameterPrefix}Opacity`,
+        compositionUniforms[binding.index].opacity,
+      ]),
+    ),
   }) as any;
   material.userData.applyLayerParams = (layer: SkyboxManifestLayer) =>
     applyWebGpuLayerParamsToRuntime(layerRuntime, layer);
+  attachCompositionUpdater(material, (nextManifest) =>
+    applyCompositionParamsToUniformNodes(compositionUniforms, nextManifest)
+  );
+  attachLayerCompositionUpdater(material, (node) =>
+    applyLayerCompositionToUniformNodes(compositionUniforms, node)
+  );
   attachImagePlacementUpdater(material, (layerId, placement) =>
     applyImageLayerPlacementToUniformNodes(imageUniforms, layerId, placement)
   );

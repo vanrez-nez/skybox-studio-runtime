@@ -610,6 +610,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     // Mirror the occlusion-relevant updates (image alpha/placement, layer params) to the coverage
     // material so glint occlusion tracks live image edits without a topology rebuild.
     if (this.#coverageMaterial) {
+      this.#coverageMaterial.userData.applyCompositionParams?.(this.#manifest);
       if (this.#coverageMaterial.userData.applyLayerParams) {
         forEachRenderableLayer(this.#manifest.nodes, this.#coverageMaterial.userData.applyLayerParams);
       }
@@ -718,6 +719,7 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     }
 
     this.material.userData.applyLayerComposition?.(node);
+    this.#coverageMaterial?.userData.applyLayerComposition?.(node);
 
     return this;
   }

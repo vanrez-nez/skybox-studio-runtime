@@ -682,11 +682,11 @@ function yt(e) {
 var bt = {
 	collect: mt,
 	createCoverageExpression: (e, t, n) => {
-		let r = n.bindingsByLayerId.get(e.id);
+		let r = n.bindingsByLayerId.get(e.id), i = n.opacityRef ?? (e.opacity / 100).toFixed(8);
 		return r ? `transmissionAbove = transmissionAbove * mix(
           vec3<f32>(1.0),
           ${r.parameterPrefix}Transmission,
-          vec3<f32>(${(e.opacity / 100).toFixed(8)})
+          vec3<f32>(${i})
         );` : "";
 	},
 	createParameterDeclarations: (e) => e.flatMap((e) => [
@@ -2303,22 +2303,25 @@ function zr(e) {
 		Rr(e) && (n = t);
 	}), n >= 0 && n < t.length - 1;
 }
-function Br(e, t) {
-	let n = Er(e), r = -1;
-	return n.forEach((e, t) => {
-		Rr(e) && (r = t);
-	}), n.map((e, n) => {
-		if (n <= r) return "";
-		let i = K(e.opacity / 100);
+function Br(e, t, n) {
+	let r = Er(e), i = -1;
+	return r.forEach((e, t) => {
+		Rr(e) && (i = t);
+	}), r.map((e, r) => {
+		if (r <= i) return "";
+		let a = t.get(e.id), o = a ? `${a.parameterPrefix}Opacity` : K(e.opacity / 100);
 		if (e.type === "group") return `{
-        let sourceAlpha = clamp(${i}, 0.0, 1.0);
+        let sourceAlpha = clamp(${o}, 0.0, 1.0);
         transmissionAbove = transmissionAbove * vec3<f32>(1.0 - sourceAlpha);
       }`;
-		let a = t.adapters.get(e.type), o = a?.adapter.createCoverageExpression?.(e, "wgsl", { bindingsByLayerId: a.bindingsByLayerId });
-		return o ? `{ ${o} }` : `{
+		let s = n.adapters.get(e.type), c = s?.adapter.createCoverageExpression?.(e, "wgsl", {
+			bindingsByLayerId: s.bindingsByLayerId,
+			opacityRef: o
+		});
+		return c ? `{ ${c} }` : `{
         ${J("effectColor", "vec4<f32>", "vec4<f32>(0.0)")}
-        ${Lr(e, t)}
-        let sourceAlpha = clamp(effectColor.a * ${i}, 0.0, 1.0);
+        ${Lr(e, n)}
+        let sourceAlpha = clamp(effectColor.a * ${o}, 0.0, 1.0);
         transmissionAbove = transmissionAbove * vec3<f32>(1.0 - sourceAlpha);
       }`;
 	}).filter(Boolean).join("\n");
@@ -2500,32 +2503,34 @@ function ri(e, t, n, r, i, a, o) {
 		});
 	}, s.userData.debugImageTextureSlots = p.textureSlotsByLayerId, s;
 }
-function ii(e, t) {
-	let n = Br(e.nodes, t);
+function ii(e, t, n) {
+	let r = Jr(t), i = Br(e.nodes, r, n);
 	return B(`
     fn skyboxStudioCoverage(
-      direction: vec3<f32>${Array.from(t.adapters.values()).map((e) => e.adapter.createParameterDeclarations(e.bindings)).join("")}
+      direction: vec3<f32>${Array.from(n.adapters.values()).map((e) => e.adapter.createParameterDeclarations(e.bindings)).join("")}${t.map((e) => `,
+      ${e.parameterPrefix}Opacity: f32`).join("")}
     ) -> vec4<f32> {
       var transmissionAbove = vec3<f32>(1.0);
-      ${n}
+      ${i}
       return vec4<f32>(clamp(transmissionAbove, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
     }
   `);
 }
 function ai(e, t, n, r, i) {
-	let a = new H();
+	let a = new H(), o = qr(e.nodes), s = Vr(o);
 	a.side = A.BackSide, a.depthTest = !1, a.depthWrite = !1, a.vertexNode = j(() => {
 		let e = _e;
 		return e.z.assign(e.w), e;
 	})();
-	let o = ni(), s = Xr(e, o, t, n, r, i), c = Zr(s, "image"), l = c?.samples, u = c?.uniforms ?? [], d = Zr(s, "starfield")?.samples;
-	return a.colorNode = ii(e, s)({
-		direction: o,
-		...s.sampleParameters
-	}), a.userData.applyLayerParams = (e) => $r(s, e), Cn(a, (e, t) => Sn(u, e, t)), a.userData.applyImageTextures = (e) => kn(l?.sampleData ?? /* @__PURE__ */ new Map(), e), a.userData.applyStarfieldTextures = (e) => lr(d?.sampleData ?? /* @__PURE__ */ new Map(), e), a.userData.applyCloudFieldTextures = (e) => {
-		ut(s.adapters.get("clouds")?.samples, e);
+	let c = ni(), l = Xr(e, c, t, n, r, i), u = Zr(l, "image"), d = u?.samples, f = u?.uniforms ?? [], p = Zr(l, "starfield")?.samples;
+	return a.colorNode = ii(e, o, l)({
+		direction: c,
+		...l.sampleParameters,
+		...Object.fromEntries(o.map((e) => [`${e.parameterPrefix}Opacity`, s[e.index].opacity]))
+	}), a.userData.applyLayerParams = (e) => $r(l, e), Gr(a, (e) => Ur(s, e)), Kr(a, (e) => Wr(s, e)), Cn(a, (e, t) => Sn(f, e, t)), a.userData.applyImageTextures = (e) => kn(d?.sampleData ?? /* @__PURE__ */ new Map(), e), a.userData.applyStarfieldTextures = (e) => lr(p?.sampleData ?? /* @__PURE__ */ new Map(), e), a.userData.applyCloudFieldTextures = (e) => {
+		ut(l.adapters.get("clouds")?.samples, e);
 	}, a.userData.applyTime = (e) => {
-		s.adapters.forEach((t) => {
+		l.adapters.forEach((t) => {
 			t.adapter.updateTime?.(t.uniforms, e);
 		});
 	}, a;
@@ -2810,7 +2815,7 @@ var gi = { starsOmitted: !0 }, _i = {
 	applyLiveManifestUniformUpdates() {
 		this.material.userData.applyCompositionParams?.(this.#c), this.material.userData.applyLayerParams && Qr(this.#c.nodes, this.material.userData.applyLayerParams), this.material.userData.applyImageTextures?.(this.#o), this.material.userData.applyStarfieldTextures?.(this.#_), this.material.userData.applyCloudFieldTextures?.(this.#t), this.material.userData.applyTime?.(this.#v), this.material.userData.applyEditorLayerState?.(this.#n), this.#a.forEach((e, t) => {
 			this.material.userData.applyImageLayerPlacement?.(t, e);
-		}), this.#C && (this.#C.userData.applyLayerParams && Qr(this.#c.nodes, this.#C.userData.applyLayerParams), this.#C.userData.applyImageTextures?.(this.#o), this.#C.userData.applyCloudFieldTextures?.(this.#t), this.#C.userData.applyTime?.(this.#v), this.#a.forEach((e, t) => {
+		}), this.#C && (this.#C.userData.applyCompositionParams?.(this.#c), this.#C.userData.applyLayerParams && Qr(this.#c.nodes, this.#C.userData.applyLayerParams), this.#C.userData.applyImageTextures?.(this.#o), this.#C.userData.applyCloudFieldTextures?.(this.#t), this.#C.userData.applyTime?.(this.#v), this.#a.forEach((e, t) => {
 			this.#C?.userData.applyImageLayerPlacement?.(t, e);
 		}));
 	}
@@ -2845,7 +2850,7 @@ var gi = { starsOmitted: !0 }, _i = {
 	}
 	updateLayerComposition(e, t) {
 		let n = hi(this.#c.nodes, e);
-		return n ? (t.blendMode !== void 0 && (n.blendMode = t.blendMode), t.opacity !== void 0 && (n.opacity = t.opacity), this.material.userData.applyLayerComposition?.(n), this) : this;
+		return n ? (t.blendMode !== void 0 && (n.blendMode = t.blendMode), t.opacity !== void 0 && (n.opacity = t.opacity), this.material.userData.applyLayerComposition?.(n), this.#C?.userData.applyLayerComposition?.(n), this) : this;
 	}
 	updateLayer(e, t) {
 		let n = hi(this.#c.nodes, e);

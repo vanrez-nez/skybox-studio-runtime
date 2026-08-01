@@ -17,6 +17,7 @@ export type WebGpuLayerSampleContext<TBinding, TUniforms> = {
 };
 export type WebGpuLayerExpressionContext<TBinding> = {
     bindingsByLayerId: Map<string, TBinding>;
+    opacityRef?: string;
 };
 export type WebGpuLayerAdapter<TLayer extends SkyboxManifestLayer = SkyboxManifestLayer, TBinding = unknown, TUniforms = unknown> = {
     collect(nodes: SkyboxManifestNode[]): TBinding[];

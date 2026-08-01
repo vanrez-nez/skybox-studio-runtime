@@ -454,11 +454,12 @@ const cloudsWebGpuAdapter: BuiltInWebGpuLayerAdapter<
   collect: collectCloudsLayerBindings,
   createCoverageExpression: (layer, _language, context) => {
     const binding = context.bindingsByLayerId.get(layer.id);
+    const opacityRef = context.opacityRef ?? (layer.opacity / 100).toFixed(8);
     return binding
       ? `transmissionAbove = transmissionAbove * mix(
           vec3<f32>(1.0),
           ${binding.parameterPrefix}Transmission,
-          vec3<f32>(${(layer.opacity / 100).toFixed(8)})
+          vec3<f32>(${opacityRef})
         );`
       : "";
   },
