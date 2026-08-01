@@ -18,7 +18,7 @@ import {
 } from "../starfield-static";
 
 export const DEFAULT_BAKE_WIDTH = 1024;
-export const RUNTIME_VERSION = "0.1.0";
+export const RUNTIME_VERSION = "0.1.1";
 
 export type BakedSkyboxImageData = {
   data: Uint8ClampedArray<ArrayBuffer>;

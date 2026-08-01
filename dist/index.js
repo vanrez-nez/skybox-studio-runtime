@@ -2104,7 +2104,7 @@ function gr(e, t, n = {}) {
 }
 //#endregion
 //#region src/baking/bake.ts
-var _r = 1024, vr = "0.1.0", yr = /* @__PURE__ */ new Map(), br = /* @__PURE__ */ new Map();
+var _r = 1024, vr = "0.1.1", yr = /* @__PURE__ */ new Map(), br = /* @__PURE__ */ new Map();
 function xr(e = {}) {
 	let t = Math.max(.1, e.dpr ?? 1), n = Math.max(1, Math.floor((e.width ?? 1024) * t)), r = Math.max(1, Math.floor((e.height ?? n / 2) * t));
 	return {

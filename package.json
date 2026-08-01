@@ -1,6 +1,6 @@
 {
   "name": "skybox-studio-runtime",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Three.js runtime for live and baked Skybox Studio manifests.",
   "type": "module",
   "license": "MIT",
