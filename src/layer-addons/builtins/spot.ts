@@ -485,4 +485,9 @@ registerLayerRuntimeAdapter({
   wgsl: spotWebGpuAdapter as WebGpuLayerAdapter,
   wgslEditorOverlay: true,
   getTopologyKey: (layer) => spotWebGpuAdapter.getTopologyKey(layer as never),
+  // Direction-only light source: a linked Clouds light borrows the spot's
+  // position, never its appearance.
+  getLightSource: (params) => ({
+    direction: [...(params as SkyboxSpotParams).centerDirection],
+  }),
 });

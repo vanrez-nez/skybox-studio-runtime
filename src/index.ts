@@ -137,6 +137,12 @@ export {
   normalizeSkyboxMoonParams,
   STYLE_EXPOSURE as MOON_STYLE_EXPOSURE,
 } from "./layer-addons/builtins/moon/params";
+export {
+  computeMoonLightSource,
+  MOON_LIGHT_INTENSITY_SCALE_MAX,
+  moonPhaseBrightness,
+} from "./layer-addons/builtins/moon/light-source";
+export type { LayerLightSourceDescriptor } from "./layer-addons/registry";
 export { migrateManifestToV2, resolveCloudLightReferences } from "./manifest";
 export {
   Loader,

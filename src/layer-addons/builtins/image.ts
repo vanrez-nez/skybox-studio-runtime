@@ -366,4 +366,9 @@ registerLayerRuntimeAdapter({
   wgsl: imageWebGpuAdapter as WebGpuLayerAdapter,
   wgslEditorOverlay: true,
   getTopologyKey: (layer) => imageWebGpuAdapter.getTopologyKey(layer as never),
+  // Direction-only light source; an unplaced image is not a light source.
+  getLightSource: (params) => {
+    const placement = (params as SkyboxImageParams).placement;
+    return placement ? { direction: [...placement.centerDirection] } : null;
+  },
 });

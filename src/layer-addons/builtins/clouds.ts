@@ -284,9 +284,15 @@ function applyLight(
   target: CustomSkyModel["uniforms"]["sun"],
 ) {
   target.direction.value.set(...source.direction).normalize();
-  target.intensity.value = source.intensity;
+  // The user slider stays a trim; a linked source's derived modulation
+  // multiplies it. Folding it here (not in the shader) keeps the relevance
+  // gate and every other intensity consumer correct with no graph changes.
+  target.intensity.value =
+    source.intensity * (source.resolvedIntensityScale ?? 1);
   target.tint.value.set(source.tint);
-  target.showDisc.value = source.disc ? 1 : 0;
+  // A source that renders its own disc suppresses the clouds disc.
+  target.showDisc.value = source.disc && !source.resolvedSourceDisc ? 1 : 0;
+  target.angularRadius.value = source.resolvedAngularRadius ?? 0;
 }
 
 function applyCloudLayer(

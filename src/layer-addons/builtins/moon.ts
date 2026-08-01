@@ -14,6 +14,7 @@ import type {
 } from "../../manifest";
 import { EMPTY_IMAGE_TEXTURE } from "../../skybox/empty-texture";
 import { registerLayerRuntimeAdapter } from "../registry";
+import { computeMoonLightSource } from "./moon/light-source";
 import { numberLiteral, zeroEffectExpression } from "../shader-codegen";
 import type { WebGpuLayerAdapter } from "../types";
 
@@ -232,4 +233,6 @@ registerLayerRuntimeAdapter({
   },
   wgsl: moonWebGpuAdapter as WebGpuLayerAdapter,
   wgslEditorOverlay: true,
+  getLightSource: (params) =>
+    computeMoonLightSource(params as MoonLayer["params"]),
 });

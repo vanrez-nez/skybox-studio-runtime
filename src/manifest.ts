@@ -1,4 +1,7 @@
 import { normalizeSkyboxMoonParams } from "./layer-addons/builtins/moon/params";
+// Value import, but registry.ts itself has type-only imports, so this edge is
+// runtime-cycle-free. manifest.ts must never import the builtins barrel.
+import { getLayerRuntimeAdapter } from "./layer-addons/registry";
 
 export type SkyboxCompositionMode = "alpha-over";
 export type SkyboxCompositionOrder = "bottom-to-top";
@@ -232,6 +235,12 @@ export type SkyboxCloudLightParams = {
   disc: boolean;
   intensity: number;
   tint: string;
+  // Resolution outputs — written by resolveCloudLightReferences from the
+  // linked layer's LayerLightSourceDescriptor, same lifecycle as `direction`:
+  // overwritten (or stripped) on every resolve, never user-edited.
+  resolvedAngularRadius?: number;
+  resolvedIntensityScale?: number;
+  resolvedSourceDisc?: boolean;
 };
 
 // Full custom SkyMesh model. The cloud field is baked only when `field` changes;
@@ -432,9 +441,13 @@ function normalizedCloudLightDirection(
 }
 
 /**
- * Resolves Clouds light links without importing editor state. Image/Spot
- * appearance never leaks into the sky model; only their direction is copied.
- * Invalid links are cleared while the last stored direction is retained.
+ * Resolves Clouds light links without importing editor state. Links are
+ * resolved through the registered adapter's `getLightSource` capability, so
+ * the resolver has no per-type knowledge. Source appearance (tint) never
+ * leaks into the sky model. Links to a missing layer or to a layer that is
+ * not a light source are cleared while the last stored direction is retained;
+ * links to an UNREGISTERED type are preserved verbatim (fail-soft for
+ * standalone consumers that import the manifest without the builtins barrel).
  */
 export function resolveCloudLightReferences(
   manifest: SkyboxManifestV2,
@@ -452,25 +465,63 @@ export function resolveCloudLightReferences(
   };
   collect(manifest.nodes);
 
+  const stripResolved = (
+    light: SkyboxCloudLightParams,
+  ): SkyboxCloudLightParams => {
+    const {
+      resolvedAngularRadius: _radius,
+      resolvedIntensityScale: _scale,
+      resolvedSourceDisc: _disc,
+      ...rest
+    } = light;
+    return rest;
+  };
+
   const resolveLight = (
     light: SkyboxCloudLightParams,
   ): SkyboxCloudLightParams => {
-    const target = light.directionLayerId
-      ? layers.get(light.directionLayerId)
-      : undefined;
-    const referencedDirection =
-      target?.type === "spot"
-        ? target.params.centerDirection
-        : target?.type === "image"
-          ? target.params.placement?.centerDirection
-          : null;
+    const unlinked = (directionLayerId: string | null) => ({
+      ...stripResolved(light),
+      direction: normalizedCloudLightDirection(light.direction),
+      directionLayerId,
+    });
+
+    if (!light.directionLayerId) {
+      return unlinked(null);
+    }
+
+    const target = layers.get(light.directionLayerId);
+    if (!target) {
+      return unlinked(null);
+    }
+
+    const adapter = getLayerRuntimeAdapter(target.type);
+    if (!adapter) {
+      // Fail soft: without the adapter we cannot prove the link invalid, so
+      // preserve the link and every stored value (including prior resolution
+      // outputs) verbatim for a lossless round-trip.
+      return {
+        ...light,
+        direction: normalizedCloudLightDirection(light.direction),
+      };
+    }
+
+    const source = adapter.getLightSource?.(target.params) ?? null;
+    if (!source) {
+      return unlinked(null);
+    }
 
     return {
-      ...light,
-      direction: normalizedCloudLightDirection(
-        referencedDirection ?? light.direction,
-      ),
-      directionLayerId: referencedDirection ? light.directionLayerId : null,
+      ...stripResolved(light),
+      direction: normalizedCloudLightDirection(source.direction),
+      directionLayerId: light.directionLayerId,
+      ...(source.intensityScale !== undefined
+        ? { resolvedIntensityScale: source.intensityScale }
+        : {}),
+      ...(source.angularRadius
+        ? { resolvedAngularRadius: source.angularRadius }
+        : {}),
+      ...(source.rendersOwnDisc ? { resolvedSourceDisc: true } : {}),
     };
   };
 

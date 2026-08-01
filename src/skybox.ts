@@ -894,9 +894,10 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       resolvedNode,
     );
 
-    // Image/Spot movement can drive either Clouds light. Re-resolve and push
-    // only those dependent sky uniforms; the field texture and material stay put.
-    if (resolvedNode.type === "image" || resolvedNode.type === "spot") {
+    // Any light-source layer (spot, image, moon, ...) can drive either Clouds
+    // light. Re-resolve and push only those dependent sky uniforms; the field
+    // texture and material stay put.
+    if (getLayerRuntimeAdapter(resolvedNode.type)?.getLightSource) {
       forEachRenderableLayer(this.#manifest.nodes, (layer) => {
         if (layer.type === "clouds") {
           this.#liveUpdateContext.applyLayerParams(layer);

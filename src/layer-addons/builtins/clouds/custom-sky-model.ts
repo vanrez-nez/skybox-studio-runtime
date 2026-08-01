@@ -11,7 +11,9 @@ import {
   Fn,
   If,
   Loop,
+  acos,
   cameraPosition,
+  clamp,
   cos,
   dFdx,
   dFdy,
@@ -132,6 +134,12 @@ function createLightUniforms(defaults: LightDefaults) {
     intensity: uniform(defaults.intensity),
     tint: uniform(new Color(defaults.tint)),
     showDisc: uniform(defaults.showDisc ? 1 : 0),
+    /**
+     * Apparent angular radius of the source in radians. 0 = point light (the
+     * legacy path, bit-identical). A linked source with real extent (a moon
+     * layer) widens the cloud forward-scatter lobe by this much.
+     */
+    angularRadius: uniform(0),
   };
 }
 
@@ -555,6 +563,21 @@ export function createCustomSkyModel(
       // default; the clouds use the un-negated value with positive g.
       const cosTheta = dot(direction, dir);
       const phaseCos = cosTheta.negate();
+      // Area-light widening for the cloud terms: replace the angle to the
+      // source CENTER with the angle to its NEAREST LIMB,
+      // thetaEff = max(theta - angularRadius, 0). First-order effect of
+      // convolving the phase lobe with a disc source: the point-light forward
+      // peak becomes a plateau of the disc's angular width (flat across the
+      // disc — the spherical-addition form would dip at disc center). The
+      // map is Lipschitz-1 with output in [0, pi], so cosThetaEff stays in
+      // [-1, 1] and miePhase keeps its clamped denominator. select() on the
+      // radius keeps a 0 radius BIT-IDENTICAL to the legacy point-light path
+      // (the acos/cos round trip is only float-exact to ~1e-6).
+      const radius = light.angularRadius;
+      const theta = acos(clamp(cosTheta, -1, 1));
+      const cosThetaWide = cos(max(theta.sub(radius) as any, 0));
+      const cosThetaEff = select(radius.greaterThan(0), cosThetaWide, cosTheta);
+      const phaseCosEff = cosThetaEff.negate();
       const cosZenith = dot(dir, uniforms.up);
       // Horizontal distance the light ray covers per unit of vertical travel:
       // a low light marches a long grazing path and self-shadows hard, a high
@@ -591,6 +614,8 @@ export function createCustomSkyModel(
         irradiance,
         cosTheta,
         phaseCos,
+        cosThetaEff,
+        phaseCosEff,
         cosZenith,
         slope,
         pathLength,
@@ -1135,12 +1160,14 @@ export function createCustomSkyModel(
           // The multiple-scattering octave sum (see MS_* above): each octave
           // sees a progressively shallower copy of the same optical depth at
           // a progressively rounder phase, which is what keeps deep cloud
-          // readable without globally weakening extinction.
+          // readable without globally weakening extinction. Runs on the
+          // limb-widened cosine so an area light (a linked moon) plateaus the
+          // forward peak across its disc.
           let octaves: any = float(0);
           for (let i = 0; i < MS_OCTAVES; i += 1) {
             octaves = octaves.add(
               float(MS_B ** i)
-                .mul(miePhase(layer.phaseG.mul(MS_C ** i), ctx.cosTheta))
+                .mul(miePhase(layer.phaseG.mul(MS_C ** i), ctx.cosThetaEff))
                 .mul(exp(shadowDepth.mul(MS_A ** i).negate())),
             );
           }
@@ -1154,7 +1181,7 @@ export function createCustomSkyModel(
           const forwardGate = smoothstep(
             layer.phaseG.sub(POWDER_GATE_BELOW),
             min(layer.phaseG.add(POWDER_GATE_ABOVE), 0.98),
-            ctx.cosTheta,
+            ctx.cosThetaEff,
           );
           direct.addAssign(
             incoming
@@ -1287,7 +1314,7 @@ export function createCustomSkyModel(
             .mul(ctx.groundTransmit)
             .mul(
               float(MIST_ISO).add(
-                miePhase(float(MIST_G), ctx.phaseCos).mul(MIST_FWD),
+                miePhase(float(MIST_G), ctx.phaseCosEff).mul(MIST_FWD),
               ),
             ),
         ),
