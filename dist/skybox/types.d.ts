@@ -147,6 +147,7 @@ export type WebGpuImageLayerSampleNodes = WebGpuLayerSampleNodes & {
 };
 export type WebGpuStarfieldSampleNodeData = {
     sampleNode: any;
+    screenTextureNode: any;
     textureNode: any;
 };
 export type WebGpuStarfieldLayerSampleNodes = WebGpuLayerSampleNodes & {

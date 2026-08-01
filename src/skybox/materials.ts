@@ -21,7 +21,6 @@ import {
 
 import { bakeSkyboxImageData } from "../baking/bake";
 import {
-  composeCoverageExpression,
   composeNodesExpression,
   compositionNodeValues,
   createBindingMapFromLayers,
@@ -44,7 +43,10 @@ import {
   type CloudsLayerSampleNodes,
 } from "../layer-addons/builtins/clouds";
 import type { WebGpuImageLayerSampleNodes, WebGpuStarfieldLayerSampleNodes } from "./types";
-import { updateStarfieldTextureNodes } from "../layer-addons/builtins/starfield";
+import {
+  updateStarfieldScreenTextureNodes,
+  updateStarfieldTextureNodes,
+} from "../layer-addons/builtins/starfield";
 import type {
   SkyboxBakeOptions,
   SkyboxManifest,
@@ -213,6 +215,7 @@ function createWebGpuLayerRuntime(
   direction: unknown,
   imageTextures: Map<string, THREE.Texture>,
   starfieldTextures: Map<string, THREE.Texture>,
+  starfieldScreenTextures: Map<string, THREE.Texture>,
   _starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
   cloudFieldTextures: Map<string, THREE.Texture>
 ): WebGpuCompositionRuntime {
@@ -230,7 +233,12 @@ function createWebGpuLayerRuntime(
         bindings,
         direction,
         imageTextures: adapter.type === "starfield" ? starfieldTextures : imageTextures,
-        resourceTextures: adapter.type === "clouds" ? cloudFieldTextures : new Map(),
+        resourceTextures:
+          adapter.type === "clouds"
+            ? cloudFieldTextures
+            : adapter.type === "starfield"
+              ? starfieldScreenTextures
+              : new Map(),
         uniforms,
       });
     const bindingRuntime: WebGpuLayerAdapterRuntime = {
@@ -353,6 +361,7 @@ function buildSkyboxComposition(
   direction: any,
   imageTextures: Map<string, THREE.Texture>,
   starfieldTextures: Map<string, THREE.Texture>,
+  starfieldScreenTextures: Map<string, THREE.Texture>,
   starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
   cloudFieldTextures: Map<string, THREE.Texture>
 ) {
@@ -363,6 +372,7 @@ function buildSkyboxComposition(
     direction,
     imageTextures,
     starfieldTextures,
+    starfieldScreenTextures,
     starfieldPatchTextures,
     cloudFieldTextures
   );
@@ -427,6 +437,7 @@ export function createWebGpuMaterial(
   editorLayerState: SkyboxEditorLayerState,
   imageTextures: Map<string, THREE.Texture>,
   starfieldTextures: Map<string, THREE.Texture>,
+  starfieldScreenTextures: Map<string, THREE.Texture>,
   starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
   cloudFieldTextures: Map<string, THREE.Texture>,
   editorPresentationEnabled: boolean
@@ -457,6 +468,7 @@ export function createWebGpuMaterial(
     direction,
     imageTextures,
     starfieldTextures,
+    starfieldScreenTextures,
     starfieldPatchTextures,
     cloudFieldTextures
   );
@@ -516,6 +528,8 @@ export function createWebGpuMaterial(
     updateImageTextureNodes(imageSamples?.sampleData ?? new Map(), textures);
   material.userData.applyStarfieldTextures = (textures: Map<string, THREE.Texture>) =>
     updateStarfieldTextureNodes(starfieldSamples?.sampleData ?? new Map(), textures);
+  material.userData.applyStarfieldScreenTextures = (textures: Map<string, THREE.Texture>) =>
+    updateStarfieldScreenTextureNodes(starfieldSamples?.sampleData ?? new Map(), textures);
   material.userData.applyCloudFieldTextures = (textures: Map<string, THREE.Texture>) => {
     const cloudsRuntime = layerRuntime.adapters.get("clouds");
     updateCloudFieldTextureNodes(
@@ -529,133 +543,18 @@ export function createWebGpuMaterial(
     });
   };
   material.userData.debugImageTextureSlots = layerRuntime.textureSlotsByLayerId;
-
-  return material;
-}
-
-// --- Coverage (transmittance) material for screen-space glint occlusion (Phase B) ---------------
-//
-// Same per-fragment ray + per-layer sampling as the live composite, but instead of a color it outputs
-// the transmittance Π(1 − sourceAlpha) of the layers ABOVE the topmost starfield. The Skybox renders
-// this into an offscreen target each frame (a pre-pass) and the glint shader multiplies its radiance
-// by the sampled transmittance, so opaque upper layers hide the glints behind them.
-export { manifestHasLayerAboveStarfield } from "./composition";
-
-function createSkyboxCoverageFunction(
-  manifest: SkyboxManifestV2,
-  compositionBindings: CompositionNodeShaderBinding[],
-  layerRuntime: WebGpuCompositionRuntime
-) {
-  const compositionBindingMap = createCompositionBindingMap(compositionBindings);
-  const body = composeCoverageExpression(
-    manifest.nodes,
-    compositionBindingMap,
-    layerRuntime,
+  material.userData.debugStarfieldScreenTextureSlots = Object.fromEntries(
+    Array.from(starfieldSamples?.sampleData.entries() ?? []).map(([layerId, sample]) => [
+      layerId,
+      sample.screenTextureNode,
+    ])
   );
-  const layerParameters = Array.from(layerRuntime.adapters.values())
-    .map((adapterRuntime) => adapterRuntime.adapter.createParameterDeclarations(adapterRuntime.bindings))
-    .join("");
-  const compositionParameters = compositionBindings
-    .map((binding) => `,
-      ${binding.parameterPrefix}Opacity: f32`)
-    .join("");
-
-  return wgslFn(`
-    fn skyboxStudioCoverage(
-      direction: vec3<f32>${layerParameters}${compositionParameters}
-    ) -> vec4<f32> {
-      var transmissionAbove = vec3<f32>(1.0);
-      ${body}
-      return vec4<f32>(clamp(transmissionAbove, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
-    }
-  `);
-}
-
-export function createWebGpuCoverageMaterial(
-  manifest: SkyboxManifestV2,
-  imageTextures: Map<string, THREE.Texture>,
-  starfieldTextures: Map<string, THREE.Texture>,
-  starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>,
-  cloudFieldTextures: Map<string, THREE.Texture>
-) {
-  const material = new NodeMaterial();
-  const compositionBindings = collectCompositionNodeBindings(manifest.nodes);
-  const compositionUniforms = createCompositionUniformNodes(compositionBindings);
-
-  material.side = THREE.BackSide;
-  material.depthTest = false;
-  material.depthWrite = false;
-  material.vertexNode = Fn(() => {
-    const position = modelViewProjection as any;
-
-    position.z.assign(position.w);
-
-    return position;
-  })() as any;
-
-  const direction = skyboxViewDirectionNode();
-  const layerRuntime = createWebGpuLayerRuntime(
-    manifest,
-    direction,
-    imageTextures,
-    starfieldTextures,
-    starfieldPatchTextures,
-    cloudFieldTextures
+  material.userData.debugStarfieldSampleNodes = Object.fromEntries(
+    Array.from(starfieldSamples?.sampleData.entries() ?? []).map(([layerId, sample]) => [
+      layerId,
+      sample.sampleNode,
+    ])
   );
-  const imageRuntime = getWebGpuAdapterRuntime<"image", ImageLayerShaderBinding, ImagePlacementUniformNodes>(
-    layerRuntime,
-    "image"
-  );
-  const imageSamples = imageRuntime?.samples as WebGpuImageLayerSampleNodes | undefined;
-  const imageUniforms = imageRuntime?.uniforms ?? [];
-  const starfieldRuntime = getWebGpuAdapterRuntime<"starfield", StarfieldLayerShaderBinding, never>(
-    layerRuntime,
-    "starfield"
-  );
-  const starfieldSamples = starfieldRuntime?.samples as WebGpuStarfieldLayerSampleNodes | undefined;
-  const coverage = createSkyboxCoverageFunction(
-    manifest,
-    compositionBindings,
-    layerRuntime,
-  );
-
-  material.colorNode = coverage({
-    direction,
-    ...layerRuntime.sampleParameters,
-    ...Object.fromEntries(
-      compositionBindings.map((binding) => [
-        `${binding.parameterPrefix}Opacity`,
-        compositionUniforms[binding.index].opacity,
-      ]),
-    ),
-  }) as any;
-  material.userData.applyLayerParams = (layer: SkyboxManifestLayer) =>
-    applyWebGpuLayerParamsToRuntime(layerRuntime, layer);
-  attachCompositionUpdater(material, (nextManifest) =>
-    applyCompositionParamsToUniformNodes(compositionUniforms, nextManifest)
-  );
-  attachLayerCompositionUpdater(material, (node) =>
-    applyLayerCompositionToUniformNodes(compositionUniforms, node)
-  );
-  attachImagePlacementUpdater(material, (layerId, placement) =>
-    applyImageLayerPlacementToUniformNodes(imageUniforms, layerId, placement)
-  );
-  material.userData.applyImageTextures = (textures: Map<string, THREE.Texture>) =>
-    updateImageTextureNodes(imageSamples?.sampleData ?? new Map(), textures);
-  material.userData.applyStarfieldTextures = (textures: Map<string, THREE.Texture>) =>
-    updateStarfieldTextureNodes(starfieldSamples?.sampleData ?? new Map(), textures);
-  material.userData.applyCloudFieldTextures = (textures: Map<string, THREE.Texture>) => {
-    const cloudsRuntime = layerRuntime.adapters.get("clouds");
-    updateCloudFieldTextureNodes(
-      cloudsRuntime?.samples as CloudsLayerSampleNodes | undefined,
-      textures,
-    );
-  };
-  material.userData.applyTime = (time: number) => {
-    layerRuntime.adapters.forEach((runtime) => {
-      runtime.adapter.updateTime?.(runtime.uniforms, time);
-    });
-  };
 
   return material;
 }
@@ -717,6 +616,7 @@ export function createWebGpuEquirectBakeMaterial(
     direction,
     imageTextures,
     starfieldTextures,
+    new Map(),
     new Map(),
     cloudFieldTextures
   );

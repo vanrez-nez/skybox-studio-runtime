@@ -2,7 +2,7 @@
 // starfield texture per-direction. The heavy procedural CPU sampler + generation live in the
 // `skybox-studio-runtime/starfield` entry (see `starfield.ts`), so the core never pulls them in.
 import * as THREE from "three";
-import { texture as textureNode, wgslFn } from "three/tsl";
+import { screenUV, texture as textureNode, wgslFn } from "three/tsl";
 
 import type {
   SkyboxManifestLayer,
@@ -78,6 +78,15 @@ export function updateStarfieldTextureNodes(
   });
 }
 
+export function updateStarfieldScreenTextureNodes(
+  sampleData: Map<string, WebGpuStarfieldSampleNodeData>,
+  screenTextures: Map<string, THREE.Texture>
+) {
+  sampleData.forEach((sample, layerId) => {
+    sample.screenTextureNode.value = screenTextures.get(layerId) ?? EMPTY_IMAGE_TEXTURE;
+  });
+}
+
 // --- WGSL equirect-UV helper (starfield source) ---
 
 const directionToSourceStarfieldUv = wgslFn(`
@@ -88,6 +97,18 @@ const directionToSourceStarfieldUv = wgslFn(`
     let v = acos(clamp(normalizedDirection.y, -1.0, 1.0)) / 3.141592653589793;
 
     return vec2<f32>(u, v);
+  }
+`);
+
+// The equirect texture carries the direction-space nebula while the cached viewport target carries
+// the constant-pixel star cores. Combining them here makes both one Starfield layer sample before
+// normal layer composition; Clouds above it therefore attenuate both with the same transmission.
+const combineStarfieldSample = wgslFn(`
+  fn skyboxStudioCombineStarfieldSample(
+    backdrop: vec4<f32>,
+    screenStars: vec4<f32>
+  ) -> vec4<f32> {
+    return vec4<f32>(backdrop.rgb + screenStars.rgb, max(backdrop.a, screenStars.a));
   }
 `);
 
@@ -105,7 +126,7 @@ const starfieldWebGpuAdapter: BuiltInWebGpuLayerAdapter<"starfield", StarfieldLa
 
     return binding ? `effectColor = ${binding.parameterName};` : zeroEffectExpression();
   },
-  createSampleNodes: ({ bindings, direction, imageTextures }) => {
+  createSampleNodes: ({ bindings, direction, imageTextures, resourceTextures }) => {
     const starfieldTextures = imageTextures;
     const sampleData = new Map<string, WebGpuStarfieldSampleNodeData>();
     const sampleNodesByParameterName = Object.fromEntries(
@@ -119,12 +140,26 @@ const starfieldWebGpuAdapter: BuiltInWebGpuLayerAdapter<"starfield", StarfieldLa
         (sampleTextureNode as any).getUniformHash = () =>
           `skybox-starfield-texture:${binding.layer.id}`;
 
+        const screenTextureNode = textureNode(
+          resourceTextures.get(binding.layer.id) ?? EMPTY_IMAGE_TEXTURE,
+          screenUV as any
+        ).setName(`starfieldScreenTexture${binding.index}`);
+
+        (screenTextureNode as any).getUniformHash = () =>
+          `skybox-starfield-screen-texture:${binding.layer.id}`;
+
+        const combinedSampleNode = (combineStarfieldSample as any)({
+          backdrop: sampleTextureNode,
+          screenStars: screenTextureNode,
+        });
+
         sampleData.set(binding.layer.id, {
-          sampleNode: sampleTextureNode,
+          sampleNode: combinedSampleNode,
+          screenTextureNode,
           textureNode: sampleTextureNode,
         });
 
-        return [binding.parameterName, sampleTextureNode];
+        return [binding.parameterName, combinedSampleNode];
       })
     );
 

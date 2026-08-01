@@ -4,9 +4,7 @@ import type { SkyboxBakeOptions, SkyboxManifest, SkyboxManifestLayer, SkyboxMani
 import type { StarfieldGpuPatchTextureSet } from "../baking/starfield-gpu-bake";
 import type { SkyboxEditorLayerState } from "./types";
 export declare function forEachRenderableLayer(nodes: SkyboxManifestNode[], callback: (layer: SkyboxManifestLayer) => void): void;
-export declare function createWebGpuMaterial(manifest: SkyboxManifestV2, editorLayerState: SkyboxEditorLayerState, imageTextures: Map<string, THREE.Texture>, starfieldTextures: Map<string, THREE.Texture>, starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>, cloudFieldTextures: Map<string, THREE.Texture>, editorPresentationEnabled: boolean): NodeMaterial;
-export { manifestHasLayerAboveStarfield } from "./composition";
-export declare function createWebGpuCoverageMaterial(manifest: SkyboxManifestV2, imageTextures: Map<string, THREE.Texture>, starfieldTextures: Map<string, THREE.Texture>, starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>, cloudFieldTextures: Map<string, THREE.Texture>): NodeMaterial;
+export declare function createWebGpuMaterial(manifest: SkyboxManifestV2, editorLayerState: SkyboxEditorLayerState, imageTextures: Map<string, THREE.Texture>, starfieldTextures: Map<string, THREE.Texture>, starfieldScreenTextures: Map<string, THREE.Texture>, starfieldPatchTextures: Map<string, StarfieldGpuPatchTextureSet>, cloudFieldTextures: Map<string, THREE.Texture>, editorPresentationEnabled: boolean): NodeMaterial;
 export declare function createWebGpuEquirectBakeMaterial(manifest: SkyboxManifestV2, imageTextures: Map<string, THREE.Texture>, starfieldTextures: Map<string, THREE.Texture>, cloudFieldTextures: Map<string, THREE.Texture>, options?: {
     flipY?: boolean;
 }): NodeMaterial;

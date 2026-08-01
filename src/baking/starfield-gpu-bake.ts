@@ -663,7 +663,7 @@ export type StarfieldGlintHandle = {
   setViewport: (viewport: StarGlintViewport | null) => void;
   /** Update per-star appearance uniforms in place (no geometry rebuild) for live slider tweaks. */
   setParams: (params: SkyboxStarfieldParams) => void;
-  /** Bind the per-frame transmittance target (Phase B occlusion), or null to disable occlusion. */
+  /** @deprecated Star cores now compose inside their Starfield layer. Kept for API compatibility. */
   setCoverageTexture: (texture: THREE.Texture | null) => void;
   dispose: () => void;
 };
@@ -841,8 +841,8 @@ function createStarGlintMaterial(params: SkyboxStarfieldParams) {
     const bright = uBright.mul(mix(1.0, pow(linkedBrightRand, 3.0).mul(3.0), uBrightVar));
     const color = starColorNode(mix(0.5, vRandoms.w, uColorVar));
     const radiance = color.mul(core.add(glare.mul(glareStrength))).mul(bright);
-    // Phase B: attenuate by the transmittance of layers stacked above the starfield (sampled at this
-    // screen pixel) so opaque upper layers occlude the glints. Defaults to 1 (no coverage bound).
+    // Legacy external-coverage hook. The Skybox runtime leaves this disabled because star cores now
+    // compose inside their Starfield layer and inherit normal upper-layer transmission there.
     const transmittance = texture(uCoverageTexture, screenUV as any).rgb;
     const occluded = radiance.mul(mix(vec3(1.0), transmittance, uCoverageEnabled));
 
@@ -1394,8 +1394,8 @@ function disposeMaterial(material: THREE.Material) {
 
 let whiteCoverageTextureInstance: THREE.DataTexture | null = null;
 
-// Default glint coverage = fully transmissive (white) → no occlusion until a real coverage target is
-// bound. Phase B (layer-order occlusion) swaps this for the per-frame transmittance pre-pass output.
+// Default legacy coverage = fully transmissive. The current Skybox runtime does not bind a separate
+// coverage target; normal layer composition provides occlusion after the star target is sampled.
 function whiteCoverageTexture() {
   if (!whiteCoverageTextureInstance) {
     const texture = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);

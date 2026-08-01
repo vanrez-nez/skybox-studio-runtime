@@ -14,5 +14,3 @@ export declare function composeNodesExpression(nodes: SkyboxManifestNode[], comp
 export declare function createBindingMapFromLayers<TBinding extends {
     layer: SkyboxManifestLayer;
 }>(bindings: TBinding[]): Map<string, TBinding>;
-export declare function manifestHasLayerAboveStarfield(nodes: SkyboxManifestNode[]): boolean;
-export declare function composeCoverageExpression(nodes: SkyboxManifestNode[], compositionBindings: Map<string, CompositionNodeShaderBinding>, webGpuRuntime: WebGpuCompositionRuntime): string;

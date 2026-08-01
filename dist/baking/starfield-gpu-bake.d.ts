@@ -36,7 +36,7 @@ export type StarfieldGlintHandle = {
     setViewport: (viewport: StarGlintViewport | null) => void;
     /** Update per-star appearance uniforms in place (no geometry rebuild) for live slider tweaks. */
     setParams: (params: SkyboxStarfieldParams) => void;
-    /** Bind the per-frame transmittance target (Phase B occlusion), or null to disable occlusion. */
+    /** @deprecated Star cores now compose inside their Starfield layer. Kept for API compatibility. */
     setCoverageTexture: (texture: THREE.Texture | null) => void;
     dispose: () => void;
 };
