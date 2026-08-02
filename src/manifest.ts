@@ -12,7 +12,8 @@ export type SkyboxEffectType =
   | "image"
   | "moon"
   | "spot"
-  | "starfield";
+  | "starfield"
+  | "sun";
 export type SkyboxLayerBlendMode =
   | "normal"
   | "darken"
@@ -99,6 +100,15 @@ export type SkyboxMoonParams = {
   placement: SkyboxImagePlacement;
   resolutionMode: SkyboxMoonResolutionMode;
   photometryModel: SkyboxMoonPhotometryModel;
+  /**
+   * Id of the layer that lights this moon (dynamic lighting). When set, the
+   * bake's sun direction and the photometric phase derive from the actual
+   * geometry between the two layers — a moon transiting a sun shows its
+   * night side automatically. `phase`/`sunTilt` are ignored while linked.
+   */
+  lightLayerId: string | null;
+  /** Resolution output from the light layer's descriptor; never user-edited. */
+  resolvedLightDirection?: [number, number, number];
   phase: number;
   sunTilt: number;
   bodyRotation: number;
@@ -110,6 +120,12 @@ export type SkyboxMoonParams = {
   regolith: number;
   rays: number;
   exposure: number;
+  /**
+   * Artistic width of the realistic terminator's light→dark transition,
+   * 0..1. 0 = the physical Hapke + cast-shadow look, bit-identical to the
+   * pre-softness bake.
+   */
+  shadowSoftness: number;
   style: SkyboxMoonStyle;
   cartoonLightIntensity: number;
   cartoonFill: number;
@@ -154,6 +170,42 @@ export type SkyboxSpotParams = {
   haloStrength: number;
   lightColor: string;
   stops: SkyboxGradientStop[];
+};
+
+// Occluded solar disk: analytic limb-darkened photosphere, a scattered-light
+// aureole computed as a radial integral over the lit angular measure of rings
+// (inside the sun's limb shells, outside the occluder), and a procedural
+// corona (ridged-noise streamers/plumes on a Baumbach radial profile) that is
+// always emitted and only becomes visible when the photosphere is covered.
+// The crescent glare and diamond-ring flash EMERGE from this model — there
+// are no stylized gates. `angularRadius` is the photosphere's angular radius.
+export type SkyboxSunParams = {
+  angularRadius: number;
+  /** Aureole reach, in multiples of the photosphere radius. */
+  aureoleReach: number;
+  /** Aureole (scattered light) strength — the reference's glare control. */
+  aureoleStrength: number;
+  baseAngularRadius: number;
+  centerDirection: [number, number, number];
+  /** Tilt of the solar axis sorting plumes (poles) vs streamers (equator). */
+  coronaAxis: number;
+  /** exp2 gain lifting the corona out of its physical 1e-6 range. */
+  coronaGain: number;
+  /** Noise seed for the corona's streamer population. */
+  coronaSeed: number;
+  /** 0 = smooth Baumbach profile, 1 = fully structured streamers/plumes. */
+  coronaStructure: number;
+  /** exp2 exposure applied to the whole layer before tone mapping. */
+  exposure: number;
+  /**
+   * Id of the layer whose disc occludes this sun (an eclipse). Resolved
+   * through the occluder's LayerLightSourceDescriptor — no per-type coupling.
+   */
+  occluderLayerId: string | null;
+  // Resolution outputs — written by the manifest resolver from the occluder's
+  // light-source descriptor; never user-edited, absent when unlinked.
+  resolvedOccluderAngularRadius?: number;
+  resolvedOccluderDirection?: [number, number, number];
 };
 
 export type SkyboxStarfieldStarsParams = {
@@ -335,6 +387,16 @@ export type SkyboxStarfieldLayer = {
   type: "starfield";
 };
 
+export type SkyboxSunLayer = {
+  blendMode: SkyboxLayerBlendMode;
+  enabled: boolean;
+  id: string;
+  name: string;
+  opacity: number;
+  params: SkyboxSunParams;
+  type: "sun";
+};
+
 export type SkyboxManifestLayer =
   | SkyboxCloudsLayer
   | SkyboxGradientLayer
@@ -342,7 +404,8 @@ export type SkyboxManifestLayer =
   | SkyboxImageLayer
   | SkyboxMoonLayer
   | SkyboxSpotLayer
-  | SkyboxStarfieldLayer;
+  | SkyboxStarfieldLayer
+  | SkyboxSunLayer;
 
 export type SkyboxManifestGroup = {
   blendMode: SkyboxLayerBlendMode;
@@ -440,22 +503,13 @@ function normalizedCloudLightDirection(
   return [direction[0] / length, direction[1] / length, direction[2] / length];
 }
 
-/**
- * Resolves Clouds light links without importing editor state. Links are
- * resolved through the registered adapter's `getLightSource` capability, so
- * the resolver has no per-type knowledge. Source appearance (tint) never
- * leaks into the sky model. Links to a missing layer or to a layer that is
- * not a light source are cleared while the last stored direction is retained;
- * links to an UNREGISTERED type are preserved verbatim (fail-soft for
- * standalone consumers that import the manifest without the builtins barrel).
- */
-export function resolveCloudLightReferences(
-  manifest: SkyboxManifestV2,
-): SkyboxManifestV2 {
+function collectManifestLayers(
+  nodes: SkyboxManifestNode[],
+): Map<string, SkyboxManifestLayer> {
   const layers = new Map<string, SkyboxManifestLayer>();
 
-  const collect = (nodes: SkyboxManifestNode[]) => {
-    nodes.forEach((node) => {
+  const collect = (children: SkyboxManifestNode[]) => {
+    children.forEach((node) => {
       if (node.type === "group") {
         collect(node.children);
       } else {
@@ -463,7 +517,174 @@ export function resolveCloudLightReferences(
       }
     });
   };
-  collect(manifest.nodes);
+  collect(nodes);
+
+  return layers;
+}
+
+/**
+ * Phase 1 of light resolution: Moon layers resolve their dynamic-lighting
+ * reference (`lightLayerId`) into `resolvedLightDirection` through the target
+ * adapter's `getLightSource` capability. Runs FIRST so the moon's bake and
+ * photometry see the light geometry before the sun and clouds phases run.
+ */
+function resolveMoonLightReferences(
+  manifest: SkyboxManifestV2,
+): SkyboxManifestV2 {
+  const layers = collectManifestLayers(manifest.nodes);
+
+  const resolveMoonParams = (
+    params: SkyboxMoonParams,
+    selfId: string,
+  ): SkyboxMoonParams => {
+    const stripResolved = (input: SkyboxMoonParams): SkyboxMoonParams => {
+      const { resolvedLightDirection: _light, ...rest } = input;
+      return rest;
+    };
+
+    if (!params.lightLayerId) {
+      return stripResolved(params);
+    }
+
+    if (params.lightLayerId === selfId) {
+      return { ...stripResolved(params), lightLayerId: null };
+    }
+
+    const target = layers.get(params.lightLayerId);
+    if (!target) {
+      return { ...stripResolved(params), lightLayerId: null };
+    }
+
+    const adapter = getLayerRuntimeAdapter(target.type);
+    if (!adapter) {
+      // Fail soft: preserve the link and prior resolution outputs verbatim.
+      return params;
+    }
+
+    const source = adapter.getLightSource?.(target.params) ?? null;
+    if (!source) {
+      return { ...stripResolved(params), lightLayerId: null };
+    }
+
+    return {
+      ...stripResolved(params),
+      resolvedLightDirection: normalizedCloudLightDirection(source.direction),
+    };
+  };
+
+  const resolveNodes = (nodes: SkyboxManifestNode[]): SkyboxManifestNode[] =>
+    nodes.map((node) => {
+      if (node.type === "group") {
+        return { ...node, children: resolveNodes(node.children) };
+      }
+
+      if (node.type !== "moon") {
+        return node;
+      }
+
+      return { ...node, params: resolveMoonParams(node.params, node.id) };
+    });
+
+  return { ...manifest, nodes: resolveNodes(manifest.nodes) };
+}
+
+/**
+ * Phase 2 of light resolution: Sun layers resolve their eclipse occluder
+ * through the target adapter's `getLightSource` descriptor (direction +
+ * angular radius) — no per-type knowledge. Runs BEFORE the clouds phase so a
+ * clouds light linked to a sun sees the eclipse-dimmed descriptor.
+ */
+function resolveSunOcclusionReferences(
+  manifest: SkyboxManifestV2,
+): SkyboxManifestV2 {
+  const layers = collectManifestLayers(manifest.nodes);
+
+  const resolveSunParams = (
+    params: SkyboxSunParams,
+    selfId: string,
+  ): SkyboxSunParams => {
+    const stripResolved = (input: SkyboxSunParams): SkyboxSunParams => {
+      const {
+        resolvedOccluderAngularRadius: _radius,
+        resolvedOccluderDirection: _direction,
+        ...rest
+      } = input;
+      return rest;
+    };
+
+    if (!params.occluderLayerId) {
+      return stripResolved(params);
+    }
+
+    if (params.occluderLayerId === selfId) {
+      return { ...stripResolved(params), occluderLayerId: null };
+    }
+
+    const target = layers.get(params.occluderLayerId);
+    if (!target) {
+      return { ...stripResolved(params), occluderLayerId: null };
+    }
+
+    const adapter = getLayerRuntimeAdapter(target.type);
+    if (!adapter) {
+      // Fail soft (same contract as the clouds phase): preserve the link and
+      // any prior resolution outputs verbatim for a lossless round-trip.
+      return params;
+    }
+
+    const source = adapter.getLightSource?.(target.params) ?? null;
+    if (!source) {
+      return { ...stripResolved(params), occluderLayerId: null };
+    }
+
+    // A radius-less source keeps the link but yields an inert eclipse
+    // (coverage 0) — friendlier than clearing if the source grows a disc.
+    return {
+      ...stripResolved(params),
+      resolvedOccluderAngularRadius: source.angularRadius ?? 0,
+      resolvedOccluderDirection: normalizedCloudLightDirection(source.direction),
+    };
+  };
+
+  const resolveNodes = (nodes: SkyboxManifestNode[]): SkyboxManifestNode[] =>
+    nodes.map((node) => {
+      if (node.type === "group") {
+        return { ...node, children: resolveNodes(node.children) };
+      }
+
+      if (node.type !== "sun") {
+        return node;
+      }
+
+      return { ...node, params: resolveSunParams(node.params, node.id) };
+    });
+
+  return { ...manifest, nodes: resolveNodes(manifest.nodes) };
+}
+
+/**
+ * Resolves cross-layer light links without importing editor state. Three
+ * ordered phases — moon dynamic lighting, then sun eclipse occluders, then
+ * Clouds lights — so the cascade sun → moon (illumination) and
+ * moon → sun → clouds (occlusion/dimming) settles in a single call. Links
+ * are resolved through the registered adapter's `getLightSource` capability,
+ * so the resolver has no per-type knowledge. Source appearance (tint) never
+ * leaks into the sky model. Links to a missing layer or to a layer that is
+ * not a light source are cleared while the last stored direction is
+ * retained; links to an UNREGISTERED type are preserved verbatim (fail-soft
+ * for standalone consumers importing the manifest without the builtins
+ * barrel).
+ */
+export function resolveCloudLightReferences(
+  manifest: SkyboxManifestV2,
+): SkyboxManifestV2 {
+  return resolveCloudLightNodes(
+    resolveSunOcclusionReferences(resolveMoonLightReferences(manifest)),
+  );
+}
+
+function resolveCloudLightNodes(manifest: SkyboxManifestV2): SkyboxManifestV2 {
+  const layers = collectManifestLayers(manifest.nodes);
 
   const stripResolved = (
     light: SkyboxCloudLightParams,

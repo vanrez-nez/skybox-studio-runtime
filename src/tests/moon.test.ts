@@ -11,6 +11,10 @@ import {
   normalizeSkyboxMoonParams,
 } from "../layer-addons/builtins/moon/params";
 import {
+  computeMoonLightSource,
+  deriveMoonFrameLight,
+} from "../layer-addons/builtins/moon/light-source";
+import {
   EARTHSHINE_MAX_IRRADIANCE,
   HAPKE_ALL_AREA_643,
   HAPKE_ALL_AREA_FULL_MOON_REFERENCE,
@@ -18,6 +22,7 @@ import {
   HAPKE_MARIA_643,
   evaluateHapkeReflectance,
   lambertSpherePhase,
+  softTerminatorMu0,
 } from "../layer-addons/builtins/moon/photometry";
 import type { SkyboxManifestV2 } from "../manifest";
 
@@ -157,5 +162,100 @@ describe("moon layer resources", () => {
 
     expect(baker.outputTex.image).toMatchObject({ height: 128, width: 128 });
     baker.dispose();
+  });
+});
+
+describe("moon terminator softness", () => {
+  it("is an exact identity at softness 0", () => {
+    for (let i = 0; i <= 40; i += 1) {
+      const ndl = -1 + (i / 40) * 2;
+      expect(softTerminatorMu0(ndl, 0)).toBe(ndl);
+    }
+  });
+
+  it("lifts the night side monotonically with softness", () => {
+    expect(softTerminatorMu0(-0.3, 0.5)).toBeGreaterThan(-0.3);
+    expect(softTerminatorMu0(-0.3, 1)).toBeGreaterThan(softTerminatorMu0(-0.3, 0.5));
+    // Full softness keeps a positive, decaying tail into the night side.
+    expect(softTerminatorMu0(-0.9, 1)).toBeGreaterThan(0);
+    expect(softTerminatorMu0(-0.9, 1)).toBeLessThan(softTerminatorMu0(-0.3, 1));
+  });
+
+  it("participates in the bake key and normalizes with a 0 default", () => {
+    const defaults = createDefaultSkyboxMoonParams();
+    expect(normalizeSkyboxMoonParams({}).shadowSoftness).toBe(0);
+    expect(normalizeSkyboxMoonParams({ shadowSoftness: 7 }).shadowSoftness).toBe(1);
+    expect(createMoonBakeKey({ ...defaults, shadowSoftness: 0.3 }, 512)).not.toBe(
+      createMoonBakeKey(defaults, 512),
+    );
+    expect(createMoonBakeKey({ ...defaults, shadowSoftness: 0 }, 512)).toBe(
+      createMoonBakeKey(defaults, 512),
+    );
+  });
+
+  it("never affects the photometric light-source descriptor", () => {
+    const defaults = createDefaultSkyboxMoonParams();
+    const soft = computeMoonLightSource({ ...defaults, shadowSoftness: 1 });
+    expect(soft).toEqual(computeMoonLightSource(defaults));
+  });
+});
+
+describe("moon dynamic lighting", () => {
+  const transitMoon = () => ({
+    ...createDefaultSkyboxMoonParams([0, 0, -1]),
+    lightLayerId: "sun-layer",
+    resolvedLightDirection: [0, 0, -1] as [number, number, number],
+  });
+
+  it("derives the frame light from the linked geometry", () => {
+    expect(deriveMoonFrameLight(createDefaultSkyboxMoonParams())).toBeNull();
+
+    // Light source directly behind the moon (a transit): night side faces us.
+    const transit = deriveMoonFrameLight(transitMoon());
+    expect(transit?.[2]).toBeCloseTo(-1, 6);
+
+    // Light source opposite the moon: full face.
+    const full = deriveMoonFrameLight({
+      ...createDefaultSkyboxMoonParams([0, 0, -1]),
+      lightLayerId: "sun-layer",
+      resolvedLightDirection: [0, 0, 1],
+    });
+    expect(full?.[2]).toBeCloseTo(1, 6);
+
+    // Light source 90 degrees to the side: a quarter.
+    const quarter = deriveMoonFrameLight({
+      ...createDefaultSkyboxMoonParams([0, 0, -1]),
+      lightLayerId: "sun-layer",
+      resolvedLightDirection: [1, 0, 0],
+    });
+    expect(quarter?.[2]).toBeCloseTo(0, 6);
+  });
+
+  it("re-enters placement into the bake key only while linked", () => {
+    const linked = transitMoon();
+    const linkedMoved = {
+      ...createDefaultSkyboxMoonParams([1, 0, 0]),
+      lightLayerId: "sun-layer",
+      resolvedLightDirection: [0, 0, -1] as [number, number, number],
+    };
+    expect(createMoonBakeKey(linked, 512)).not.toBe(createMoonBakeKey(linkedMoved, 512));
+
+    // Unlinked moons keep the placement-invariant key (fast drags, no rebake).
+    expect(createMoonBakeKey(createDefaultSkyboxMoonParams(), 512)).toBe(
+      createMoonBakeKey(createDefaultSkyboxMoonParams([1, 0, 0]), 512),
+    );
+  });
+
+  it("drives the photometric brightness from the derived phase", () => {
+    // Transit = new moon: the light source sees the far side.
+    const transit = computeMoonLightSource(transitMoon());
+    expect(transit.intensityScale).toBeLessThan(1e-3);
+
+    // Opposite = full: back to the reference modulation of 1.
+    const full = computeMoonLightSource({
+      ...transitMoon(),
+      resolvedLightDirection: [0, 0, 1],
+    });
+    expect(full.intensityScale).toBeCloseTo(1, 6);
   });
 });

@@ -56,6 +56,23 @@ export {
   spotFromPosition,
   spotFromRadiusScale,
 } from "./spot-transform";
+export {
+  createDefaultSunParams,
+  DEFAULT_SUN_BASE_ANGULAR_RADIUS,
+  normalizeSunParams,
+  positionFromSun,
+  radiusScaleFromSun,
+  sunContainsDirection,
+  sunFromPosition,
+  sunFromRadiusScale,
+} from "./sun-transform";
+export {
+  computeSunEclipseCoverage,
+  computeSunEclipseGeometry,
+  computeSunLightSource,
+  SUN_LIGHT_INTENSITY_SCALE_MAX,
+  type SunEclipseGeometry,
+} from "./layer-addons/builtins/sun/eclipse";
 // Starfield generation (procedural catalog + GPU bake + CPU sampler) moved to the
 // `skybox-studio-runtime/starfield` entry to keep it out of the core bundle. See `starfield.ts`.
 export { evaluateSkyboxDirection } from "./evaluator";
@@ -119,6 +136,8 @@ export type {
   SkyboxStarfieldParams,
   SkyboxStarfieldQuality,
   SkyboxStarfieldStarsParams,
+  SkyboxSunLayer,
+  SkyboxSunParams,
 } from "./manifest";
 
 export {
@@ -139,6 +158,7 @@ export {
 } from "./layer-addons/builtins/moon/params";
 export {
   computeMoonLightSource,
+  deriveMoonFrameLight,
   MOON_LIGHT_INTENSITY_SCALE_MAX,
   moonPhaseBrightness,
 } from "./layer-addons/builtins/moon/light-source";

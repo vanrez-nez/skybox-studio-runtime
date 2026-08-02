@@ -43,6 +43,11 @@ export type StarfieldLayerShaderBinding = {
   layer: Extract<SkyboxManifestLayer, { type: "starfield" }>;
   parameterName: string;
 };
+export type SunLayerShaderBinding = {
+  index: number;
+  layer: Extract<SkyboxManifestLayer, { type: "sun" }>;
+  parameterName: string;
+};
 
 export type CloudsUniformNodes = {
   color: ReturnType<typeof uniform>;
@@ -108,6 +113,25 @@ export type SpotUniformNodes = {
     midpoint: ReturnType<typeof uniform>;
     t: ReturnType<typeof uniform>;
   }>;
+};
+export type SunUniformNodes = {
+  aureoleStrength: ReturnType<typeof uniform>;
+  centerDirection: ReturnType<typeof uniform>;
+  coronaAxis: ReturnType<typeof uniform>;
+  coronaGain: ReturnType<typeof uniform>;
+  coronaStructure: ReturnType<typeof uniform>;
+  eclipseActive: ReturnType<typeof uniform>;
+  exposure: ReturnType<typeof uniform>;
+  layerId: string;
+  occLocalX: ReturnType<typeof uniform>;
+  occLocalY: ReturnType<typeof uniform>;
+  occRadiusD: ReturnType<typeof uniform>;
+  radius: ReturnType<typeof uniform>;
+  reachD: ReturnType<typeof uniform>;
+  seed: ReturnType<typeof uniform>;
+  /** Un-drifted corona seed; `seed` = seedBase + time · drift rate. */
+  seedBase: number;
+  sunRadiusD: ReturnType<typeof uniform>;
 };
 export type CompositionUniformNodes = {
   blendMode: ReturnType<typeof uniform>;

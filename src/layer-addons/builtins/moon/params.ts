@@ -34,6 +34,7 @@ export function createDefaultSkyboxMoonParams(
     }),
     resolutionMode: "auto",
     photometryModel: "hapke-wac-643",
+    lightLayerId: null,
     phase: 0.5,
     sunTilt: 0.12,
     bodyRotation: 0,
@@ -45,6 +46,7 @@ export function createDefaultSkyboxMoonParams(
     regolith: 0.5,
     rays: 1,
     exposure: STYLE_EXPOSURE.realistic,
+    shadowSoftness: 0,
     style: "realistic",
     cartoonLightIntensity: 1,
     cartoonFill: 0,
@@ -86,6 +88,11 @@ export function normalizeSkyboxMoonParams(
     placement: normalizeImagePlacement(params.placement),
     resolutionMode: params.resolutionMode,
     photometryModel: "hapke-wac-643",
+    lightLayerId: typeof params.lightLayerId === "string" ? params.lightLayerId : null,
+    // Resolution output — passes through only when present (resolver lifecycle).
+    ...(params.resolvedLightDirection
+      ? { resolvedLightDirection: normalizeVector(params.resolvedLightDirection) }
+      : {}),
     phase: params.phase,
     sunTilt: params.sunTilt,
     bodyRotation: params.bodyRotation,
@@ -97,6 +104,7 @@ export function normalizeSkyboxMoonParams(
     regolith: params.regolith,
     rays: params.rays,
     exposure: params.exposure,
+    shadowSoftness: Math.min(Math.max(params.shadowSoftness, 0), 1),
     style: params.style,
     cartoonLightIntensity:
       legacy.cartoonLightIntensity ?? legacy.lightIntensity ?? defaults.cartoonLightIntensity,

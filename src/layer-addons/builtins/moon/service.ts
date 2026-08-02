@@ -7,6 +7,7 @@ import type {
 } from "../../../manifest";
 import { DISC_FILL } from "./disc";
 import { MoonBaker } from "./baker";
+import { deriveMoonFrameLight } from "./light-source";
 import {
   MOON_RESOLUTION_MAX,
   MOON_RESOLUTION_MIN,
@@ -77,8 +78,18 @@ export function resolveMoonBakeResolution(
 export function createMoonBakeKey(params: SkyboxMoonParams, resolution: number) {
   const normalized = normalizeSkyboxMoonParams(params);
   const { placement: _placement, resolutionMode: _resolutionMode, ...appearance } = normalized;
+  // Dynamic lighting depends on placement through the derived frame light,
+  // so it re-enters the key here (quantized for float stability). Unlinked
+  // moons keep the placement-invariant key: moving them never rebakes.
+  const frameLight = deriveMoonFrameLight(normalized);
 
-  return JSON.stringify({ appearance, resolution });
+  return JSON.stringify({
+    appearance,
+    frameLight: frameLight
+      ? frameLight.map((component) => Math.round(component * 8192) / 8192)
+      : null,
+    resolution,
+  });
 }
 
 function collectMoonLayers(

@@ -26,6 +26,47 @@ export function moonPhaseAngle(phase: number): number {
   return Math.min(Math.abs(phase - 0.5) * 2 * Math.PI, Math.PI);
 }
 
+/**
+ * Dynamic lighting: the sun direction in the moon sprite's frame, derived
+ * from the actual geometry between the moon and its linked light layer.
+ * Frame axes are the placement tangents with +z toward the viewer, matching
+ * the baker's view frame (V = (0, 0, 1)) — a moon transiting in front of its
+ * light source gets z ≈ -1 and shows its night side; a moon opposite the
+ * source gets z ≈ +1 and is full. Null when the moon is not linked.
+ */
+export function deriveMoonFrameLight(
+  params: SkyboxMoonParams,
+): [number, number, number] | null {
+  const lightDirection = params.resolvedLightDirection;
+
+  if (!params.lightLayerId || !lightDirection) {
+    return null;
+  }
+
+  const placement = normalizeImagePlacement(params.placement);
+  const center = placement.centerDirection;
+  const x =
+    lightDirection[0] * placement.tangentX[0] +
+    lightDirection[1] * placement.tangentX[1] +
+    lightDirection[2] * placement.tangentX[2];
+  const y =
+    lightDirection[0] * placement.tangentY[0] +
+    lightDirection[1] * placement.tangentY[1] +
+    lightDirection[2] * placement.tangentY[2];
+  const z = -(
+    lightDirection[0] * center[0] +
+    lightDirection[1] * center[1] +
+    lightDirection[2] * center[2]
+  );
+  const length = Math.hypot(x, y, z);
+
+  if (!(length > 1e-6)) {
+    return null;
+  }
+
+  return [x / length, y / length, z / length];
+}
+
 const REF_TAN_HALF = Math.tan(DEFAULT_MOON_SPRITE_ANGULAR_SIZE / 2);
 
 /** Trim-friendliness bound: ~4× the default linear diameter at full phase. */
@@ -51,8 +92,14 @@ export function computeMoonLightSource(
       Math.tan(Math.min(placement.angularHeight, Math.PI * 0.9) / 2)) /
     (REF_TAN_HALF * REF_TAN_HALF);
 
+  // With dynamic lighting the photometric phase angle comes from the derived
+  // geometry (acos of the frame light's z), not the manual phase slider.
+  const frameLight = deriveMoonFrameLight(params);
+  const phaseAngle = frameLight
+    ? Math.acos(Math.min(Math.max(frameLight[2], -1), 1))
+    : moonPhaseAngle(params.phase);
   const raw =
-    moonPhaseBrightness(moonPhaseAngle(params.phase)) *
+    moonPhaseBrightness(phaseAngle) *
     sizeScale *
     Math.max(params.exposure, 0);
 

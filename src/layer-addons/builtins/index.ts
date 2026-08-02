@@ -6,4 +6,5 @@ import "./field-gradient";
 import "./image";
 import "./moon";
 import "./spot";
+import "./sun";
 import "./starfield";

@@ -179,6 +179,20 @@ export const HAPKE_ALL_AREA_FULL_MOON_REFERENCE = evaluateHapkeReflectance({
   mu0: 1,
 });
 
+/**
+ * Artistic terminator-softness remap of the Hapke incidence cosine: blends
+ * N·L toward its smooth-max with width 0.4·softness, letting light decay
+ * smoothly past the geometric terminator instead of cutting at N·L = 0.
+ * EXACT identity at softness = 0 (`x + 0·y = x`) — the GPU twin in baker.ts
+ * pass C relies on the same algebra for its bit-identical default.
+ */
+export function softTerminatorMu0(ndl: number, softness: number) {
+  const width = softness * 0.4;
+  const smoothMax = 0.5 * (ndl + Math.sqrt(ndl * ndl + width * width));
+
+  return ndl + softness * Math.max(smoothMax - ndl, 0);
+}
+
 /** Lambertian disk phase, 1 at full Earth and 0 at new Earth. */
 export function lambertSpherePhase(phaseRadians: number) {
   const phase = clamp(phaseRadians, 0, Math.PI);

@@ -91,6 +91,12 @@ export type LayerRuntimeAdapter<TParams = unknown> = {
    * (params in, descriptor out) — called from the manifest resolver.
    */
   getLightSource?: (params: TParams) => LayerLightSourceDescriptor | null;
+  /**
+   * True when this layer type resolves other layers' light-source descriptors
+   * into its own params (clouds lights, sun occluders). After an edit to any
+   * light-source layer, the runtime re-pushes params to every consumer.
+   */
+  consumesLightSources?: boolean;
 };
 
 const registry = new Map<string, LayerRuntimeAdapter>();

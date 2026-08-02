@@ -833,8 +833,12 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
     this.material.userData.applyImageLayerPlacement?.(layerId, placement);
     this.#manifest = resolveCloudLightReferences(this.#manifest);
     forEachRenderableLayer(this.#manifest.nodes, (layer) => {
-      if (layer.type === "clouds") {
-        this.#liveUpdateContext.applyLayerParams(layer);
+      if (layer.id === layerId) {
+        return;
+      }
+      const adapter = getLayerRuntimeAdapter(layer.type);
+      if (adapter?.consumesLightSources) {
+        adapter.updateLive?.(this.#liveUpdateContext, layer);
       }
     });
 
@@ -894,13 +898,19 @@ export class Skybox extends THREE.Mesh<THREE.BufferGeometry, RuntimeMaterial> {
       resolvedNode,
     );
 
-    // Any light-source layer (spot, image, moon, ...) can drive either Clouds
-    // light. Re-resolve and push only those dependent sky uniforms; the field
-    // texture and material stay put.
+    // Any light-source layer (spot, image, moon, sun, ...) can drive a
+    // consumer's resolved light state (Clouds lights, Sun occluders, Moon
+    // dynamic lighting). Re-run each consumer's live update so uniforms are
+    // re-pushed and resource bakes (the moon's sprite) are re-scheduled; the
+    // material stays put. The edited layer itself already ran updateLive.
     if (getLayerRuntimeAdapter(resolvedNode.type)?.getLightSource) {
       forEachRenderableLayer(this.#manifest.nodes, (layer) => {
-        if (layer.type === "clouds") {
-          this.#liveUpdateContext.applyLayerParams(layer);
+        if (layer.id === layerId) {
+          return;
+        }
+        const adapter = getLayerRuntimeAdapter(layer.type);
+        if (adapter?.consumesLightSources) {
+          adapter.updateLive?.(this.#liveUpdateContext, layer);
         }
       });
     }

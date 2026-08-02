@@ -235,4 +235,7 @@ registerLayerRuntimeAdapter({
   wgslEditorOverlay: true,
   getLightSource: (params) =>
     computeMoonLightSource(params as MoonLayer["params"]),
+  // Dynamic lighting: a linked light layer's movement re-runs this moon's
+  // live update, which re-schedules the (bake-key-deduped) sprite bake.
+  consumesLightSources: true,
 });

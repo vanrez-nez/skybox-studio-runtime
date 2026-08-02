@@ -22,6 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import * as THREE from "three/webgpu";
 import * as TSL from "three/tsl";
+import { deriveMoonFrameLight } from "./light-source";
 import type { MoonBakeParams } from "./params";
 import { SUN_ANGULAR_RADIUS_RADIANS } from "./photometry";
 import { surface, librate } from "./tsl/fields";
@@ -81,6 +82,7 @@ export class MoonBaker {
       tilt: uniform(params.bodyTilt),
       rotation: uniform(params.bodyRotation),
       exposure: uniform(params.exposure),
+      shadowSoftness: uniform(params.shadowSoftness),
       sunDir: uniform(new THREE.Vector3(0, 0, 1)),
       // Illuminated fraction, 0 at new and 1 at full. Only the drawn crescent uses
       // it — the real terminator falls out of sunDir on its own.
@@ -235,24 +237,41 @@ export class MoonBaker {
         0.11,
         0.4,
       );
+      // Terminator softness: three exact identities at softness = 0
+      // (x·1, x + 0·y, mix(x, y, 0)), so the default bake is bit-identical.
+      // The penumbra widens as if the sun grew, the Hapke incidence cosine
+      // lifts toward its smooth-max so light decays past the terminator
+      // (see softTerminatorMu0 in photometry.ts, the CPU twin), and the
+      // cast-shadow march relaxes on the night side so it cannot multiply
+      // the lifted light back to zero.
+      const soft = U.shadowSoftness;
+      const penumbraScale = soft.mul(60.0).add(1.0);
       const shadow = float(1.0).toVar();
       for (let s = 1; s <= SHADOW_STEPS; s++) {
         const arc = shadowReach.mul(s / SHADOW_STEPS);
         const surfH = loadHeight(pc.add(tangent.xy.mul(arc))).sub(arc.mul(arc).mul(0.5));
         const rayH = h0.add(arc.mul(tanElev));
-        const halfPenumbra = max(arc.mul(SOLAR_PENUMBRA_SLOPE), 1e-5);
+        const halfPenumbra = max(arc.mul(SOLAR_PENUMBRA_SLOPE).mul(penumbraScale), 1e-5);
         shadow.assign(min(
           shadow,
           smoothstep(halfPenumbra.negate(), halfPenumbra, rayH.sub(surfH)),
         ));
       }
 
+      const softWidth = soft.mul(0.4);
+      const smoothMax = ndl.add(sqrt(ndl.mul(ndl).add(softWidth.mul(softWidth)))).mul(0.5);
+      const liftedNdl = ndl.add(soft.mul(max(smoothMax.sub(ndl), 0.0)));
+      const nightRelax = soft.mul(
+        smoothstep(float(-0.25), float(0.15), ndlBase).oneMinus(),
+      );
+      const shadowSoft = mix(shadow, float(1.0), nightRelax);
+
       const direct = hapkeReflectance({
         cosPhase: phaseCosine,
         material,
         mu: ndv,
-        mu0: ndl,
-      }).mul(shadow);
+        mu0: liftedNdl,
+      }).mul(shadowSoft);
       const earthshine = hapkeReflectance({
         cosPhase: 1.0,
         material,
@@ -315,8 +334,20 @@ export class MoonBaker {
    * Phase is the sun vector — the realistic pipeline has no crescent mask anywhere.
    * `phaseT` is the same phase as an illuminated fraction, which the cartoon
    * pipeline's drawn crescent needs since it works in disc space.
+   *
+   * With dynamic lighting (a linked light layer) the sun vector comes from
+   * the actual geometry between the two layers instead of the phase slider —
+   * a moon transiting its light source shows its night side automatically.
    */
   private setSun(params: MoonBakeParams): void {
+    const derived = deriveMoonFrameLight(params);
+
+    if (derived) {
+      this.U.sunDir.value.set(derived[0], derived[1], derived[2]);
+      this.U.phaseT.value = (1 + derived[2]) * 0.5;
+      return;
+    }
+
     const angle = (params.phase - 0.5) * Math.PI * 2.0;
     this.U.sunDir.value
       .set(Math.sin(angle), params.sunTilt, Math.cos(angle))

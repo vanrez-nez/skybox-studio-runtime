@@ -563,7 +563,8 @@ export function createCustomSkyModel(
       // default; the clouds use the un-negated value with positive g.
       const cosTheta = dot(direction, dir);
       const phaseCos = cosTheta.negate();
-      // Area-light widening for the cloud terms: replace the angle to the
+      // Area-light widening for the forward-scatter terms (cloud octaves,
+      // silver lining, mist, and the sky's Mie lobe): replace the angle to the
       // source CENTER with the angle to its NEAREST LIMB,
       // thetaEff = max(theta - angularRadius, 0). First-order effect of
       // convolving the phase lobe with a disc source: the point-light forward
@@ -670,9 +671,15 @@ export function createCustomSkyModel(
       const mie = ctx.frontColor.mul(uniforms.km).mul(ctx.irradiance);
       const rayleighTerm = rayleighPhase(ctx.phaseCos).mul(rayleigh);
       rayleighSky.addAssign(rayleighTerm);
+      // The Mie forward lobe runs on the limb-widened cosine so a light
+      // linked to an extended source (a sun layer's photosphere) glows
+      // around the whole disc instead of a point at its center. Rayleigh is
+      // near-isotropic — convolving it with the disc changes nothing
+      // perceptible, so it stays on the exact point-light cosine. Unlinked
+      // lights have radius 0, where the widened cosine IS the point cosine.
       skyColor.addAssign(
         rayleighTerm.add(
-          miePhase(uniforms.mieDirectionalG, ctx.phaseCos).mul(mie),
+          miePhase(uniforms.mieDirectionalG, ctx.phaseCosEff).mul(mie),
         ),
       );
     }

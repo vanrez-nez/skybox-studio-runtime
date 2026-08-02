@@ -518,4 +518,5 @@ registerLayerRuntimeAdapter({
   updateLive: (context, layer) => context.applyLayerParams(layer),
   wgsl: cloudsWebGpuAdapter as WebGpuLayerAdapter,
   getTopologyKey: (layer) => cloudsWebGpuAdapter.getTopologyKey(layer as never),
+  consumesLightSources: true,
 });
